@@ -2561,7 +2561,6 @@ git commit -m "feat: 设置页提醒开关接真实通知权限，拒绝时不�
 - Modify: `lib/main.dart`
 - Modify: `lib/features/settings/presentation/settings_page.dart`（删掉那份重复的映射）
 - Modify: `ios/Runner/AppDelegate.swift`
-- Modify: `ios/Runner/AppDelegate.swift`
 
 **`macos/Runner/AppDelegate.swift` 不在改动清单里**——那里的 delegate 由插件自己设，
 搬 iOS 的写法过去编译不过（详见 Step 2）。
