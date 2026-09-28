@@ -233,7 +233,7 @@
 | --- | --- | --- |
 | 单元测试 | 跨午夜/夏令时时长、统计分母 | ✅ `test/sleep_math_test.dart` |
 | 单元测试 | 模型列表解析、错误映射、密钥不外泄、无密钥不发请求、中文解码 | ✅ `test/model_catalog_test.dart` |
-| Widget 测试 | 弹层蒙层独立淡入、点击把手/蒙层关闭、下拉阈值与回弹、打开计数 | ✅ `test/app_sheet_test.dart` |
+| Widget 测试 | 弹层蒙层独立淡入、点击把手/蒙层关闭、下拉阈值与回弹、打开计数、不可关闭时忽略手势 | ✅ `test/app_sheet_test.dart` |
 | Widget 测试 | 推入路由的材质祖先与错误下划线、无阶段记录的主卡片、演示数据二级页 | ✅ `test/pages_widget_test.dart` |
 | 单元测试 | `estimateScore` 边界（4/5/6/7/9/10/12 小时）、事件与质量权重、分档阈值 | ✅ `test/sleep_score_test.dart` |
 | 单元测试 | `buildSleepWindow` 跨午夜与同日、时钟/日期格式化往返 | ✅ `test/sleep_window_test.dart` |
@@ -244,7 +244,7 @@
 | Widget 测试 | 分段控件胶囊与分段同宽、位移成整数倍 | ✅ `test/segmented_control_test.dart` |
 | Widget 测试 | 编辑/删除：入口有无、演示数据不可编辑、表单预填、写回同一 id、不改 `createdAt`、不清空阶段、删除二次确认 | ✅ `test/record_edit_delete_test.dart` |
 | 集成 | 记录卡 → 详情 → 编辑 → 保存 → 回到外壳，走真实 go_router 与 `extra` 传递 | ✅ 同上（数据经 provider 覆盖而非 drift 流） |
-| 单元测试 | 合成波形：确定性、互异性、不削波、无直流、接缝连续、频谱走向、瞬态、包络、WAV 头 | ✅ `test/noise_synth_test.dart` |
+| 单元测试 | 合成波形：确定性、互异性、不削波、无直流、接缝连续、频谱走向、瞬态、包络、森林含鸟鸣、WAV 头 | ✅ `test/noise_synth_test.dart` |
 | Widget 测试 | 助眠音效面板：播放交接、停止、切换、失败如实报错、音量写回、关闭释放 | ✅ `test/noise_sheet_test.dart` |
 | 集成/真机 | iOS/Android/macOS 核心流程；通知权限；锁屏录音与中断 | macOS 构建、iOS 模拟器构建已验证；**真机与试听未做** |
 | 视觉检查 | 对照 Figma Make 四页在手机/宽屏、浅色/深色核对层级、间距、字体与安全区 | **待补**（自动化测试覆盖几何与结构，人工视觉核对未做） |

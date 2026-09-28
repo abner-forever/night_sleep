@@ -408,7 +408,7 @@ Expected: 命中第 3 行（`PROJECT_SPEC.md` 引用）、第 187 行（`132/132
 
 - [ ] **Step 4: 校验**
 
-Run: `grep -rn "132" --include="*.md" . | grep -v "^\./docs/"`
+Run: `grep -rnw "132" --include="*.md" . | grep -v "docs/"`
 Expected: 只命中 `README.md` 一行（`132/132 通过`）
 
 必须排除 `docs/`：本次的设计文档与这份计划文档为了说明「改前长什么样」，正文里**故意**引用了
