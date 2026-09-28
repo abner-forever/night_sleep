@@ -1,0 +1,22 @@
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+build/
+coverage/
+ios/Pods/
+ios/.symlinks/
+android/.gradle/
+android/local.properties
+lib/**/*.g.dart
+# Widget Preview related
+.widget_preview/
+screenshots/
+# IDE（本地状态，各人不同）
+.idea/
+*.iml
+# Claude Code 的本地权限设置（settings.json 是项目级配置，入库；此项是个人本地设置）
+.claude/settings.local.json
+# macOS
+.DS_Store
