@@ -2223,14 +2223,34 @@ void main() {
 
     final row = await database.getSettings();
     expect(row.bedtimeReminderEnabled, isTrue);
-    expect(row.bedtimeReminderMinutes, 22 * 60 + 30,
+    // 绑常量而不是重写一遍字面量：断言的正是「存下来的就是界面显示的那个默认值」，
+    // 常量改了字号也不会让这条断言悄悄失去意义。
+    expect(row.bedtimeReminderMinutes, SettingsPage.defaultBedtimeMinutes,
         reason: '全新安装时该列是 NULL，打开开关必须把界面显示的时刻一并落库——'
             '否则计划里没有这一项，sync 只 cancel 不 schedule，开关开着却不会响');
-    expect(scheduler.lastSynced?.bedtimeMinutes, 22 * 60 + 30);
+    expect(scheduler.lastSynced?.bedtimeMinutes,
+        SettingsPage.defaultBedtimeMinutes);
     expect(scheduler.lastSynced?.wakeMinutes, isNull, reason: '起床提醒还关着');
   });
 
-  testWidgets('权限不是 granted 时给出「去系统设置」入口', (tester) async {
+  testWidgets('关掉提醒时计划里那一项变成 null', (tester) async {
+    // 先开再关，覆盖 `_syncReminders` 把关掉的那一项传 `null` 的分支——
+    // 只测「从未开启」的话，那个分支永远走不到。
+    final scheduler = _FakeScheduler(grants: true);
+    await pumpSettings(tester, scheduler);
+
+    await tester.tap(reminderToggle(0));
+    await tester.pumpAndSettle();
+    await tester.tap(reminderToggle(0));
+    await tester.pumpAndSettle();
+
+    final row = await database.getSettings();
+    expect(row.bedtimeReminderEnabled, isFalse);
+    expect(scheduler.lastSynced?.bedtimeMinutes, isNull,
+        reason: '关掉的提醒不能再进计划，否则它还会照响');
+  });
+
+  testWidgets('权限被拒时给出可点的「去系统设置」入口', (tester) async {
     final scheduler = _FakeScheduler(current: ReminderPermission.denied);
     await pumpSettings(tester, scheduler);
 
@@ -2251,6 +2271,10 @@ void main() {
   testWidgets('平台不支持时如实说明，不假装已开启', (tester) async {
     final scheduler = _FakeScheduler(current: ReminderPermission.unsupported);
     await pumpSettings(tester, scheduler);
+
+    // 这一行**只在 denied 时出现**：unsupported 的成因可能是本设备取不到时区，
+    // 与授权无关，说「未获得通知权限」是假话，而那个按钮点了也不会有反应。
+    expect(find.textContaining('未获得通知权限'), findsNothing);
 
     await tester.tap(reminderToggle(0));
     await tester.pumpAndSettle();
@@ -2432,9 +2456,15 @@ final reminderPermissionProvider = FutureProvider<ReminderPermission>((ref) {
 并在「提醒」那个 `IosListGroup` 之后（下一个 `const SizedBox(height: 22)` 之前）插入：
 
 ```dart
-        // 权限不是 granted 就说明提醒此刻响不了。文案中性、不预设历史：
-        // 插件不区分「从未询问」与「已被拒绝」，编一个状态反而会说谎。
-        if (permission != null && permission != ReminderPermission.granted) ...[
+        // **只在 `denied` 时显示这一行。**
+        //
+        // 不看「不是 granted」：`unsupported` 时这行文案（「未获得通知权限」）是**假话**
+        // ——那台设备上取不到可用时区，是应用侧的问题，跟权限无关；而且那个按钮点了也
+        // 不会有任何反应（`openSystemSettings()` 在 `!_ready` 时直接返回）。一行假话
+        // 加一个无效按钮，比不给提示更糟。
+        //
+        // `denied` 的文案仍然中性、不预设历史：插件分不清「从未询问」与「已被拒绝」。
+        if (permission == ReminderPermission.denied) ...[
           const SizedBox(height: 10),
           IosListGroup(
             onTap: () => ref.read(reminderSchedulerProvider).openSystemSettings(),
@@ -2475,7 +2505,8 @@ flutter analyze
 flutter test test/reminder_settings_test.dart
 ```
 
-预期：analyze 无问题；5 个用例通过。
+预期：analyze 无问题；6 个用例通过。（`SettingsPage.defaultBedtimeMinutes` 在测试里被引用，
+所以测试文件要导入 `lib/features/settings/presentation/settings_page.dart`——它本来就在导入清单里。）
 
 - [ ] **Step 5: 提交**
 

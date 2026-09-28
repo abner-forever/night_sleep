@@ -398,12 +398,18 @@ const kWakeNotificationId = 9002;
 要在 Dart 侧区分，就得在 `AppSettings` 加一列、把 schema 升到 v3、再写一次迁移测试——
 为一个入口的显隐付一次数据库迁移不划算，而且这个标志位一旦与真实权限漂移就会说谎。
 
-所以：**只要 `permission() != granted`，就在「提醒」区块下方渲染一行说明与可点的
+所以：**在 `permission() == denied` 时，在「提醒」区块下方渲染一行说明与可点的
 「去系统设置」**，文案中性、不预设历史：
 
 > 未获得通知权限。提醒开关打开后若收不到通知，请到这里允许「夜深」发送通知。
 
 这样在任何历史下说的话都是真的，也不需要任何持久化状态。
+
+**这一行只在 `denied` 时出现，不在 `unsupported` 时出现。** 一开始写的是「只要不是
+`granted` 就显示」，那是错的：`unsupported` 的成因可能是**这台设备上取不到可用时区**，
+与应用授权无关，此时「未获得通知权限」是假话，而「去系统设置」点了也不会有任何反应
+（`openSystemSettings()` 在未就绪时直接返回）。一行假话加一个无效按钮，
+比不给提示更糟。`unsupported` 的如实反馈由开关本身给出——它弹提示并回弹到关。
 
 `permission()` 的查询结果放进一个 `FutureProvider`，开关操作完成后 invalidate 它。
 
@@ -466,7 +472,7 @@ tz.setLocalLocation(tz.getLocation(await FlutterTimezone.getLocalTimezone()));
 | Widget 测试 | 点「导出 CSV」→ 假 sharer 收到 2 个文件且内容正确；「导出 JSON」→ 1 个 | 同上 |
 | Widget 测试 | 分享失败弹 toast；`dismissed` 不弹 | 同上 |
 | Widget 测试 | 提醒开关：`denied` 时开关回弹且**数据库未被写入**；`granted` 时写入并按传入的 `ReminderPlan` 重排；`unsupported` 时同样不写库 | `test/reminder_settings_test.dart` |
-| Widget 测试 | 权限不是 granted 时出现「去系统设置」入口且可点；已授予时不出现 | 同上 |
+| Widget 测试 | `denied` 时出现「去系统设置」入口且可点；`granted` 与 `unsupported` 时都不出现 | 同上 |
 | 单元测试 | `sync` 幂等：连续两次调用产生相同的调度序列；空计划只取消不排入；`requestsFor` 只把开着的提醒变成请求 | `test/reminder_scheduler_test.dart` |
 | 单元测试 | `nextOccurrence`：当天该时刻未到 → 当天；已过 → 次日；**跨夏令时切换日仍落在同一墙上时刻**（不是绝对时刻 +24h） | 同上 |
 | 单元测试 | 四句通知文案（两个标题两个正文）与规格逐字一致 | 同上 |
