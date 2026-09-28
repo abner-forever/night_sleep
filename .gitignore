@@ -18,5 +18,7 @@ screenshots/
 *.iml
 # Claude Code 的本地权限设置（settings.json 是项目级配置，入库；此项是个人本地设置）
 .claude/settings.local.json
+# Claude Code 创建的隔离工作区，是检出而非源码
+.claude/worktrees/
 # macOS
 .DS_Store
