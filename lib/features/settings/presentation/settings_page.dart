@@ -8,6 +8,7 @@ import '../../../app/app.dart';
 import '../../../app/app_toast.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/database/app_database.dart';
+import '../../../core/platform/reminders.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_basics.dart';
@@ -18,6 +19,14 @@ import '../../../core/widgets/wheel_picker.dart';
 import '../../sleep/data/sleep_repository.dart';
 import '../../sleep/presentation/widgets/dur_bar.dart';
 
+/// 系统通知权限的最近一次观测结果。
+///
+/// 插件分不清「从未询问」与「已被拒绝」——两者都返回 `isEnabled: false`——
+/// 所以界面也不去分。只要不是 granted，就说明提醒此刻响不了。
+final reminderPermissionProvider = FutureProvider<ReminderPermission>((ref) {
+  return ref.watch(reminderSchedulerProvider).permission();
+});
+
 /// Settings — appearance, goal, data, reminders and insight configuration.
 ///
 /// Every control here writes through to SQLite, so a restart preserves the
@@ -26,8 +35,87 @@ import '../../sleep/presentation/widgets/dur_bar.dart';
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
 
+  /// 从未存过时刻时界面显示的默认值。
+  ///
+  /// **显示与写库必须用同一个常量。** 分开写的话，界面显示 22:30 而库里是 NULL，
+  /// 一片祥和之下开关打开后什么都不会响。
+  static const defaultBedtimeMinutes = 22 * 60 + 30; // 22:30
+  static const defaultWakeMinutes = 7 * 60; // 07:00
+
   Future<void> _update(WidgetRef ref, AppSettingsCompanion values) {
     return ref.read(databaseProvider).updateSettings(values);
+  }
+
+  /// 切换一个提醒开关。
+  ///
+  /// 开启前先向系统申请权限。被拒（或平台根本不支持）时**不改动已存的偏好**，
+  /// 让开关自己弹回去：一个写着「开」却什么都不会响的偏好，正是规格书要消灭的
+  /// 那类假状态。
+  Future<void> _setReminder(
+    BuildContext context,
+    WidgetRef ref, {
+    required bool bedtime,
+    required bool value,
+  }) async {
+    final scheduler = ref.read(reminderSchedulerProvider);
+
+    if (value) {
+      final permission = await scheduler.requestPermission();
+      if (permission != ReminderPermission.granted) {
+        if (!context.mounted) return;
+        // 这里不说「这个平台不支持」：走到这一步也可能是**这台设备上**取不到可用
+        // 时区导致的初始化失败，那是应用侧的问题，不是平台的限制。两种情况都成立的
+        // 实话是「当前设备无法安排本地通知」。
+        ref.read(toastProvider.notifier).show(
+              permission == ReminderPermission.unsupported
+                  ? '当前设备无法安排本地通知，提醒未开启。'
+                  : '没有获得通知权限，提醒未开启。可在系统设置中允许「夜深」发送通知。',
+            );
+        ref.invalidate(reminderPermissionProvider);
+        return;
+      }
+    }
+
+    // **打开时把界面显示的那个时刻一并落库。**
+    //
+    // `*ReminderMinutes` 是可空列，且全新安装时是 NULL——全项目没有任何地方给它
+    // 播种，界面只是用 `?? 默认值` 显示了一个从没存过的时刻。若这里只写 enabled，
+    // 计划里就没有这一项：`sync` 只 cancel、不 schedule，开关显示「开」却永远不会响。
+    // 那正是规格书要消灭的假状态，而且 Task 6 的启动回收也救不了它（回收只在权限
+    // 不是 granted 时才动手）。
+    final stored = await ref.read(databaseProvider).getSettings();
+    final minutes = bedtime
+        ? (stored.bedtimeReminderMinutes ?? defaultBedtimeMinutes)
+        : (stored.wakeReminderMinutes ?? defaultWakeMinutes);
+
+    await _update(
+      ref,
+      bedtime
+          ? AppSettingsCompanion(
+              bedtimeReminderEnabled: Value(value),
+              bedtimeReminderMinutes: Value(minutes),
+            )
+          : AppSettingsCompanion(
+              wakeReminderEnabled: Value(value),
+              wakeReminderMinutes: Value(minutes),
+            ),
+    );
+    ref.invalidate(reminderPermissionProvider);
+    await _syncReminders(ref);
+  }
+
+  /// 把已调度的通知重排成与数据库里的偏好一致。
+  Future<void> _syncReminders(WidgetRef ref) async {
+    final stored = await ref.read(databaseProvider).getSettings();
+    await ref.read(reminderSchedulerProvider).sync(
+          ReminderPlan(
+            bedtimeMinutes: stored.bedtimeReminderEnabled
+                ? stored.bedtimeReminderMinutes
+                : null,
+            wakeMinutes:
+                stored.wakeReminderEnabled ? stored.wakeReminderMinutes : null,
+          ),
+        );
   }
 
   Future<void> _pickReminderTime(
@@ -52,6 +140,7 @@ class SettingsPage extends ConsumerWidget {
           ? AppSettingsCompanion(bedtimeReminderMinutes: Value(minutes))
           : AppSettingsCompanion(wakeReminderMinutes: Value(minutes)),
     );
+    await _syncReminders(ref);
   }
 
   static String _minutesToClock(int minutes) =>
@@ -103,9 +192,12 @@ class SettingsPage extends ConsumerWidget {
     final goalHours = (settings?.sleepGoalMinutes ?? 480) / 60;
     final bedtimeEnabled = settings?.bedtimeReminderEnabled ?? false;
     final wakeEnabled = settings?.wakeReminderEnabled ?? false;
-    final bedtimeMinutes = settings?.bedtimeReminderMinutes ?? 22 * 60 + 30;
-    final wakeMinutes = settings?.wakeReminderMinutes ?? 7 * 60;
+    final bedtimeMinutes =
+        settings?.bedtimeReminderMinutes ?? SettingsPage.defaultBedtimeMinutes;
+    final wakeMinutes =
+        settings?.wakeReminderMinutes ?? SettingsPage.defaultWakeMinutes;
     final soundEnabled = settings?.soundRecordingEnabled ?? false;
+    final permission = ref.watch(reminderPermissionProvider).valueOrNull;
 
     return ListView(
       padding: EdgeInsets.fromLTRB(
@@ -389,10 +481,11 @@ class SettingsPage extends ConsumerWidget {
                   IosToggle(
                     value: bedtimeEnabled,
                     semanticLabel: '就寝提醒',
-                    onChanged: (value) => _update(
+                    onChanged: (value) => _setReminder(
+                      context,
                       ref,
-                      AppSettingsCompanion(
-                          bedtimeReminderEnabled: Value(value)),
+                      bedtime: true,
+                      value: value,
                     ),
                   ),
                 ],
@@ -448,9 +541,11 @@ class SettingsPage extends ConsumerWidget {
                   IosToggle(
                     value: wakeEnabled,
                     semanticLabel: '起床提醒',
-                    onChanged: (value) => _update(
+                    onChanged: (value) => _setReminder(
+                      context,
                       ref,
-                      AppSettingsCompanion(wakeReminderEnabled: Value(value)),
+                      bedtime: false,
+                      value: value,
                     ),
                   ),
                 ],
@@ -458,6 +553,41 @@ class SettingsPage extends ConsumerWidget {
             ),
           ],
         ),
+        // 权限不是 granted 就说明提醒此刻响不了。文案中性、不预设历史：
+        // 插件不区分「从未询问」与「已被拒绝」，编一个状态反而会说谎。
+        if (permission != null && permission != ReminderPermission.granted) ...[
+          const SizedBox(height: 10),
+          IosListGroup(
+            onTap: () =>
+                ref.read(reminderSchedulerProvider).openSystemSettings(),
+            semanticLabel: '去系统设置开启通知权限',
+            children: [
+              IosListItem(
+                haptic: false,
+                child: Row(
+                  children: [
+                    AppIcons.bed(
+                        size: 16, color: tokens.textMuted, strokeWidth: 1.8),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        '未获得通知权限。提醒开关打开后若收不到通知，'
+                        '请到这里允许「夜深」发送通知。',
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.5,
+                          color: tokens.textMuted,
+                        ),
+                      ),
+                    ),
+                    AppIcons.chevronRight(
+                        size: 16, color: tokens.borderStrong, strokeWidth: 2),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
         const SizedBox(height: 22),
 
         // ── Sound monitoring ───────────────────────────────────────────────
