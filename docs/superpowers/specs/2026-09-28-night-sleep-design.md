@@ -231,21 +231,21 @@
 
 | 类型 | 重点场景 | 当前状态 |
 | --- | --- | --- |
-| 单元测试 | 跨午夜/夏令时时长、统计分母 | ✅ `test/sleep_math_test.dart`（2 项） |
-| 单元测试 | 模型列表解析、错误映射、密钥不外泄、无密钥不发请求、中文解码 | ✅ `test/model_catalog_test.dart`（14 项） |
-| Widget 测试 | 弹层蒙层独立淡入、点击把手/蒙层关闭、下拉阈值与回弹、打开计数 | ✅ `test/app_sheet_test.dart`（9 项） |
+| 单元测试 | 跨午夜/夏令时时长、统计分母 | ✅ `test/sleep_math_test.dart` |
+| 单元测试 | 模型列表解析、错误映射、密钥不外泄、无密钥不发请求、中文解码 | ✅ `test/model_catalog_test.dart` |
+| Widget 测试 | 弹层蒙层独立淡入、点击把手/蒙层关闭、下拉阈值与回弹、打开计数 | ✅ `test/app_sheet_test.dart` |
 | Widget 测试 | 推入路由的材质祖先与错误下划线、无阶段记录的主卡片、演示数据二级页 | ✅ `test/pages_widget_test.dart` |
-| 单元测试 | `estimateScore` 边界（4/5/6/7/9/10/12 小时）、事件与质量权重、分档阈值 | ✅ `test/sleep_score_test.dart`（12 项） |
-| 单元测试 | `buildSleepWindow` 跨午夜与同日、时钟/日期格式化往返 | ✅ `test/sleep_window_test.dart`（9 项） |
-| 单元测试 | `SleepStatistics` 平均值分母、图表上下界、柱高钳制、计数口径 | ✅ `test/sleep_statistics_test.dart`（11 项） |
-| 数据测试 | 演示数据安装与来源标记、清除演示数据、CRUD 往返、醒来日归档、级联删除、全部删除 | ✅ `test/sleep_data_test.dart`（13 项） |
-| 数据测试 | schema v1→v2 迁移：用真实 v1 库文件升级，校验旧数据保留、`source` 不重置、新列默认值、新表可读写、重复打开不重跑 | ✅ `test/schema_migration_test.dart`（9 项，含防止夹具空跑的自检） |
-| Widget 测试 | 四页空状态与数据态、表单保存、设置写回、二次确认、二级页内边距、下拉不受裁剪 | ✅ `test/pages_widget_test.dart`（20 项） |
-| Widget 测试 | 分段控件胶囊与分段同宽、位移成整数倍 | ✅ `test/segmented_control_test.dart`（4 项） |
-| Widget 测试 | 编辑/删除：入口有无、演示数据不可编辑、表单预填、写回同一 id、不改 `createdAt`、不清空阶段、删除二次确认 | ✅ `test/record_edit_delete_test.dart`（8 项） |
-| 集成 | 记录卡 → 详情 → 编辑 → 保存 → 回到外壳，走真实 go_router 与 `extra` 传递 | ✅ 同上（1 项，数据经 provider 覆盖而非 drift 流） |
-| 单元测试 | 合成波形：确定性、互异性、不削波、无直流、接缝连续、频谱走向、瞬态、包络、WAV 头 | ✅ `test/noise_synth_test.dart`（15 项） |
-| Widget 测试 | 助眠音效面板：播放交接、停止、切换、失败如实报错、音量写回、关闭释放 | ✅ `test/noise_sheet_test.dart`（6 项） |
+| 单元测试 | `estimateScore` 边界（4/5/6/7/9/10/12 小时）、事件与质量权重、分档阈值 | ✅ `test/sleep_score_test.dart` |
+| 单元测试 | `buildSleepWindow` 跨午夜与同日、时钟/日期格式化往返 | ✅ `test/sleep_window_test.dart` |
+| 单元测试 | `SleepStatistics` 平均值分母、图表上下界、柱高钳制、计数口径 | ✅ `test/sleep_statistics_test.dart` |
+| 数据测试 | 演示数据安装与来源标记、清除演示数据、CRUD 往返、醒来日归档、级联删除、全部删除 | ✅ `test/sleep_data_test.dart` |
+| 数据测试 | schema v1→v2 迁移：用真实 v1 库文件升级，校验旧数据保留、`source` 不重置、新列默认值、新表可读写、重复打开不重跑 | ✅ `test/schema_migration_test.dart`（含防止夹具空跑的自检） |
+| Widget 测试 | 四页空状态与数据态、表单保存、设置写回、二次确认、二级页内边距、下拉不受裁剪 | ✅ `test/pages_widget_test.dart` |
+| Widget 测试 | 分段控件胶囊与分段同宽、位移成整数倍 | ✅ `test/segmented_control_test.dart` |
+| Widget 测试 | 编辑/删除：入口有无、演示数据不可编辑、表单预填、写回同一 id、不改 `createdAt`、不清空阶段、删除二次确认 | ✅ `test/record_edit_delete_test.dart` |
+| 集成 | 记录卡 → 详情 → 编辑 → 保存 → 回到外壳，走真实 go_router 与 `extra` 传递 | ✅ 同上（数据经 provider 覆盖而非 drift 流） |
+| 单元测试 | 合成波形：确定性、互异性、不削波、无直流、接缝连续、频谱走向、瞬态、包络、WAV 头 | ✅ `test/noise_synth_test.dart` |
+| Widget 测试 | 助眠音效面板：播放交接、停止、切换、失败如实报错、音量写回、关闭释放 | ✅ `test/noise_sheet_test.dart` |
 | 集成/真机 | iOS/Android/macOS 核心流程；通知权限；锁屏录音与中断 | macOS 构建、iOS 模拟器构建已验证；**真机与试听未做** |
 | 视觉检查 | 对照 Figma Make 四页在手机/宽屏、浅色/深色核对层级、间距、字体与安全区 | **待补**（自动化测试覆盖几何与结构，人工视觉核对未做） |
 
