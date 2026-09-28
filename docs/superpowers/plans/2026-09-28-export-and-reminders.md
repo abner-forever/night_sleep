@@ -2124,7 +2124,12 @@ class _FakeScheduler extends ReminderScheduler {
 
   @override
   Future<ReminderPermission> requestPermission() async {
-    _current = grants ? ReminderPermission.granted : ReminderPermission.denied;
+    // 只在授予时改状态，否则保留构造时给的初值。
+    //
+    // 写成 `_current = grants ? granted : denied` 会让 `unsupported` **不可达**：
+    // 传 `current: unsupported, grants: false` 会被改写成 denied，于是「平台不支持」
+    // 那条用例永远拿不到它要断言的提示——一个在任何实现下都过不了的用例。
+    if (grants) _current = ReminderPermission.granted;
     return _current;
   }
 
@@ -2218,6 +2223,9 @@ void main() {
 
     final row = await database.getSettings();
     expect(row.bedtimeReminderEnabled, isTrue);
+    expect(row.bedtimeReminderMinutes, 22 * 60 + 30,
+        reason: '全新安装时该列是 NULL，打开开关必须把界面显示的时刻一并落库——'
+            '否则计划里没有这一项，sync 只 cancel 不 schedule，开关开着却不会响');
     expect(scheduler.lastSynced?.bedtimeMinutes, 22 * 60 + 30);
     expect(scheduler.lastSynced?.wakeMinutes, isNull, reason: '起床提醒还关着');
   });
@@ -2273,6 +2281,28 @@ flutter test test/reminder_settings_test.dart
 import '../../../core/platform/reminders.dart';
 ```
 
+先把界面上那两个「默认时刻」提成常量。`build()` 里现在写的是
+`settings?.bedtimeReminderMinutes ?? 22 * 60 + 30` 与 `settings?.wakeReminderMinutes ?? 7 * 60`
+——把字面量留在两处（显示一处、落库一处）就是下面那个 bug 的温床。在 `SettingsPage` 里加：
+
+```dart
+  /// 从未存过时刻时界面显示的默认值。
+  ///
+  /// **显示与写库必须用同一个常量。** 分开写的话，界面显示 22:30 而库里是 NULL，
+  /// 一片祥和之下开关打开后什么都不会响。
+  static const defaultBedtimeMinutes = 22 * 60 + 30; // 22:30
+  static const defaultWakeMinutes = 7 * 60; // 07:00
+```
+
+然后 `build()` 里那两行改成用它们：
+
+```dart
+    final bedtimeMinutes =
+        settings?.bedtimeReminderMinutes ?? SettingsPage.defaultBedtimeMinutes;
+    final wakeMinutes =
+        settings?.wakeReminderMinutes ?? SettingsPage.defaultWakeMinutes;
+```
+
 在文件里、`SettingsPage` 类之外定义权限 provider：
 
 ```dart
@@ -2318,11 +2348,29 @@ final reminderPermissionProvider = FutureProvider<ReminderPermission>((ref) {
       }
     }
 
+    // **打开时把界面显示的那个时刻一并落库。**
+    //
+    // `*ReminderMinutes` 是可空列，且全新安装时是 NULL——全项目没有任何地方给它
+    // 播种，界面只是用 `?? 默认值` 显示了一个从没存过的时刻。若这里只写 enabled，
+    // 计划里就没有这一项：`sync` 只 cancel、不 schedule，开关显示「开」却永远不会响。
+    // 那正是规格书要消灭的假状态，而且 Task 6 的启动回收也救不了它（回收只在权限
+    // 不是 granted 时才动手）。
+    final stored = await ref.read(databaseProvider).getSettings();
+    final minutes = bedtime
+        ? (stored.bedtimeReminderMinutes ?? defaultBedtimeMinutes)
+        : (stored.wakeReminderMinutes ?? defaultWakeMinutes);
+
     await _update(
       ref,
       bedtime
-          ? AppSettingsCompanion(bedtimeReminderEnabled: Value(value))
-          : AppSettingsCompanion(wakeReminderEnabled: Value(value)),
+          ? AppSettingsCompanion(
+              bedtimeReminderEnabled: Value(value),
+              bedtimeReminderMinutes: Value(minutes),
+            )
+          : AppSettingsCompanion(
+              wakeReminderEnabled: Value(value),
+              wakeReminderMinutes: Value(minutes),
+            ),
     );
     ref.invalidate(reminderPermissionProvider);
     await _syncReminders(ref);
