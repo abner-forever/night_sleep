@@ -982,6 +982,27 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// 守住「推入的二级页自己带背景与 `Material` 祖先」这条。
+  ///
+  /// 没有它们，文字会落到 Flutter 的错误样式（黄色双下划线），背景会是黑的。
+  /// 这个 bug 在本项目**真出现过一次**（见 `pages_widget_test.dart` 里同名的守卫）：
+  /// 早期测试给推入的二级页也套了 `Scaffold(body:)`，等于把这两样白送给它，
+  /// 于是测试全绿而真机是黑底加黄色下划线。
+  void expectProperlyRendered(WidgetTester tester, String text) {
+    final finder = find.text(text);
+    expect(finder, findsWidgets, reason: '找不到「$text」');
+    expect(
+      DefaultTextStyle.of(tester.element(finder.first)).style.decoration,
+      isNot(TextDecoration.underline),
+      reason: '「$text」带有下划线，说明它落在了 Flutter 的无 Material 错误样式上',
+    );
+    expect(
+      find.ancestor(of: finder.first, matching: find.byType(Material)),
+      findsWidgets,
+      reason: '「$text」缺少 Material 祖先，推入路由必须自己提供',
+    );
+  }
+
   testWidgets('没有真实记录时两个动作禁用并说明原因', (tester) async {
     final sharer = _FakeSharer();
     await pumpRoute(tester, sharer: sharer, entries: [
@@ -989,6 +1010,7 @@ void main() {
       entry(id: 'd2', source: 'demo'),
     ]);
 
+    expectProperlyRendered(tester, '暂无可导出的记录');
     expect(find.text('暂无可导出的记录'), findsOneWidget);
     expect(find.textContaining('已排除 2 条演示记录'), findsOneWidget);
 
@@ -1085,7 +1107,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/app_toast.dart';
 import '../../../core/theme/app_tokens.dart';
-import '../../../core/widgets/app_basics.dart';
 import '../../../core/widgets/app_icons.dart';
 import '../../../core/widgets/glass_surface.dart';
 import '../../../core/widgets/ios_controls.dart';
@@ -1187,7 +1208,7 @@ class _ExportPageState extends ConsumerState<ExportPage> {
               Text(
                 hasData
                     ? '文件不含音频本身，也不含设置与密钥。'
-                    : '暂无可导出的记录。',
+                    : '暂无可导出的记录',
                 style: TextStyle(
                   fontSize: 12,
                   height: 1.5,
