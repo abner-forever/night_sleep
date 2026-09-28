@@ -102,8 +102,8 @@ class _ExportPageState extends ConsumerState<ExportPage> {
               ),
               const SizedBox(height: 14),
               Text(
-                // 短状态句不加句号，与首页「还没有睡眠记录」、统计页「暂无统计数据」
-                // 同一口径；下一行的「已排除…」是完整句子，才带句号。
+                // 短状态句不加句号（首页「还没有睡眠记录」、统计页「暂无统计数据」
+                // 同口径）；这一页只有「文件不含音频…」那句完整说明句带句号。
                 hasData ? '文件不含音频本身，也不含设置与密钥。' : '暂无可导出的记录',
                 style: TextStyle(
                   fontSize: 12,
@@ -114,7 +114,7 @@ class _ExportPageState extends ConsumerState<ExportPage> {
               if (excluded > 0) ...[
                 const SizedBox(height: 6),
                 Text(
-                  '已排除 $excluded 条演示记录。',
+                  '已排除 $excluded 条演示记录',
                   style: TextStyle(
                     fontSize: 12,
                     height: 1.5,

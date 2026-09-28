@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sleep/app/app_toast.dart';
 import 'package:night_sleep/core/theme/app_theme.dart';
+import 'package:night_sleep/core/theme/app_tokens.dart';
 import 'package:night_sleep/features/settings/data/export_sharer.dart';
 import 'package:night_sleep/features/settings/domain/sleep_export.dart';
 import 'package:night_sleep/features/settings/presentation/export_page.dart';
@@ -91,6 +92,13 @@ void main() {
     expect(find.text('暂无可导出的记录'), findsOneWidget);
     expect(find.textContaining('已排除 2 条演示记录'), findsOneWidget);
 
+    // 禁用态的文字必须降级，规格明写「置灰」。
+    final emptyColor = tester.widget<Text>(find.text('导出 CSV')).style?.color;
+    expect(
+      emptyColor,
+      AppTokens.of(tester.element(find.text('导出 CSV'))).textMuted,
+    );
+
     await tester.tap(find.text('导出 CSV'));
     await tester.pumpAndSettle();
     expect(sharer.received, isNull, reason: '禁用的动作不该调用分享层');
@@ -107,8 +115,8 @@ void main() {
       ],
     );
 
-    expect(find.text('2'), findsWidgets, reason: '记录数');
-    expect(find.text('4'), findsWidgets, reason: '阶段段数');
+    expect(find.text('2'), findsOneWidget, reason: '记录数');
+    expect(find.text('4'), findsOneWidget, reason: '阶段段数');
     expect(find.textContaining('已排除 1 条演示记录'), findsOneWidget);
     expect(find.text('暂无可导出的记录'), findsNothing);
   });
@@ -125,6 +133,8 @@ void main() {
     expect(sharer.received!.first.fileName, startsWith('夜深-睡眠记录-'));
     expect(sharer.received!.last.fileName, startsWith('夜深-睡眠阶段-'));
     expect(sharer.received!.first.content, contains('a'));
+    // 这一页没有演示记录，就不该出现「已排除」那一行。
+    expect(find.textContaining('已排除'), findsNothing);
   });
 
   testWidgets('点导出 JSON 交出一份完整存档', (tester) async {
@@ -137,6 +147,7 @@ void main() {
     expect(sharer.received, hasLength(1));
     expect(sharer.received!.single.fileName, startsWith('夜深-睡眠数据-'));
     expect(sharer.received!.single.content, contains('night-sleep-export'));
+    expect(sharer.subject, '夜深睡眠数据导出');
   });
 
   testWidgets('分享失败如实报错', (tester) async {
@@ -158,6 +169,10 @@ void main() {
 
     await tester.tap(find.text('导出 JSON'));
     await tester.pumpAndSettle();
+
+    // 正向锚点：先证明这一次点击真的走到了分享层。否则「没有提示」可以因为
+    // 点击根本没落到按钮上而空转通过。
+    expect(sharer.received, isNotNull);
 
     final container = ProviderScope.containerOf(
       tester.element(find.byType(ExportPage)),

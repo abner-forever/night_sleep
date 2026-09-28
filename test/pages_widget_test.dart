@@ -8,6 +8,7 @@ import 'package:night_sleep/core/theme/app_theme.dart';
 import 'package:night_sleep/features/home/presentation/home_page.dart';
 import 'package:night_sleep/features/log/presentation/log_page.dart';
 import 'package:night_sleep/features/settings/presentation/demo_data_page.dart';
+import 'package:night_sleep/features/settings/presentation/export_page.dart';
 import 'package:night_sleep/features/settings/presentation/insight_config_page.dart';
 import 'package:night_sleep/features/settings/presentation/settings_page.dart';
 import 'package:night_sleep/features/settings/presentation/sleep_import_page.dart';
@@ -393,6 +394,14 @@ void main() {
       expect(find.text('重新安装演示数据'), findsOneWidget);
       expect(find.text('清除演示数据'), findsOneWidget);
       expectProperlyRendered(tester, '演示数据');
+    });
+
+    testWidgets('导出页自己带背景与 Material 祖先', (tester) async {
+      // 推入的二级页什么都继承不到。这一页也必须自己带 `Subpage`——
+      // 没有它，文字会落到 Flutter 的错误样式（黄色双下划线），背景会是黑的。
+      // 这个 bug 在本项目真出现过一次，所以每个二级页都要接上这条守卫。
+      await pumpRoute(tester, const ExportPage());
+      expectProperlyRendered(tester, '睡眠数据导出');
     });
 
     testWidgets('清除演示数据只删演示行，保留用户自己的记录', (tester) async {
