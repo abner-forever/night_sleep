@@ -107,6 +107,6 @@ docs/superpowers/plans/                                   实现计划（以后�
 
 1. 全仓搜索 `PROJECT_SPEC` 无残留引用。
 2. 搜索 `132`（排除 `docs/` 与 `.superpowers/`）只在 `README.md` 出现一次。命令为 `grep -rnw --exclude-dir=docs --exclude-dir=.superpowers "132" --include="*.md" .`——`-w` 与两个 `--exclude-dir` 都不可省：少 `-w` 会假命中 `CHANGELOG.md` 里的十六进制色值 `#101322`；排除 `docs/` 是不把本次的记录文档算作重复——本次的设计文档与实现计划为了说明「改前长什么样」会引用这个旧数字，那是记录，不是重复；排除 `.superpowers/` 是不把任务台账算进来。用 `--exclude-dir` 按目录排除而不是用管道按内容过滤，是因为后者依赖具体 grep 实现输出的路径是否带 `./` 前缀，脆。
-3. `docs/superpowers/specs/2026-09-28-night-sleep-design.md` 与迁移前的 `PROJECT_SPEC.md` 逐段比对，差异只出现在头部变更史、第 9 章计数，以及修复轮补录的两项场景。**注意：`PROJECT_SPEC.md` 从未入 git 且已删除，字节级比对现已不可复现**——实际依据是行数等式与内容级旁证，详见 `.superpowers/sdd/2026-09-28-docs-reorganization/progress.md`。
+3. `docs/superpowers/specs/2026-09-28-night-sleep-design.md` 与迁移前的 `PROJECT_SPEC.md` 逐段比对，差异只出现在头部变更史、第 9 章内容与计数，以及修复轮补录的两项场景。**注意：`PROJECT_SPEC.md` 从未入 git 且已删除，字节级比对现已不可复现**——实际依据是行数等式与内容级旁证，详见 `.superpowers/sdd/2026-09-28-docs-reorganization/progress.md`。
 4. spec §9 的覆盖场景在压缩 README 验证记录后仍全部可查。
 5. `flutter analyze` 与 `flutter test` 结果不变（本次不动代码，用来证明确实没动到代码）。
