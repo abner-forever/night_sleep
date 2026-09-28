@@ -212,8 +212,8 @@ Bundle ID、Android application ID、签名和发布账号保持 Flutter 默认�
 
 - `dart format --set-exit-if-changed .` → 无改动（76 文件，0 changed）
 - `flutter analyze` → **No issues found**
-- `flutter test` → **175/175 通过**（本轮从 132 增加 43 条：导出内容 17、导出页 6、
-  提醒调度 10、提醒设置 6、启动重排 3、二级页渲染守卫 1；各测试文件覆盖的场景见
+- `flutter test` → **176/176 通过**（本轮从 132 增加 44 条：导出内容 17、导出页 6、
+  提醒调度 10、提醒设置 7、启动重排 3、二级页渲染守卫 1；各测试文件覆盖的场景见
   [规格第 9 章](docs/superpowers/specs/2026-09-28-night-sleep-design.md)）
 - `flutter build macos --debug` → 成功产出 `night_sleep.app`（本轮在最终代码上重跑）
 - `flutter build ios --simulator --no-codesign` → 成功产出 `Runner.app`

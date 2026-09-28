@@ -52,10 +52,9 @@ class SystemExportSharer implements ExportSharer {
         // 临时目录由系统回收，自己扫一遍删旧文件既多一份代码，
         // 也多一种「分享面板还开着、文件已被删掉」的边界情况。
         await target.writeAsString(file.content, flush: true);
-        // **必须带上 mimeType**：不传时 `XFile` 的默认值是
-        // `application/octet-stream`，Android 的分享 intent 靠这个类型决定收件方，
-        // 于是 CSV 会以「未知二进制」的身份进到别的应用里。类型只由
-        // `SleepExporter` 生成，这里原样透传，不再猜一遍。
+        // **带上 mimeType**：不传时 `XFile` 的 mimeType 是 `null`，由 share_plus
+        // 按扩展名兜底推断。显式传值不依赖那一层推断——类型只由 `SleepExporter`
+        // 生成，这里原样透传，不再猜一遍；文件名不带扩展名时也仍然正确。
         attachments.add(XFile(target.path, mimeType: file.mimeType));
       }
 
