@@ -21,10 +21,15 @@
 - 不改 `lib/**/*.g.dart`；不往 shell profile 写环境变量。
 - 测试里**不要 `await HapticFeedback.*`**（FakeAsync 下永不完成），也**不要订阅 drift 的 `watch*` 流**（假时钟不推进，拆解时留 pending timer）。
 - 推入的二级页测试**不要套 `Scaffold`**——套了就等于把背景和 `Material` 白送给它，测试全绿而真机是黑底加黄色下划线。
-- 每条命令都用前置环境变量，命令形式：
-  ```bash
-  export PUB_HOSTED_URL=https://pub.flutter-io.cn FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
-  ```
+- **不要设 `PUB_HOSTED_URL` / `FLUTTER_STORAGE_BASE_URL`。** 四个新依赖已经装好并进了
+  `pubspec.lock`，`flutter pub get` 现在完全走本地缓存。带上镜像变量会把锁文件里
+  129 条 `url: "https://pub.dev"` 全部改写成镜像地址，制造一整屏无意义的提交噪声。
+  需要联网的只剩 `flutter build`（见 Task 6），那里的代理变量按 README 单独设置。
+- 若 `flutter pub get` 因为网络失败，报告 BLOCKED，**不要手改 `pubspec.yaml`**。
+- **`pubspec.yaml` 变更后的提交必须一并带上 `macos/Flutter/GeneratedPluginRegistrant.swift`**
+  ——它是 `pub get` 重写的插件注册表，漏掉会让 macOS 构建找不到新插件的原生实现。
+- 测试里取 CSV 内容时**不要裸用 `split(',')`**：备注里就含逗号，裸切出来的列数比真实列数多，
+  「转义之后仍是 16 列」这类断言会变成空转。用 brief 里给的 `cells()` 解析器。
 
 ---
 
@@ -95,14 +100,59 @@ void main() {
         updatedAtUtc: DateTime.utc(2026, 9, 27, 8),
       );
 
-  /// 取 CSV 的第 [index] 行（0 是表头）。
-  List<String> line(String content, int index) =>
-      content.split('\r\n')[index].split(',');
+  SleepStageSegment segment(SleepStageType stage, {int minutes = 60}) =>
+      SleepStageSegment(
+        stage: stage,
+        startAtUtc: DateTime.utc(2026, 9, 26, 23),
+        endAtUtc: DateTime.utc(2026, 9, 26, 23).add(Duration(minutes: minutes)),
+        source: 'import',
+      );
+
+  /// 取第 [index] 行的原文（0 是表头）。
+  ///
+  /// **先去掉开头的 BOM**：它是给 Excel 看的文件头，不是第一列内容的一部分。
+  /// 不剥掉的话，第一列会变成 `'﻿日期'`。
+  String rowOf(String content, int index) =>
+      content.replaceFirst('﻿', '').split('\r\n')[index];
+
+  /// 按 RFC 4180 拆列。
+  ///
+  /// 不能裸用 `split(',')`：备注里就有一个逗号，那样切出来的列数会比真实列数多，
+  /// 于是「转义之后仍是 16 列」这类断言**反而测不出任何东西**。
+  List<String> cells(String row) {
+    final result = <String>[];
+    final buffer = StringBuffer();
+    var quoted = false;
+    for (var i = 0; i < row.length; i++) {
+      final char = row[i];
+      if (quoted) {
+        if (char == '"') {
+          if (i + 1 < row.length && row[i + 1] == '"') {
+            buffer.write('"');
+            i++;
+          } else {
+            quoted = false;
+          }
+        } else {
+          buffer.write(char);
+        }
+      } else if (char == '"') {
+        quoted = true;
+      } else if (char == ',') {
+        result.add(buffer.toString());
+        buffer.clear();
+      } else {
+        buffer.write(char);
+      }
+    }
+    result.add(buffer.toString());
+    return result;
+  }
 
   test('记录表表头列序固定', () {
     final file = SleepExporter.csv([entry()], now: now).first;
 
-    expect(line(file.content, 0), [
+    expect(cells(rowOf(file.content, 0)), [
       '日期', '入睡时刻', '醒来时刻', '时区', '时长(小时)', '时长(分钟)', //
       '质量', '打鼾', '梦话', '辗转', '噩梦', '备注', '来源', '记录ID', //
       '最初记录时间', '最后修改时间',
@@ -124,7 +174,7 @@ void main() {
       events: const LoggedEvents(snore: true),
     );
     final file = SleepExporter.csv([only], now: now).first;
-    final row = line(file.content, 1);
+    final row = cells(rowOf(file.content, 1));
 
     expect(row[0], only.dateLabel);
     expect(row[1], only.bedtimeLabel);
@@ -144,46 +194,46 @@ void main() {
   });
 
   test('备注里的逗号、引号与换行会被转义', () {
-    final file = SleepExporter.csv(
-      [entry(notes: '吃了药, 有点"闷"\n醒了两次')],
-      now: now,
-    ).first;
+    const note = '吃了药, 有点"闷"\n醒了两次';
+    final file = SleepExporter.csv([entry(notes: note)], now: now).first;
 
+    // 字面量：整段被双引号包裹，内部的引号双写。
     expect(file.content, contains('"吃了药, 有点""闷""\n醒了两次"'));
-    // 转义之后，这一行仍然只有表头那么多列。
-    expect(line(file.content, 1), hasLength(16));
+
+    // 而且拆得回来：转义之后仍是 16 列，备注能原样还原。
+    final row = cells(rowOf(file.content, 1));
+    expect(row, hasLength(16), reason: '引号内的逗号不是分隔符');
+    expect(row[11], note, reason: '备注原文必须能无损还原');
   });
 
   test('阶段表一行一段，阶段写中文标签', () {
     final withStages = entry(
       stages: [
-        SleepStageSegment(
-          stage: SleepStageType.deep,
-          startAtUtc: DateTime.utc(2026, 9, 26, 23),
-          endAtUtc: DateTime.utc(2026, 9, 27),
-          source: 'import',
-        ),
-        SleepStageSegment(
-          stage: SleepStageType.rem,
-          startAtUtc: DateTime.utc(2026, 9, 27, 1),
-          endAtUtc: DateTime.utc(2026, 9, 27, 1, 30),
-        ),
+        segment(SleepStageType.deep, minutes: 60),
+        segment(SleepStageType.rem, minutes: 30),
       ],
     );
     final file = SleepExporter.csv([withStages], now: now).last;
 
-    expect(line(file.content, 0),
+    expect(cells(rowOf(file.content, 0)),
         ['记录ID', '阶段', '开始时间', '结束时间', '时长(分钟)', '来源']);
-    expect(line(file.content, 1), ['r1', '深睡', anything, anything, '60', 'import']);
-    expect(line(file.content, 2), ['r1', 'REM', anything, anything, '30', 'import']);
+    expect(cells(rowOf(file.content, 1)),
+        ['r1', '深睡', anything, anything, '60', 'import']);
+    expect(cells(rowOf(file.content, 2)),
+        ['r1', 'REM', anything, anything, '30', 'import']);
   });
 
-  test('演示记录不进文件，两条 CSV 都不进', () {
+  test('演示记录不进文件，两张 CSV 都不进', () {
     final files = SleepExporter.csv(
-      [entry(id: 'real'), entry(id: 'demo', source: 'demo')],
+      [
+        entry(id: 'real', stages: [segment(SleepStageType.deep)]),
+        entry(id: 'demo', source: 'demo', stages: [segment(SleepStageType.rem)]),
+      ],
       now: now,
     );
 
+    // 两条记录都带阶段，否则阶段表只有表头，`contains('real')` 这一断言
+    // 就成了空转——它在空文件上必然失败，而失败原因与演示数据无关。
     for (final file in files) {
       expect(file.content, contains('real'));
       expect(file.content, isNot(contains('demo')));
@@ -197,7 +247,7 @@ void main() {
     expect(files.first.fileName, '夜深-睡眠记录-20260928.csv');
     expect(files.last.fileName, '夜深-睡眠阶段-20260928.csv');
     expect(files.first.content, isNotEmpty, reason: '表头仍然要写');
-    expect(line(files.first.content, 0), hasLength(16));
+    expect(cells(rowOf(files.first.content, 0)), hasLength(16));
   });
 
   test('文件名与类型随格式而定', () {
@@ -393,9 +443,14 @@ flutter test test/sleep_export_test.dart
 - [ ] **Step 6: 提交**
 
 ```bash
-git add pubspec.yaml pubspec.lock lib/features/settings/domain/sleep_export.dart test/sleep_export_test.dart
+git add pubspec.yaml pubspec.lock \
+        macos/Flutter/GeneratedPluginRegistrant.swift \
+        lib/features/settings/domain/sleep_export.dart test/sleep_export_test.dart
 git commit -m "feat: 导出内容生成器（CSV 两张表）与四个新依赖"
 ```
+
+`macos/Flutter/GeneratedPluginRegistrant.swift` 是 `pub get` 加完新插件后重写的注册表，
+**不能漏**：漏掉它 macOS 构建就找不到新插件的原生实现。`ios/` 下没有对应文件要改。
 
 ---
 
