@@ -2097,6 +2097,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sleep/app/app.dart';
+import 'dart:async';
+
 import 'package:night_sleep/app/app_toast.dart';
 import 'package:night_sleep/core/database/app_database.dart';
 import 'package:night_sleep/core/platform/reminders.dart';
@@ -2148,18 +2150,27 @@ class _FakeScheduler extends ReminderScheduler {
 
 void main() {
   late AppDatabase database;
+  late StreamController<AppSetting> settingsStream;
 
-  setUp(() => database = AppDatabase(NativeDatabase.memory()));
-  tearDown(() => database.close());
+  setUp(() {
+    database = AppDatabase(NativeDatabase.memory());
+    settingsStream = StreamController<AppSetting>.broadcast();
+  });
+  tearDown(() async {
+    await settingsStream.close();
+    await database.close();
+  });
 
+  /// 夹具里的时刻也用 `SettingsPage` 的常量，不重抄字面量：
+  /// 整条用例的前提就是「界面显示的默认值」，抄一遍就等于把断言和被断言的对象分开维护。
   AppSetting settings() => AppSetting(
         id: 'default',
         themeMode: 'system',
         sleepGoalMinutes: 480,
         bedtimeReminderEnabled: false,
-        bedtimeReminderMinutes: 22 * 60 + 30,
+        bedtimeReminderMinutes: SettingsPage.defaultBedtimeMinutes,
         wakeReminderEnabled: false,
-        wakeReminderMinutes: 7 * 60,
+        wakeReminderMinutes: SettingsPage.defaultWakeMinutes,
         soundRecordingEnabled: false,
         onboarded: true,
         insightProvider: null,
@@ -2177,7 +2188,7 @@ void main() {
         overrides: [
           databaseProvider.overrideWithValue(database),
           sleepEntriesProvider.overrideWith((ref) => const []),
-          settingsProvider.overrideWith((ref) => Stream.value(settings())),
+          settingsProvider.overrideWith((ref) => settingsStream.stream),
           reminderSchedulerProvider.overrideWithValue(scheduler),
         ],
         child: MaterialApp(
@@ -2186,7 +2197,27 @@ void main() {
         ),
       ),
     );
+    // 首帧之后再投初值：broadcast 流不重放，订阅是在 pumpWidget 的第一帧建立的。
+    settingsStream.add(settings());
     await tester.pumpAndSettle();
+  }
+
+  /// 把某一项的新值回投给界面，**模拟写库回流**。
+  ///
+  /// 生产里 `settingsProvider` 就是 `database.watchSettings()`，写库会自己流回界面；
+  /// 测试不能用那个（widget 测试订阅 drift 的 `watch*` 流会因假时钟不推进而留下
+  /// pending timer），所以用一个手动回投的流保持同构。
+  ///
+  /// 这不是装饰：`IosToggle` 的 onTap 是 `onChanged!(!value)`，**它读的是界面上的值**。
+  /// 界面若不回流，开关永远显示为关，于是每次点击都只送出 `true`——「再点一次关掉它」
+  /// 这类用例根本走不到，而且没有任何报错提示你。
+  void echoSettings({bool? bedtimeEnabled, bool? wakeEnabled}) {
+    settingsStream.add(
+      settings().copyWith(
+        bedtimeReminderEnabled: bedtimeEnabled,
+        wakeReminderEnabled: wakeEnabled,
+      ),
+    );
   }
 
   /// 设置页里前两个开关依次是就寝提醒与起床提醒，第三个是夜间声音录制。
@@ -2233,19 +2264,24 @@ void main() {
     expect(scheduler.lastSynced?.wakeMinutes, isNull, reason: '起床提醒还关着');
   });
 
-  testWidgets('关掉提醒时计划里那一项变成 null', (tester) async {
-    // 先开再关，覆盖 `_syncReminders` 把关掉的那一项传 `null` 的分支——
-    // 只测「从未开启」的话，那个分支永远走不到。
+  testWidgets('关掉提醒时写回 false 且计划里那一项变成 null', (tester) async {
+    // 先开再关。这一条同时覆盖两处**此前零覆盖**的路径：
+    // ① `_syncReminders` 把关掉的那一项传 `null`（只测「从未开启」走不到）；
+    // ② 关掉时把 `enabled` 写回 `false`（写不回去的话，关掉的提醒还会照响）。
     final scheduler = _FakeScheduler(grants: true);
     await pumpSettings(tester, scheduler);
 
     await tester.tap(reminderToggle(0));
     await tester.pumpAndSettle();
+    // 必须回投：不回投的话界面上的开关永远显示「关」，第二次点击还会送出 `true`。
+    echoSettings(bedtimeEnabled: true);
+    await tester.pumpAndSettle();
+
     await tester.tap(reminderToggle(0));
     await tester.pumpAndSettle();
 
     final row = await database.getSettings();
-    expect(row.bedtimeReminderEnabled, isFalse);
+    expect(row.bedtimeReminderEnabled, isFalse, reason: '关掉必须写回 false');
     expect(scheduler.lastSynced?.bedtimeMinutes, isNull,
         reason: '关掉的提醒不能再进计划，否则它还会照响');
   });
