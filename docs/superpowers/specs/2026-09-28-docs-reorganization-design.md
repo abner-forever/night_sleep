@@ -14,13 +14,14 @@
 | `CLAUDE.md` | 153 | 命令、架构、陷阱、测试注意、约定 |
 | `PROJECT_SPEC.md` | 288 | 设计基准，头部挂着 v2.0→v2.4 的变更史 |
 
-三处已经在腐烂，且都是「同一事实写多遍」的典型后果：
+已经出现重复，且都是「同一事实写多遍」的典型后果（下列位置经 grep 实测确认）：
 
-1. `132 项测试` 这个数字同时写在 `README.md`、`CLAUDE.md`、`PROJECT_SPEC.md` §9。改一次测试要记得改三处。
+1. `132 项测试` 这个数字写在 `CLAUDE.md:24` 与 `README.md:187` 两处。改一次测试要记得改两处。
 2. 13 个测试文件的逐项清单在 `README.md`「验证记录」与 `PROJECT_SPEC.md` §9 各列一遍，两份口径还不完全一致。
-3. `flutter pub get` / `build_runner` 等命令在 `README.md` 与 `CLAUDE.md` 各有一份。
-4. 演示数据开关 `DEMO_DATA` 的说明重了两处。
-5. 项目结构树在 `README.md` 与 `CLAUDE.md` 各有一份。
+3. `flutter pub get` / `build_runner` 等命令在 `README.md` 与 `CLAUDE.md` 各有一份；`DEMO_DATA` 开关的说明也重了两处。
+4. `PROJECT_SPEC.md` 的引用散在四处：`README.md:3`、`CLAUDE.md:10`、`CLAUDE.md:15`、`CLAUDE.md:101`。文件一改名，四处全断。
+
+另有一处**看似重复但并不重复**，明确不做合并：`README.md` 的「项目结构」是文件地图，`CLAUDE.md` 的「架构」是分层规则与约定（如「Widget 不直接碰数据库」）。两者读者与用途不同，保持原样。
 
 此外，`PROJECT_SPEC.md` 头部的变更史随版本增长，会把真正的规格正文越推越远；而 superpowers 的约定是把设计与实现计划放在 `docs/superpowers/{specs,plans}/`，文件名带日期。项目目前没有 `docs/` 目录。
 
@@ -78,12 +79,11 @@ docs/superpowers/plans/                                   实现计划（以后�
 
 | # | 现状 | 处理 | 归属 |
 | --- | --- | --- | --- |
-| 1 | `132 项测试` 写在三处 | 只留在 README 验证记录一处，作为那次运行的实测输出；spec 与 CLAUDE.md 不再出现数字 | `README.md` |
+| 1 | `132 项测试` 写在两处 | 只留在 README 验证记录一处，作为那次运行的实测输出；CLAUDE.md 的命令注释不再出现数字 | `README.md` |
 | 2 | 13 个测试文件逐项清单在 README 与 spec §9 各一份 | spec §9 拥有「覆盖了哪些场景」（保留场景描述与测试文件路径，去掉逐项计数）；README 验证记录压缩为「命令 + 结果 + 日期 + 环境」 | spec §9 |
-| 3 | 命令在 README 与 CLAUDE.md 各一份 | README 拥有完整版（含镜像、iOS 构建前提）；CLAUDE.md 只留高频 5 条，其余指向 README | `README.md` |
-| 4 | `DEMO_DATA` 说明重两处 | README 拥有完整说明；CLAUDE.md 删去该段 | `README.md` |
-| 5 | 项目结构树在 README 与 CLAUDE.md 各一份 | README 拥有结构树；CLAUDE.md 只讲分层与约定，不复述目录 | `README.md` |
-| 6 | 三处 `PROJECT_SPEC.md 第 N 章` 引用 | 全部改指 `docs/superpowers/specs/2026-09-28-night-sleep-design.md` | 全部 |
+| 3 | 命令在 README 与 CLAUDE.md 各一份 | README 拥有完整版（含镜像、iOS 构建前提）；CLAUDE.md 只留高频命令，镜像与构建前提指向 README | `README.md` |
+| 4 | `DEMO_DATA` 说明重两处 | README 拥有完整说明；CLAUDE.md 删去该段，改为一句指向 README | `README.md` |
+| 5 | 四处 `PROJECT_SPEC.md 第 N 章` 引用 | 全部改指 `docs/superpowers/specs/2026-09-28-night-sleep-design.md` | 全部 |
 
 第 2 条是唯一会改变信息量的一条：README 的「验证记录」目前逐文件列出 13 项测试及各自用例数，这些内容与 spec §9 的覆盖矩阵重复，且 README 的版本天然会过期。压缩后 README 记录的是**某一次验收在什么环境下跑出了什么结果**，spec §9 记录的是**哪些场景被覆盖**。两者互补，不再重复。
 
@@ -106,7 +106,7 @@ docs/superpowers/plans/                                   实现计划（以后�
 ## 验收方式
 
 1. 全仓搜索 `PROJECT_SPEC` 无残留引用。
-2. 全仓搜索 `132` 只在 `README.md` 出现一次。
+2. 搜索 `132`（排除 `docs/`）只在 `README.md` 出现一次。排除 `docs/` 是因为本次的设计文档与实现计划为了说明「改前长什么样」会引用这个旧数字——那是记录，不是重复。
 3. `docs/superpowers/specs/2026-09-28-night-sleep-design.md` 与迁移前的 `PROJECT_SPEC.md` 逐段比对，差异只出现在头部变更史、第 9 章计数、内部交叉引用这三处。
 4. spec §9 的覆盖场景在压缩 README 验证记录后仍全部可查。
 5. `flutter analyze` 与 `flutter test` 结果不变（本次不动代码，用来证明确实没动到代码）。
