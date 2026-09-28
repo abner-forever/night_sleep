@@ -1535,6 +1535,13 @@ class _RecordingScheduler extends ReminderScheduler {
 }
 
 void main() {
+  // **必须放在 `main()` 顶部，不能塞进 `setUpAll`。**
+  // `group` 的回调体在**收集阶段**就执行了（`main()` 运行的时候），早于任何
+  // `setUpAll`；而下面那个 group 的体内就要 `tz.getLocation(...)`。
+  // 放进 `setUpAll` 会让 group 体先抛出「Tried to get location before initializing
+  // timezone database」，结果是**一个用例都跑不起来**。
+  tzdata.initializeTimeZones();
+
   test('两个通知 id 固定，便于整组替换', () {
     expect(ReminderScheduler.bedtimeId, 9001);
     expect(ReminderScheduler.wakeId, 9002);
@@ -1609,8 +1616,6 @@ void main() {
   });
 
   group('nextOccurrence', () {
-    setUpAll(tzdata.initializeTimeZones);
-
     final ny = tz.getLocation('America/New_York');
     final shanghai = tz.getLocation('Asia/Shanghai');
 
@@ -1830,6 +1835,7 @@ class LocalReminderScheduler extends ReminderScheduler {
   /// 失败时保留未初始化状态，下一次调用会重试。反过来的写法（进函数先置
   /// 「已初始化」）会把一次**偶发**的时区查询失败变成整个进程生命周期的静默失效——
   /// 用户打开提醒开关，什么都不会响，而且没有任何办法在这一进程里恢复。
+  @override
   Future<void> initialize() async {
     if (_ready) return;
 
