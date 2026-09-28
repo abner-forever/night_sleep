@@ -2413,8 +2413,8 @@ final reminderPermissionProvider = FutureProvider<ReminderPermission>((ref) {
     // `*ReminderMinutes` 是可空列，且全新安装时是 NULL——全项目没有任何地方给它
     // 播种，界面只是用 `?? 默认值` 显示了一个从没存过的时刻。若这里只写 enabled，
     // 计划里就没有这一项：`sync` 只 cancel、不 schedule，开关显示「开」却永远不会响。
-    // 那正是规格书要消灭的假状态，而且 Task 6 的启动回收也救不了它（回收只在权限
-    // 不是 granted 时才动手）。
+    // 那正是规格书要消灭的假状态，而且启动时的回收也救不了它——回收只在权限为
+    // `denied` 且偏好为真时才动手，管不到「偏好为真但时刻为空」这种情形。
     final stored = await ref.read(databaseProvider).getSettings();
     final minutes = bedtime
         ? (stored.bedtimeReminderMinutes ?? defaultBedtimeMinutes)
@@ -2556,7 +2556,10 @@ git commit -m "feat: 设置页提醒开关接真实通知权限，拒绝时不�
 ### Task 6: 启动接线与平台配置
 
 **Files:**
+- Create: `lib/app/reminder_sync.dart`
+- Create: `test/reminder_sync_test.dart`
 - Modify: `lib/main.dart`
+- Modify: `lib/features/settings/presentation/settings_page.dart`（删掉那份重复的映射）
 - Modify: `ios/Runner/AppDelegate.swift`
 - Modify: `ios/Runner/AppDelegate.swift`
 
@@ -2573,11 +2576,11 @@ git commit -m "feat: 设置页提醒开关接真实通知权限，拒绝时不�
 ```dart
 import 'dart:async';
 
-import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app/app.dart';
+import 'app/reminder_sync.dart';
 import 'core/config/app_config.dart';
 import 'core/database/app_database.dart';
 import 'core/platform/reminders.dart';
@@ -2590,12 +2593,11 @@ Future<void> main() async {
   final scheduler = LocalReminderScheduler();
   await scheduler.initialize();
 
-  // Demo rows are installed once, and only in builds where the flag is on.
+  // 演示数据只装一次，且只在开关打开的构建里。
   //
-  // The condition is "no demo rows yet" rather than "the table is empty", so
-  // turning the flag on later actually takes effect. Existing real records are
-  // never touched: demo rows carry `source = 'demo'`, the UI badges them, and
-  // `deleteDemoData` removes only those rows.
+  // 判据是「还没有演示行」而不是「表是空的」，这样后开开关才真的生效。
+  // 已有的真实记录一律不碰：演示行带 `source = 'demo'`，界面会标注它们，
+  // 而 `deleteDemoData` 只删这些行。
   if (AppConfig.demoDataEnabled) {
     final existing = await database.allRecords();
     final hasDemo = existing.any((row) => row.source == AppConfig.demoSource);
@@ -2608,22 +2610,65 @@ Future<void> main() async {
     ProviderScope(
       overrides: [
         databaseProvider.overrideWithValue(database),
-        reminderSchedulerProvider.overrideWithValue(scheduler),
+        // Web 不能走这条：`defaultTargetPlatform` 在 Web 上报告的是**宿主操作系统**，
+        // 所以 `reminderSchedulerProvider` 自己的 `kIsWeb` 守卫会被这个 override 绕过。
+        reminderSchedulerProvider.overrideWithValue(
+          kIsWeb ? NoopReminderScheduler() : scheduler,
+        ),
       ],
       child: const NightSleepApp(),
     ),
   );
 
   // 排通知不该挡着启动，失败也不该让应用起不来。
-  unawaited(_reconcileReminders(database, scheduler));
+  unawaited(reconcileReminders(database, scheduler));
 }
+```
+
+**注意 `main.dart` 里不再有 `_reconcileReminders` 这个函数**——它搬到下面那个新文件里了。
+
+- [ ] **Step 1b: 把重排逻辑抽成可测的单元**
+
+**为什么要抽出来。** 这段逻辑有三个分支，而其中「权限是 `unsupported` 时**不动**偏好」
+正是本任务修掉的那个 bug（原先写成 `!= granted`，会让一次偶发的时区查询失败在启动路径上
+清空用户的提醒偏好）。可它原先是个 `main.dart` 里的私有顶层函数，`test/` 够不着——
+也就是说**把这个谓词改回去，测试套件里没有一条会失败**。仓库里 `ReminderScheduler` 的假实现
+（`_FakeScheduler` / `_RecordingScheduler`）和内存数据库都是现成的，抽出来几乎零成本。
+
+创建 `lib/app/reminder_sync.dart`：
+
+```dart
+import 'package:drift/drift.dart' show Value;
+
+import '../core/database/app_database.dart';
+import '../core/platform/reminders.dart';
+
+/// 由已存偏好构造调度计划。
+///
+/// 这条映射是一份**契约**：关掉的那一项必须是 `null`，`sync` 才会取消它。
+/// 启动路径与设置页路径共用这一份——各写一遍的话，将来多一种提醒（或给时刻加个
+/// 回退值）时漏改一处，症状就是「开关开着却不响」，正是这个功能要消灭的那类 bug。
+///
+/// 放在 `app/` 而不是 `core/platform/reminders.dart`：那个文件属于平台层，
+/// 不该认识数据库的行类型。
+ReminderPlan reminderPlanFrom(AppSetting settings) => ReminderPlan(
+      bedtimeMinutes: settings.bedtimeReminderEnabled
+          ? settings.bedtimeReminderMinutes
+          : null,
+      wakeMinutes: settings.wakeReminderEnabled
+          ? settings.wakeReminderMinutes
+          : null,
+    );
 
 /// 让已调度的通知与数据库里的偏好保持一致。每次启动都跑。
 ///
 /// 有两件事会脱节：改时区或系统清理会让已排的调度悄悄消失；而用户在系统设置里
 /// 撤销授权后，偏好仍然写着「开」却再也响不了。后一种在这里被**修好**而不是仅仅
 /// 显示出来——设置页因此永远不会出现一个说谎的开关。
-Future<void> _reconcileReminders(
+///
+/// 顶层函数而不是 `main()` 里的私有实现：下面三个分支里，「`unsupported` 时不动偏好」
+/// 守着的是「一次偶发的时区查询失败不该清空用户设置」，值得有测试盯着。
+Future<void> reconcileReminders(
   AppDatabase database,
   ReminderScheduler scheduler,
 ) async {
@@ -2654,17 +2699,129 @@ Future<void> _reconcileReminders(
       return;
     }
 
-    await scheduler.sync(
-      ReminderPlan(
-        bedtimeMinutes: wantsBedtime ? stored.bedtimeReminderMinutes : null,
-        wakeMinutes: wantsWake ? stored.wakeReminderMinutes : null,
-      ),
-    );
+    await scheduler.sync(reminderPlanFrom(stored));
   } catch (_) {
     // 调度是尽力而为：排不上提醒不该影响任何别的功能。
   }
 }
 ```
+
+- [ ] **Step 1c: 为重排写测试**
+
+创建 `test/reminder_sync_test.dart`：
+
+```dart
+import 'package:drift/drift.dart' show Value;
+import 'package:drift/native.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:night_sleep/app/reminder_sync.dart';
+import 'package:night_sleep/core/database/app_database.dart';
+import 'package:night_sleep/core/platform/reminders.dart';
+
+/// 权限固定的假调度器：只回答「现在是几点权限」，并记录收到过什么计划。
+class _FakeScheduler extends ReminderScheduler {
+  _FakeScheduler(this._current);
+
+  final ReminderPermission _current;
+  ReminderPlan? lastSynced;
+
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  Future<ReminderPermission> permission() async => _current;
+
+  @override
+  Future<ReminderPermission> requestPermission() async => _current;
+
+  @override
+  Future<void> openSystemSettings() async {}
+
+  @override
+  Future<void> cancel(int id) async {}
+
+  @override
+  Future<void> schedule(ReminderRequest request) async {}
+
+  @override
+  Future<void> sync(ReminderPlan plan) async => lastSynced = plan;
+}
+
+void main() {
+  late AppDatabase database;
+
+  setUp(() => database = AppDatabase(NativeDatabase.memory()));
+  tearDown(() => database.close());
+
+  /// 造一条「两项提醒都开着」的偏好。
+  Future<void> seedBothOn() async {
+    await database.updateSettings(
+      AppSettingsCompanion(
+        bedtimeReminderEnabled: const Value(true),
+        bedtimeReminderMinutes: const Value(22 * 60 + 30),
+        wakeReminderEnabled: const Value(true),
+        wakeReminderMinutes: const Value(7 * 60),
+      ),
+    );
+  }
+
+  test('权限为 granted 时按偏好重排', () async {
+    await seedBothOn();
+    final scheduler = _FakeScheduler(ReminderPermission.granted);
+
+    await reconcileReminders(database, scheduler);
+
+    expect(scheduler.lastSynced?.bedtimeMinutes, 22 * 60 + 30);
+    expect(scheduler.lastSynced?.wakeMinutes, 7 * 60);
+    expect((await database.getSettings()).bedtimeReminderEnabled, isTrue,
+        reason: '权限正常时不该动偏好');
+  });
+
+  test('权限为 denied 时回收偏好并清空计划', () async {
+    await seedBothOn();
+    final scheduler = _FakeScheduler(ReminderPermission.denied);
+
+    await reconcileReminders(database, scheduler);
+
+    final row = await database.getSettings();
+    expect(row.bedtimeReminderEnabled, isFalse, reason: '撤销授权后不该留一个说谎的开关');
+    expect(row.wakeReminderEnabled, isFalse);
+    expect(scheduler.lastSynced?.isEmpty, isTrue, reason: '已排的通知必须取消掉');
+  });
+
+  test('权限为 unsupported 时**不动**偏好', () async {
+    // 这是本任务修掉的那个 bug 的回归守卫：`unsupported` 可能只是一次偶发的时区
+    // 查询失败，把它当成「用户撤销了授权」会在启动路径上静默清空用户的提醒设置。
+    // 把 `reconcileReminders` 的条件改回 `!= granted` 就会让这条变红。
+    await seedBothOn();
+    final scheduler = _FakeScheduler(ReminderPermission.unsupported);
+
+    await reconcileReminders(database, scheduler);
+
+    final row = await database.getSettings();
+    expect(row.bedtimeReminderEnabled, isTrue);
+    expect(row.bedtimeReminderMinutes, 22 * 60 + 30,
+        reason: '偶发的时区失败不该毁掉用户存过的时刻');
+    expect(row.wakeReminderEnabled, isTrue);
+  });
+}
+```
+
+- [ ] **Step 1d: 用共用映射替换设置页里的那份拷贝**
+
+`lib/features/settings/presentation/settings_page.dart` 的 `_syncReminders` 里，那段
+`bedtimeMinutes: stored.bedtimeReminderEnabled ? … : null` 与启动路径是**逐字重复**的。
+改成：
+
+```dart
+  /// 把已调度的通知重排成与数据库里的偏好一致。
+  Future<void> _syncReminders(WidgetRef ref) async {
+    final stored = await ref.read(databaseProvider).getSettings();
+    await ref.read(reminderSchedulerProvider).sync(reminderPlanFrom(stored));
+  }
+```
+
+并补导入 `import '../../../app/reminder_sync.dart';`
 
 - [ ] **Step 2: 改 iOS 与 macOS 的 AppDelegate**
 
@@ -2730,7 +2887,9 @@ flutter build ios --simulator --no-codesign
 - [ ] **Step 4: 提交**
 
 ```bash
-git add lib/main.dart ios/Runner/AppDelegate.swift
+git add lib/main.dart lib/app/reminder_sync.dart \
+        lib/features/settings/presentation/settings_page.dart \
+        ios/Runner/AppDelegate.swift test/reminder_sync_test.dart
 git commit -m "feat: 启动时重排提醒，iOS 设通知 delegate"
 ```
 
