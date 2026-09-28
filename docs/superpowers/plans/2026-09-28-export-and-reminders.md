@@ -1197,7 +1197,7 @@ class _ExportPageState extends ConsumerState<ExportPage> {
               if (excluded > 0) ...[
                 const SizedBox(height: 6),
                 Text(
-                  '已排除 $excluded 条演示记录。',
+                  '已排除 $excluded 条演示记录',
                   style: TextStyle(
                     fontSize: 12,
                     height: 1.5,
