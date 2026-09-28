@@ -161,15 +161,19 @@ void main() {
     ]);
   });
 
-  test('文件带 UTF-8 BOM 且用 CRLF 分行', () {
-    final file = SleepExporter.csv([entry()], now: now).first;
+  test('文件带 UTF-8 BOM 且每行用 CRLF 分隔', () {
+    final file =
+        SleepExporter.csv([entry(), entry(id: 'r2')], now: now).first;
 
     // Excel 只在开头见到 BOM 时才按 UTF-8 解码，否则中文备注是乱码。
     expect(file.content.codeUnitAt(0), 0xFEFF);
-    expect(file.content, contains('\r\n'));
-    // 行与行之间不含裸换行：有的话说明某个字段没被引号包住。
-    final body = file.content.substring(1);
-    expect(body.split('\r\n').length, greaterThan(1));
+
+    // 4 段 = 表头 + 两条记录 + 结尾 CRLF 之后的空串。
+    //
+    // 断言**段数**而不是「含有 CRLF」：后者被上一行的 BOM 断言蕴含，永远不可能
+    // 失败。段数会真的变——少一段说明漏了记录，多一段说明某条记录被值里的裸换行
+    // 拆成了两行。
+    expect(file.content.substring(1).split('\r\n'), hasLength(4));
   });
 
   test('记录按入睡时刻升序，不看调用方给的顺序', () {
