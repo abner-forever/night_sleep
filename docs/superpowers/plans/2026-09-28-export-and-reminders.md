@@ -226,8 +226,6 @@ flutter test test/sleep_export_test.dart
 创建 `lib/features/settings/domain/sleep_export.dart`：
 
 ```dart
-import 'package:path/path.dart' as p; // 见下方说明，若未使用请删除本行
-
 import '../../../core/config/app_config.dart';
 import '../../sleep/domain/sleep_entry.dart';
 import '../../sleep/domain/sleep_stage.dart';
@@ -383,8 +381,6 @@ abstract final class SleepExporter {
       '${_two(local.month)}${_two(local.day)}';
 }
 ```
-
-**删掉第一行的 `import 'package:path/path.dart' as p;`**——那是误写，本文件不需要它，留着会被 `flutter analyze` 报未使用导入。
 
 - [ ] **Step 5: 跑测试，确认通过**
 
