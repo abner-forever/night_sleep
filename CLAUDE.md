@@ -16,6 +16,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 新增或修改能力后，同步更新该规格（偏差表 / 测试矩阵）与 `README.md`（实现范围 / 验证记录），
 版本变更记入 `CHANGELOG.md`。
 
+新的设计规格落 `docs/superpowers/specs/`，新的实现计划落 `docs/superpowers/plans/`，
+文件名一律 `YYYY-MM-DD-<topic>.md`。规格是活文档：创建时定日期，之后原地更新，不新开文件，
+变更史记入 `CHANGELOG.md`。
+
 ## 常用命令
 
 ```bash
@@ -29,8 +33,8 @@ flutter test test/sleep_score_test.dart --plain-name "分档阈值"  # 单个用
 flutter run -d macos
 ```
 
-国内网络下的 pub 镜像、iOS / macOS 构建的网络前提与代理，以及演示数据开关 `DEMO_DATA`
-（默认 = `kDebugMode`，发布构建关），见 README。
+国内网络下的 pub 镜像、iOS / macOS 构建的网络前提与代理，以及演示数据开关 `DEMO_DATA`，
+见 README「运行与生成」与「构建 iOS / macOS 的网络前提」两节。
 
 **不要改 `lib/**/*.g.dart`**（已 gitignore，由 Drift 生成）。也不要往 `~/.zshrc` 等
 shell profile 里写环境变量——需要时用命令行前置的临时变量。

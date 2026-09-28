@@ -182,10 +182,10 @@ Bundle ID、Android application ID、签名和发布账号保持 Flutter 默认�
 
 ## 验证记录
 
-本机环境：macOS 14.8.9（23J631，Intel），Flutter 3.47.5 stable。
+本机环境：macOS 14.8.9（23J631，Intel），Flutter 3.47.5 stable。最近一次复跑：2026-09-28。
 
 - `flutter analyze` → **No issues found**
-- `flutter test` → **132/132 通过**（各测试文件覆盖的场景见规格第 9 章）
+- `flutter test` → **132/132 通过**（各测试文件覆盖的场景见[规格第 9 章](docs/superpowers/specs/2026-09-28-night-sleep-design.md)）
 - `flutter build macos --debug` → 成功产出 `night_sleep.app`
 - `flutter build ios --simulator --no-codesign` → 成功产出 `Runner.app`
   （universal：x86_64 + arm64；新图标已编译进 `Assets.car`，抽出校验过）

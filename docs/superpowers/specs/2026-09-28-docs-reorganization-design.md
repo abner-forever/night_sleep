@@ -1,7 +1,7 @@
 # 文档重组设计
 
 > 日期：2026-09-28
-> 状态：已确认，待实现
+> 状态：已完成（2026-09-28）
 > 范围：只动文档，不动 `lib/` 下任何代码
 
 ## 问题
@@ -106,7 +106,7 @@ docs/superpowers/plans/                                   实现计划（以后�
 ## 验收方式
 
 1. 全仓搜索 `PROJECT_SPEC` 无残留引用。
-2. 搜索 `132`（排除 `docs/`）只在 `README.md` 出现一次。命令为 `grep -rnw "132" --include="*.md" . | grep -v "docs/"`——`-w` 与 `docs/` 过滤都不可省：少 `-w` 会假命中 `CHANGELOG.md` 里的十六进制色值 `#101322`，少了 `docs/` 过滤会把本节的记录本身算成重复。排除 `docs/` 是因为本次的设计文档与实现计划为了说明「改前长什么样」会引用这个旧数字——那是记录，不是重复。
-3. `docs/superpowers/specs/2026-09-28-night-sleep-design.md` 与迁移前的 `PROJECT_SPEC.md` 逐段比对，差异只出现在头部变更史、第 9 章计数、内部交叉引用这三处。
+2. 搜索 `132`（排除 `docs/`）只在 `README.md` 出现一次。命令为 `grep -rnw --exclude-dir=.superpowers "132" --include="*.md" . | grep -v "docs/"`——`-w` 与 `docs/` 过滤都不可省：少 `-w` 会假命中 `CHANGELOG.md` 里的十六进制色值 `#101322`，少了 `docs/` 过滤会把本节的记录本身算成重复。排除 `docs/` 是因为本次的设计文档与实现计划为了说明「改前长什么样」会引用这个旧数字——那是记录，不是重复。
+3. `docs/superpowers/specs/2026-09-28-night-sleep-design.md` 与迁移前的 `PROJECT_SPEC.md` 逐段比对，差异只出现在头部变更史、第 9 章计数，以及修复轮补录的两项场景。**注意：`PROJECT_SPEC.md` 从未入 git 且已删除，字节级比对现已不可复现**——实际依据是行数等式与内容级旁证，详见 `.superpowers/sdd/2026-09-28-docs-reorganization/progress.md`。
 4. spec §9 的覆盖场景在压缩 README 验证记录后仍全部可查。
 5. `flutter analyze` 与 `flutter test` 结果不变（本次不动代码，用来证明确实没动到代码）。

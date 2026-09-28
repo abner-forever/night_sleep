@@ -30,12 +30,12 @@
 - Consumes: 无
 - Produces: 根目录 `CHANGELOG.md`。Task 2 的规格头部会链接 `../../../CHANGELOG.md` 指向它。
 
-- [ ] **Step 1: 先确认它还不存在**
+- [x] **Step 1: 先确认它还不存在**
 
 Run: `ls CHANGELOG.md`
 Expected: `No such file or directory`（确认是新建而非覆盖）
 
-- [ ] **Step 2: 写入 CHANGELOG.md**
+- [x] **Step 2: 写入 CHANGELOG.md**
 
 内容取自 `PROJECT_SPEC.md` 头部第 7–31 行的变更史段落，改为倒序的版本小节。**文字逐字沿用原文，不得改写或补写日期**（v2.0–v2.3 的原始记录里没有日期，就不要编）：
 
@@ -82,7 +82,7 @@ v1.0 的设计基准是**读错**的。原型 `index.css` 含多层互相覆盖�
 本版按**最终生效层**重写设计基准，并新增第 8 章记录与原型的有意偏差。
 ````
 
-- [ ] **Step 3: 校验**
+- [x] **Step 3: 校验**
 
 Run: `grep -c "^## " CHANGELOG.md`
 Expected: `5`
@@ -90,7 +90,7 @@ Expected: `5`
 Run: `grep -n "^## " CHANGELOG.md`
 Expected: 顺序为 `2.4（2026-09-28）`、`2.3`、`2.2`、`2.1`、`2.0`，最新的在最上面。
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 git add CHANGELOG.md
@@ -113,19 +113,19 @@ git commit -m "docs: 从规格头部拆出 CHANGELOG.md
 
 **任务边界**：这一步**只**替换头部、删掉变更史，正文一个字不动。§9 的计数留到 Task 3。这样本步可以用 `diff` 干净地证明正文无损。
 
-- [ ] **Step 1: 确认起点状态**
+- [x] **Step 1: 确认起点状态**
 
 Run: `wc -l PROJECT_SPEC.md && head -3 PROJECT_SPEC.md`
 Expected: `288 PROJECT_SPEC.md`，前三行为 `# 夜深：Flutter 睡眠记录 App 项目规格说明书`、空行、`> 版本：2.4（2026-09-28）`
 
-- [ ] **Step 2: 复制到新路径**
+- [x] **Step 2: 复制到新路径**
 
 ```bash
 mkdir -p docs/superpowers/specs
 cp PROJECT_SPEC.md docs/superpowers/specs/2026-09-28-night-sleep-design.md
 ```
 
-- [ ] **Step 3: 替换新文件的头部**
+- [x] **Step 3: 替换新文件的头部**
 
 把新文件开头到 `## 1. 产品目标与交付原则` **之前**的整块（原第 1–32 行，即标题、`>` 引言块、五段变更史）替换为下面这块。注意保留原有的 Figma Make 原型链接：
 
@@ -142,7 +142,7 @@ cp PROJECT_SPEC.md docs/superpowers/specs/2026-09-28-night-sleep-design.md
 
 原头部第 2 行「用途：本目录 Flutter 项目的实现与验收基准」中的「本目录」不再成立，故改为「本项目」——这是头部替换的一部分，不算正文改动。
 
-- [ ] **Step 4: 用 diff 证明正文逐字未变**
+- [x] **Step 4: 用 diff 证明正文逐字未变**
 
 ```bash
 diff PROJECT_SPEC.md docs/superpowers/specs/2026-09-28-night-sleep-design.md
@@ -152,13 +152,13 @@ Expected: 差异**只**出现在文件头部（原文件的标题+引言块+变�
 
 若 `## 1.` 之后出现任何 `<` 或 `>` 行，说明复制或编辑出了偏差，停下修好再继续。
 
-- [ ] **Step 5: 删除旧文件**
+- [x] **Step 5: 删除旧文件**
 
 ```bash
 rm PROJECT_SPEC.md
 ```
 
-- [ ] **Step 6: 校验旧路径已消失**
+- [x] **Step 6: 校验旧路径已消失**
 
 Run: `ls PROJECT_SPEC.md`
 Expected: `No such file or directory`
@@ -166,7 +166,7 @@ Expected: `No such file or directory`
 Run: `grep -n "^## " docs/superpowers/specs/2026-09-28-night-sleep-design.md`
 Expected: `## 1. 产品目标与交付原则` 至 `## 10. 尚需用户提供的外部资料`，共 10 个二级标题。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add docs/superpowers/specs/2026-09-28-night-sleep-design.md
@@ -188,12 +188,12 @@ git commit -m "docs: PROJECT_SPEC.md 迁入 docs/superpowers/specs/
 
 **理由**：计数是 README 验证记录的职责，§9 的职责是「覆盖了哪些场景」。计数散在两处必然对不上。
 
-- [ ] **Step 1: 先列出待改的行**
+- [x] **Step 1: 先列出待改的行**
 
 Run: `grep -n "项）" docs/superpowers/specs/2026-09-28-night-sleep-design.md`
 Expected: 命中 §9 表格里的若干行，形如 `（2 项）`、`（14 项）`、`（9 项，含防止夹具空跑的自检）`、`（1 项，数据经 provider 覆盖而非 drift 流）`。
 
-- [ ] **Step 2: 逐行删除计数括注**
+- [x] **Step 2: 逐行删除计数括注**
 
 对 §9 表格的每一行，删去计数括注；**若括注里还有非计数的说明，保留说明**：
 
@@ -219,7 +219,7 @@ Expected: 命中 §9 表格里的若干行，形如 `（2 项）`、`（14 项�
 1. `test/pages_widget_test.dart` 在表里**出现两次**——一次带 `（20 项）`，一次不带。只改带计数的那行，另一行动不得。
 2. §9 表格最后两行（`集成/真机`、`视觉检查`）的状态列里本来就没有计数括注，不要改动。
 
-- [ ] **Step 3: 校验计数已清空**
+- [x] **Step 3: 校验计数已清空**
 
 Run: `grep -n "（[0-9]* 项" docs/superpowers/specs/2026-09-28-night-sleep-design.md`
 Expected: 无输出（退出码 1）
@@ -227,7 +227,7 @@ Expected: 无输出（退出码 1）
 Run: `grep -n "防止夹具空跑\|provider 覆盖" docs/superpowers/specs/2026-09-28-night-sleep-design.md`
 Expected: 仍命中——证明非计数的说明被保留了，没有被一起删掉。
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 git add docs/superpowers/specs/2026-09-28-night-sleep-design.md
@@ -247,12 +247,12 @@ git commit -m "docs(spec): §9 覆盖矩阵去掉逐项用例计数
 - Consumes: Task 1 的 `CHANGELOG.md`、Task 2 的规格新路径
 - Produces: CLAUDE.md 不再引用 `PROJECT_SPEC.md`；不再复制 README 的网络/开关说明。
 
-- [ ] **Step 1: 先确认待改位置**
+- [x] **Step 1: 先确认待改位置**
 
 Run: `grep -n "PROJECT_SPEC\|132\|DEMO_DATA\|flutter-io.cn\|GIT_CONFIG" CLAUDE.md`
 Expected: 命中第 10、15、24、31–34、36–38、41–42、101 行附近。
 
-- [ ] **Step 2: 改四处 `PROJECT_SPEC.md` 引用**
+- [x] **Step 2: 改四处 `PROJECT_SPEC.md` 引用**
 
 **第 10 行**，改前：
 ```
@@ -283,7 +283,7 @@ Expected: 命中第 10、15、24、31–34、36–38、41–42、101 行附近�
 这四类 bug 各犯过至少一次，`CHANGELOG.md` 里 v2.2–v2.4 的变更记录就是它们的病历：
 ```
 
-- [ ] **Step 3: 命令块去重**
+- [x] **Step 3: 命令块去重**
 
 把 `## 常用命令` 一节里、代码块之后的三个重复段落（演示数据开关、pub 镜像、iOS 构建代理）整体替换为一句指针，并把 `flutter test` 的注释去掉数字。
 
@@ -327,7 +327,7 @@ flutter build macos --debug
 （默认 = `kDebugMode`，发布构建关），见 README。
 ````
 
-- [ ] **Step 4: 校验**
+- [x] **Step 4: 校验**
 
 Run: `grep -n "PROJECT_SPEC" CLAUDE.md`
 Expected: 无输出
@@ -338,7 +338,7 @@ Expected: 无输出
 Run: `grep -n "CHANGELOG" CLAUDE.md`
 Expected: 命中两处（第 15 行的更新约定、第 101 行的病历引用）
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add CLAUDE.md
@@ -356,12 +356,12 @@ git commit -m "docs(CLAUDE): 指向迁移后的规格路径，去掉与 README �
 - Consumes: Task 2 的规格新路径、Task 3 裁剪后的 §9
 - Produces: `132` 这个数字在仓库中只剩 README 一处。
 
-- [ ] **Step 1: 先确认待改位置**
+- [x] **Step 1: 先确认待改位置**
 
 Run: `grep -n "PROJECT_SPEC\|132\|_test.dart" README.md`
 Expected: 命中第 3 行（`PROJECT_SPEC.md` 引用）、第 187 行（`132/132 通过`），以及第 188–207 行的逐文件清单。
 
-- [ ] **Step 2: 更新第 3 行的规格引用**
+- [x] **Step 2: 更新第 3 行的规格引用**
 
 **改前**：
 ```
@@ -373,7 +373,7 @@ Expected: 命中第 3 行（`PROJECT_SPEC.md` 引用）、第 187 行（`132/132
 `docs/superpowers/specs/2026-09-28-night-sleep-design.md` 第 2 章的
 ```
 
-- [ ] **Step 3: 压缩验证记录里的测试清单**
+- [x] **Step 3: 压缩验证记录里的测试清单**
 
 **改前**：
 ```
@@ -406,9 +406,9 @@ Expected: 命中第 3 行（`PROJECT_SPEC.md` 引用）、第 187 行（`132/132
 
 **这是本计划中唯一会减少 README 信息量的一步。** 被删掉的是逐文件清单；等价的覆盖场景描述在规格第 9 章仍完整可查。删前请对照 Task 3 完成后的 §9 确认覆盖范围没有被漏掉，再动手。
 
-- [ ] **Step 4: 校验**
+- [x] **Step 4: 校验**
 
-Run: `grep -rnw "132" --include="*.md" . | grep -v "docs/"`
+Run: `grep -rnw --exclude-dir=.superpowers "132" --include="*.md" . | grep -v "docs/"`
 Expected: 只命中 `README.md` 一行（`132/132 通过`）
 
 必须排除 `docs/`：本次的设计文档与这份计划文档为了说明「改前长什么样」，正文里**故意**引用了
@@ -420,7 +420,7 @@ Expected: 无输出
 Run: `grep -n "_test.dart" README.md`
 Expected: 无输出（逐文件清单已删；若还剩个别行，确认它们属于「界面截图巡检」等其它章节而非验证记录）
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add README.md
@@ -438,19 +438,19 @@ git commit -m "docs(README): 验证记录改为命令与结果，逐文件清单
 - Consumes: Task 1–5 的全部产出
 - Produces: 验收结论
 
-- [ ] **Step 1: 旧文件名无残留引用**
+- [x] **Step 1: 旧文件名无残留引用**
 
-Run: `grep -rn "PROJECT_SPEC" --include="*.md" .`
+Run: `grep -rn --exclude-dir=.superpowers "PROJECT_SPEC" --include="*.md" .`
 Expected: 只命中本次迁移的两份记录文档自身
 （`docs/superpowers/specs/2026-09-28-docs-reorganization-design.md` 与
 `docs/superpowers/plans/2026-09-28-docs-reorganization.md`）。其余任何位置出现即为失败。
 
-- [ ] **Step 2: 目标结构就位**
+- [x] **Step 2: 目标结构就位**
 
 Run: `ls -1 CHANGELOG.md README.md CLAUDE.md docs/superpowers/specs/*.md docs/superpowers/plans/*.md`
 Expected: 五类文件都在；`PROJECT_SPEC.md` 不在其中。
 
-- [ ] **Step 3: 证明没碰代码**
+- [x] **Step 3: 证明没碰代码**
 
 Run: `git log --oneline`
 Expected: 本计划产生 5 个新提交，每个都只涉及 `.md` 文件。
@@ -458,7 +458,7 @@ Expected: 本计划产生 5 个新提交，每个都只涉及 `.md` 文件。
 Run: `git show --stat --oneline HEAD~4..HEAD`
 Expected: 变更文件全部是 `.md`，没有 `lib/`、`test/`、`integration_test/`、`tool/` 下的路径。
 
-- [ ] **Step 4: 代码基线未受影响**
+- [x] **Step 4: 代码基线未受影响**
 
 Run: `flutter analyze`
 Expected: `No issues found`
@@ -469,6 +469,6 @@ Expected: `All tests passed!`（本次未动代码，结果应与迁移前一致
 若 `flutter analyze` 因未装依赖而报错，先 `flutter pub get`；国内网络需镜像，见 README。
 按规格「验收方式」第 5 条，本步的目的是**证明确实没动到代码**——若分析器或测试出现与迁移前不同的结果，说明改到了不该改的地方，必须停下排查。
 
-- [ ] **Step 5: 无需提交**
+- [x] **Step 5: 无需提交**
 
 本任务不产生文件改动。若 Step 1–3 全部符合预期，迁移完成。
