@@ -680,8 +680,11 @@ flutter test test/sleep_export_test.dart
 import 'dart:convert';
 
 import '../../sleep/domain/sleep_insight.dart';
-import '../../sleep/domain/sound_event.dart';
 ```
+
+**不要导入 `sound_event.dart`**：实现里只做 `clip.kind.id` 这类成员访问，靠类型推断即可，
+不出现 `SoundClip` 这个名字，导入它会被分析器报 `unused_import`，破坏「analyze 零问题」。
+（测试文件里倒是要导入——那边显式构造 `SoundClip(...)`。）
 
 ```dart
   /// 完整嵌套的一份存档。
@@ -779,7 +782,7 @@ import '../../sleep/domain/sound_event.dart';
 flutter test test/sleep_export_test.dart
 ```
 
-预期：15 个用例全部通过。
+预期：17 个用例全部通过（Task 1 的 11 个 + 本任务的 6 个）。
 
 - [ ] **Step 5: 提交**
 
