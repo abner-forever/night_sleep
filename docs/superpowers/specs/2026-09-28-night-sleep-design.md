@@ -1,6 +1,6 @@
 # 夜深：Flutter 睡眠记录 App 项目规格说明书
 
-> 版本：2.4（2026-09-28）
+> 版本：2.5（2026-09-28）
 > 用途：本项目的实现与验收基准。
 > 设计原型：[Figma Make：睡眠记录 APP 设计](https://www.figma.com/make/hKbqp1qjtcNQmmiDtVvXpk/%E7%9D%A1%E7%9C%A0%E8%AE%B0%E5%BD%95APP%E8%AE%BE%E8%AE%A1)
 > 变更史见 [CHANGELOG.md](../../../CHANGELOG.md)
@@ -78,6 +78,7 @@
 | 睡眠详情 | 时长盘、阶段柱状图与占比、声音事件卡（可展开）、洞察、备注 | 仅展示确有来源的区块；缺失区块显示解释性空状态；底部提供编辑与删除入口 |
 | 统计 | 7/14/30 天分段控件、时长柱状图（含 7h 目标线）、评分卡、四项汇总、梦话转录 | 平均值分母只计有记录的天数；无数据不显示虚假趋势 |
 | 设置 | 外观、目标、数据导入、提醒、声音监测、洞察服务、删除数据 | 设置持久化；未接入的功能必须标注，不得伪装可用；演示数据属于开发期功能，收进独立二级页 |
+| 导出页（`/settings/export`） | 原型无此页（导出为本实现新增，见偏差 #18） | 二级页：先说明将导出几条真实记录、演示记录被排除，再给 CSV（记录 + 阶段两张表）与 JSON（完整嵌套存档）两个动作，经系统分享面板交付；无记录时禁用动作并如实说明 |
 | 弹层/控件 | 滚轮选择器（44px 行高、5 行可见、吸附）、底部弹层、音量条、标签条 | 采用 Flutter 原生可访问控件或等效实现，遵守安全区域 |
 
 ## 3. 设计到代码的映射
@@ -103,6 +104,8 @@
 | 二级页外壳（返回胶囊 + 标题 + 内容列） | `lib/core/widgets/subpage.dart`（`Subpage`）；宽屏断点 `kWideLayoutBreakpoint` 与令牌同处 `app_tokens.dart`，路由外壳与二级页共用同一个值 |
 | 记录编辑路由 | `lib/features/log/presentation/log_edit_page.dart`（`/log/edit`），表单本身由 `LogPage(editing:)` 复用 |
 | 助眠音效（原型用 Web Audio 合成） | `lib/features/sleep/data/noise_synth.dart`（DSP 与 WAV 编码）、`noise_player.dart`（渲染缓存与播放） |
+| 导出页（原型无对应） | `lib/features/settings/presentation/export_page.dart`（`/settings/export`）；格式规则（CSV 两张表 / JSON 存档）在 `lib/features/settings/domain/sleep_export.dart`，交付在 `data/export_sharer.dart`（`share_plus`） |
+| 就寝/起床提醒（原型只有装饰性开关） | `lib/core/platform/reminders.dart`（权限、时区与调度，含 `nextOccurrence` 的夏令时口径）、`lib/app/reminder_sync.dart`（启动全量重排与「偏好 → 计划」映射） |
 | 应用图标 | `assets/branding/app-icon.svg` → `tool/generate_app_icons.dart` → 两个平台的 `AppIcon.appiconset` |
 | `SEED_RECORDS` | `lib/features/sleep/data/demo_seed.dart` |
 | `estimateScore` / `estimateSummary` | `lib/features/sleep/domain/sleep_score.dart` |
@@ -129,11 +132,22 @@
 6. 编辑与删除入口位于睡眠详情弹层底部；编辑复用记录表单（`LogPage(editing:)`），以独立路由
    `/log/edit` 推入，因此编辑会话的生命周期与路由一致，标签栏在返回后原样保留。
 
-### M2：提醒与本地数据导入/导出 —— 未开始
+### M2：提醒与本地数据导入/导出 —— 已完成（小米导入除外）
 
-1. 就寝与起床提醒；申请通知权限前解释用途，拒绝时设置状态与实际能力一致。当前仅持久化偏好，**未接入通知**。
-2. 本地导出 CSV / JSON；导入前预览条数、重复项与错误项。
-3. 外部睡眠数据导入适配器：原始文件 → 字段校验 → 预览 → 去重 → 事务写入。**小米手环导入需拿到真实导出样本或官方接口文档后才实现**（见第 8 章）。
+1. 就寝与起床提醒 —— **已完成**。申请通知权限前解释用途，拒绝时设置状态与实际能力一致：
+   **权限被拒时不写入偏好、开关回弹**；启动时若发现偏好为真而权限已是 `denied`
+   （用户在系统设置里撤销过），把偏好写回 `false`，而不是留一个说谎的开关。权限为
+   `denied` 时设置页给出「去系统设置」入口。调度是**幂等全量重排**（固定 id 9001/9002
+   先取消再排），每次启动重排，因此调度与偏好没有各自独立的生命周期。Android 端刻意用
+   `inexactAllowWhileIdle`，不申请精确闹钟权限。
+2. 本地导出 CSV / JSON —— **已完成**。CSV 两张表（记录 16 列 + 阶段 6 列，UTF-8 BOM、
+   CRLF、RFC 4180 转义、按入睡时刻升序），JSON 为完整嵌套存档；经系统分享面板交付。
+   两个刻意的取舍：**JSON 不写 `localUri`**（改写成 `hasLocalAudio` 布尔——音频文件本身
+   不进导出，路径只会悬空，而导出是要分享出去的）、**不导出 `AppSettings`**（设备偏好跨设备
+   回灌会污染，顺带把 API Key 从结构上排除）。导出只含**真实**记录，演示记录一律不进文件
+   并计数说明。导入前的条数 / 重复项 / 错误项预览属于第 3 条，仍未实现。
+3. 外部睡眠数据导入适配器：原始文件 → 字段校验 → 预览 → 去重 → 事务写入。
+   **小米手环导入需拿到真实导出样本或官方接口文档后才实现**（见第 8 章）。
 
 ### M3：夜间声音与助眠音效 —— 未开始（仅 UI）
 
@@ -190,6 +204,8 @@
 - **网络：** 目前只有一处对外请求——「获取可用模型」调用服务商的 `GET /models`（`http` 包）。
   请求头携带会话内的 API Key，仅用于该请求；不写日志、不持久化，错误信息也不回显响应体
   （服务商的错误载荷可能把请求头原样引回来）。
+  导出与提醒引入的四个依赖（`flutter_local_notifications` / `timezone` / `flutter_timezone` /
+  `share_plus`）**都不发起网络请求**，因此这条结论不变：**应用对外的请求仍然只有「获取可用模型」一处**。
 - **字体：** 系统字体 + tabular figures，不打包字体文件。
 
 ## 7. 隐私、权限与可靠性
@@ -224,6 +240,8 @@
 | 15 | 原型的时间选择器有 `wheel-selection-rail`（选中行上下各一条 1px 强调色线） | 不绘制 | 按使用方要求去掉。原型的版本是 30% accent 混入 `--border-strong` 的灰蓝色，比先前实现的纯 accent 淡得多——若要恢复，改的是颜色而不是这个元素。 |
 | 16 | 原型没有应用图标文件 | 用设计原型 `index.html` 引用的 `app-icon.svg`（新月 + 两道声波），由脚本生成 iOS/macOS 全部尺寸 | 图标来自设计本身，不是自绘。生成时去掉原图的 `rx="236"` 圆角（系统会自己套遮罩）并压掉 alpha 通道（App Store 会因此拒收）。 |
 | 17 | 原型的音效时长无限循环 | 每条循环 20 秒，接缝做了等功率交叉淡化 | 循环必须无缝，否则每次重播都会「咔」一声。生成器按种类固定种子，因此同一条循环每次渲染结果一致。 |
+| 18 | 原型没有导出功能（纯前端演示，数据不落地） | 新增导出（`/settings/export`）：CSV 两张表（记录 + 阶段）+ JSON 完整存档，经系统分享面板交付 | 规格 M2 要求本地导出，而原型的记录只活在内存里、无导出可言。回归方法：确认设置页有「睡眠数据导出」区块（`lib/features/settings/presentation/settings_page.dart` 的 `SectionHeader('睡眠数据导出')`），且导出的 CSV 首字节是 BOM（`test/sleep_export_test.dart` 的 BOM 用例）。 |
+| 19 | 原型的提醒开关是纯装饰——开关状态不驱动任何调度 | 接真实本地通知：权限被拒时**不写入偏好**、开关回弹；权限为 `denied` 时给出「去系统设置」入口；启动时回收被撤销的授权（把偏好写回 `false`） | 一个写着「开」却不会响的开关，正是规格书说的「设置状态与实际能力不一致」。回归方法：拒绝通知权限后确认 `bedtimeReminderEnabled` 仍为 `false`（`test/reminder_settings_test.dart`）；把启动回收条件改回 `!= granted` 会让 `test/reminder_sync_test.dart` 的 `unsupported` 用例变红。 |
 
 ## 9. 测试与验收矩阵
 
@@ -246,7 +264,10 @@
 | 集成 | 记录卡 → 详情 → 编辑 → 保存 → 回到外壳，走真实 go_router 与 `extra` 传递 | ✅ 同上（数据经 provider 覆盖而非 drift 流） |
 | 单元测试 | 合成波形：确定性、互异性、不削波、无直流、接缝连续、频谱走向、瞬态、包络、森林含鸟鸣、WAV 头与钳制 | ✅ `test/noise_synth_test.dart` |
 | Widget 测试 | 助眠音效面板：播放交接、停止、切换、失败如实报错、音量写回、关闭释放 | ✅ `test/noise_sheet_test.dart` |
-| 集成/真机 | iOS/Android/macOS 核心流程；通知权限；锁屏录音与中断 | macOS 构建、iOS 模拟器构建已验证；**真机与试听未做** |
+| 单元测试 | 导出内容：BOM 与 CRLF、RFC 4180 转义可无损还原、记录/阶段两张表、按入睡时刻升序、演示记录排除并计数、JSON 用 schema 字段名且不写 `localUri` / `AppSettings` | ✅ `test/sleep_export_test.dart` |
+| Widget 测试 | 导出页：条数只数真实记录、无记录时禁用并说明、CSV/JSON 两个动作、失败如实报错、取消分享不报错 | ✅ `test/export_page_test.dart` |
+| 单元/Widget 测试 | 提醒：幂等全量重排契约与固定 id、`nextOccurrence` 的夏令时口径、权限被拒时不写偏好且开关回弹、`denied` 时的「去系统设置」入口、启动回收被撤销授权、`unsupported` 时不动偏好 | ✅ `test/reminder_scheduler_test.dart`、`test/reminder_settings_test.dart`、`test/reminder_sync_test.dart` |
+| 集成/真机 | iOS/Android/macOS 核心流程；通知权限；锁屏录音与中断 | macOS 构建、iOS 模拟器构建已验证；**真机、通知投递与分享面板未验证** |
 | 视觉检查 | 对照 Figma Make 四页在手机/宽屏、浅色/深色核对层级、间距、字体与安全区 | **待补**（自动化测试覆盖几何与结构，人工视觉核对未做） |
 
 通过构建不等于录音后台能力、小米数据接入或 AI 服务已完成。
@@ -258,6 +279,9 @@
 3. 助眠音效的可商用素材及授权信息（或确认采用程序合成）。
 4. 若启用 AI：服务商、模型、API 文档、计费方式，以及允许发送的数据范围。
 5. 若启用自动鼾声/梦话识别：可用模型或服务、准确率目标、数据处理与隐私要求。
-6. 麦克风与通知权限的用途说明文案（需与真实用途一致，用于 `Info.plist` / manifest）。
+6. 麦克风权限的用途说明文案（需与真实用途一致，用于 `Info.plist` / manifest）。
+   **通知已接入**：其用途说明是设置页里的开关与「去系统设置」入口文案，见
+   `lib/core/platform/reminders.dart` 与 `settings_page.dart`（通知权限不需要 `Info.plist`
+   的用途串）；麦克风的用途文案仍待提供。
 
 缺少这些资料时可完成界面、接口与本地基础能力，但不能声明外部集成已完成。

@@ -4,7 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 这是什么
 
-「夜深」——中文、本地优先的睡眠记录 Flutter 应用（iOS / macOS，Android/Web 骨架在但未构建）。
+「夜深」——中文、本地优先的睡眠记录 Flutter 应用（iOS / macOS 已构建；Web 有骨架、
+**Android 平台目录未生成**，两者均未构建，见 README「未实现」表）。
 界面按 Figma Make 原型的**最终生效层**实现。
 
 **动手前先读 `docs/superpowers/specs/2026-09-28-night-sleep-design.md` 第 8 章「与原型的有意偏差」。**
