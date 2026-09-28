@@ -553,9 +553,15 @@ class SettingsPage extends ConsumerWidget {
             ),
           ],
         ),
-        // 权限不是 granted 就说明提醒此刻响不了。文案中性、不预设历史：
-        // 插件不区分「从未询问」与「已被拒绝」，编一个状态反而会说谎。
-        if (permission != null && permission != ReminderPermission.granted) ...[
+        // **只在 `denied` 时显示这一行。**
+        //
+        // 不看「不是 granted」：`unsupported` 时这行文案（「未获得通知权限」）是**假话**
+        // ——那台设备上取不到可用时区，是应用侧的问题，跟权限无关；而且那个按钮点了也
+        // 不会有任何反应（`openSystemSettings()` 在 `!_ready` 时直接返回）。一行假话
+        // 加一个无效按钮，比不给提示更糟。
+        //
+        // `denied` 的文案仍然中性、不预设历史：插件分不清「从未询问」与「已被拒绝」。
+        if (permission == ReminderPermission.denied) ...[
           const SizedBox(height: 10),
           IosListGroup(
             onTap: () =>
