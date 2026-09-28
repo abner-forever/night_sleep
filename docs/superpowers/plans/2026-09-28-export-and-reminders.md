@@ -801,6 +801,7 @@ git commit -m "feat: 导出的 JSON 存档格式"
 - Create: `test/export_page_test.dart`
 - Modify: `lib/app/app.dart`（`_router` 的 `routes` 里加一条）
 - Modify: `lib/features/settings/presentation/settings_page.dart`（新增一个 section）
+- Modify: `test/pages_widget_test.dart`（把新二级页并入既有的渲染守卫）
 
 **Interfaces:**
 - Consumes: `SleepExporter.json` / `.csv` / `.exportableOf`、`ExportFile`
@@ -982,27 +983,6 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// 守住「推入的二级页自己带背景与 `Material` 祖先」这条。
-  ///
-  /// 没有它们，文字会落到 Flutter 的错误样式（黄色双下划线），背景会是黑的。
-  /// 这个 bug 在本项目**真出现过一次**（见 `pages_widget_test.dart` 里同名的守卫）：
-  /// 早期测试给推入的二级页也套了 `Scaffold(body:)`，等于把这两样白送给它，
-  /// 于是测试全绿而真机是黑底加黄色下划线。
-  void expectProperlyRendered(WidgetTester tester, String text) {
-    final finder = find.text(text);
-    expect(finder, findsWidgets, reason: '找不到「$text」');
-    expect(
-      DefaultTextStyle.of(tester.element(finder.first)).style.decoration,
-      isNot(TextDecoration.underline),
-      reason: '「$text」带有下划线，说明它落在了 Flutter 的无 Material 错误样式上',
-    );
-    expect(
-      find.ancestor(of: finder.first, matching: find.byType(Material)),
-      findsWidgets,
-      reason: '「$text」缺少 Material 祖先，推入路由必须自己提供',
-    );
-  }
-
   testWidgets('没有真实记录时两个动作禁用并说明原因', (tester) async {
     final sharer = _FakeSharer();
     await pumpRoute(tester, sharer: sharer, entries: [
@@ -1010,7 +990,6 @@ void main() {
       entry(id: 'd2', source: 'demo'),
     ]);
 
-    expectProperlyRendered(tester, '暂无可导出的记录');
     expect(find.text('暂无可导出的记录'), findsOneWidget);
     expect(find.textContaining('已排除 2 条演示记录'), findsOneWidget);
 
@@ -1411,7 +1390,66 @@ class _Action extends StatelessWidget {
         ),
 ```
 
-- [ ] **Step 6: 跑测试，确认通过**
+- [ ] **Step 6: 补上审查指出的覆盖缺口与文案一致性**
+
+审查发现六处，都落在本任务自己的文件里。逐条：
+
+**(a) 「已排除 N 条演示记录」多了一个句号。** `export_page.dart` 里写的是
+`'已排除 $excluded 条演示记录。'`，而设计规格引的是无句号的版本，同一页另一句
+「暂无可导出的记录」也**没有**句号（首页「还没有睡眠记录」、统计页「暂无统计数据」同口径）。
+去掉这个句号。
+
+**(b) 「已排除」的隐藏分支没有断言。** 用例 3–6 都用了不含演示记录的数据，但从没断言
+「已排除」**不出现**——所以一个「永远渲染『已排除 0 条演示记录』」的实现能通过全部 6 条。
+在用例 3 或 4 里补：`expect(find.textContaining('已排除'), findsNothing);`
+
+**(c) 禁用态的文字降级颜色没有任何断言。** 规格明写「两个动作禁用并置灰」，而用例 1 只证明了
+禁用行不会调用分享层。补一条比对颜色的断言（与启用态的颜色不同即可，不要写死具体色值）：
+
+```dart
+      // 禁用态的文字必须降级，规格明写「置灰」。
+      final emptyColor = tester
+          .widget<Text>(find.text('导出 CSV'))
+          .style
+          ?.color;
+      expect(emptyColor, AppTokens.of(tester.element(find.text('导出 CSV'))).textMuted);
+```
+
+**(d) `_FakeSharer.subject` 被记录却从未被断言**——一个只写不读的死字段，
+是典型的「本来打算断言却忘了」。它由设计规格钉死为 `夜深睡眠数据导出`。
+在用例 4 里补：`expect(sharer.subject, '夜深睡眠数据导出');`
+
+**(e) 用例 6（取消分享面板不弹提示）单独看可能是空转的**：它只断言「没有提示」，
+如果那一次点击根本没落到按钮上（行被禁用、`onTap` 没接上），它照样通过。
+补一条正向锚点让它自足：`expect(sharer.received, isNotNull);`
+
+**(f) 用例 2 里 `findsWidgets` 比 `findsOneWidget` 松。** 给定数据下记录数 `2` 与阶段段数 `4`
+各只出现一次，用严格匹配即可；宽松匹配会掩盖「页面上意外多出一个 2」这类问题。改成
+`findsOneWidget`。
+
+- [ ] **Step 7: 把新二级页并入既有的渲染守卫**
+
+打开 `test/pages_widget_test.dart`，在它的「二级页」用例组里（与 `SleepImportPage`、
+`InsightConfigPage`、`DemoDataPage` 那三处并列）加一条：
+
+```dart
+    testWidgets('导出页自己带背景与 Material 祖先', (tester) async {
+      // 推入的二级页什么都继承不到。这一页也必须自己带 `Subpage`——
+      // 没有它，文字会落到 Flutter 的错误样式（黄色双下划线），背景会是黑的。
+      // 这个 bug 在本项目真出现过一次，所以每个二级页都要接上这条守卫。
+      await pumpRoute(tester, const ExportPage());
+      expectProperlyRendered(tester, '睡眠数据导出');
+    });
+```
+
+补导入：`import 'package:night_sleep/features/settings/presentation/export_page.dart';`
+
+**守在这里，不要在 `test/export_page_test.dart` 里复制一份 `expectProperlyRendered`**：
+那是一段逻辑块的逐字复制，而 `pages_widget_test.dart` 已经是这条约定的家。
+（该文件的 `pumpRoute` 已经不套 `Scaffold`，且它会注入 provider override；
+`exportSharerProvider` 用默认实现即可——这条用例不点任何按钮，不会碰平台通道。）
+
+- [ ] **Step 8: 跑测试，确认通过**
 
 ```bash
 flutter analyze
@@ -1420,7 +1458,7 @@ flutter test test/export_page_test.dart
 
 预期：analyze 无问题；6 个 widget 用例全部通过。
 
-- [ ] **Step 7: 提交**
+- [ ] **Step 9: 提交**
 
 ```bash
 git add lib/features/settings/data/export_sharer.dart \
