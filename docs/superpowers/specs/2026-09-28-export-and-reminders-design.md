@@ -277,14 +277,58 @@ class ReminderPlan {
   final int? wakeMinutes;
 }
 
-abstract interface class ReminderScheduler {
+/// 一条通知请求。`minutesOfDay` 是距本地午夜的分钟数。
+class ReminderRequest {
+  const ReminderRequest({
+    required this.id,
+    required this.minutesOfDay,
+    required this.title,
+    required this.body,
+  });
+
+  final int id;
+  final int minutesOfDay;
+  final String title;
+  final String body;
+
+  int get hour => minutesOfDay ~/ 60;
+  int get minute => minutesOfDay % 60;
+}
+
+/// 抽象**类**而不是接口：`sync` 的幂等算法写在基类里，子类只提供两个原子动作。
+abstract class ReminderScheduler {
+  static const bedtimeId = 9001;
+  static const wakeId = 9002;
+
+  /// `plan` 要求存在的那组通知。纯函数，因此调度契约可单测。
+  static List<ReminderRequest> requestsFor(ReminderPlan plan) { /* … */ }
+
   Future<void> initialize();
   Future<ReminderPermission> permission();
   Future<ReminderPermission> requestPermission();
-  Future<void> sync(ReminderPlan plan);
   Future<void> openSystemSettings();
+
+  @protected
+  Future<void> cancel(int id);
+
+  @protected
+  Future<void> schedule(ReminderRequest request);
+
+  /// 幂等的全量重排：先取消两个固定 id，再按计划排入。
+  Future<void> sync(ReminderPlan plan) async {
+    await cancel(bedtimeId);
+    await cancel(wakeId);
+    for (final request in requestsFor(plan)) {
+      await schedule(request);
+    }
+  }
 }
 ```
+
+**为什么是抽象类而不是接口。** 幂等重排是这一块唯一容易写错、也最值得单测的逻辑。
+把它放在基类、让子类只实现 `cancel` / `schedule` 两个原子动作，测试就能用一个
+「记录调用序列」的假子类**测到真代码**——而不是碰平台通道、或者去测一个假实现自己。
+写成接口的话，每个实现都得把这段算法抄一遍，于是它既测不到、又会各自漂移。
 
 两个实现：
 
