@@ -42,6 +42,10 @@ export PUB_HOSTED_URL=https://pub.flutter-io.cn
 export FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
 ```
 
+⚠️ **只在这个 shell 里临时设置，别写进 profile；包已在本地缓存时更不要设。**
+`PUB_HOSTED_URL` 会把 `pubspec.lock` 里 129 条 `url: "https://pub.dev"` 一并改写成镜像地址，
+制造一个与依赖本身无关的巨型 diff。依赖齐了就直接 `flutter pub get`。
+
 `lib/core/database/app_database.g.dart` 由 Drift 生成，不手工修改。
 
 ## 项目结构
@@ -85,8 +89,9 @@ test/                  领域计算测试
   经外键级联一并清掉该晚的阶段与声音事件。演示数据不提供这两个入口，并说明可在设置中整体清除。
 - **统计**：7/14/30 天分段控件、时长柱状图（含 7h 虚线目标线、可选中查看）、评分卡、
   四项汇总、梦话转录列表。
-- **设置**：外观模式（跟随系统/浅色/深色）、睡眠目标步进器、数据导入入口、就寝/起床提醒
-  开关与时间、夜间录音开关、洞察服务配置、演示数据入口（仅调试构建）、删除全部本地数据、关于。
+- **设置**：外观模式（跟随系统/浅色/深色）、睡眠目标步进器、数据导入入口、数据导出入口、
+  就寝/起床提醒开关与时间、夜间录音开关、洞察服务配置、演示数据入口（仅调试构建）、
+  删除全部本地数据、关于。
 - **AI 模型列表**：按服务商从官方 `GET /models` 实时获取，用会话内的 API Key 认证；未获取前
   显示**已注明核实日期**的内置列表。DeepSeek 为默认服务商。
 - **助眠音效**：8 种声音在设备上**实时合成**（`noise_synth.dart`：白/棕/粉噪、雨、海浪、
@@ -159,7 +164,8 @@ flutter drive \
   -d $DEV
 ```
 
-覆盖：首页（未滚动/已滚动）、记录、统计（7 天与 30 天）、设置、四个二级页、
+覆盖：首页（未滚动/已滚动）、记录、统计（7 天与 30 天）、设置、三个二级页
+（数据导入、洞察服务配置、演示数据；**导出页不在巡检脚本内**）、
 睡眠详情（含展开的声音卡）、助眠音效面板。`integration_test/` 不参与 `flutter test`。
 
 三点实测到的注意：
@@ -197,7 +203,8 @@ flutter build ios --no-codesign                                 # 真机包，�
 
 Bundle ID、Android application ID、签名和发布账号保持 Flutter 默认占位配置
 （`com.example.nightSleep`），待项目方提供后配置。**通知权限仅在用户打开提醒开关时申请**
-（未在首次启动时弹窗）；麦克风权限仍未申请；除「获取可用模型」外不上传任何数据。
+（未在首次启动时弹窗）；麦克风权限仍未申请；除「获取可用模型」外不上传任何数据
+（导出会把文件交给系统分享面板，**去向由你选择**，应用自己不发起传输）。
 
 ## 验证记录
 
@@ -205,8 +212,8 @@ Bundle ID、Android application ID、签名和发布账号保持 Flutter 默认�
 
 - `dart format --set-exit-if-changed .` → 无改动（76 文件，0 changed）
 - `flutter analyze` → **No issues found**
-- `flutter test` → **175/175 通过**（本轮从 132 增加 42 条：导出内容 17、导出页 6、
-  提醒调度 10、提醒设置 6、启动重排 3；各测试文件覆盖的场景见
+- `flutter test` → **175/175 通过**（本轮从 132 增加 43 条：导出内容 17、导出页 6、
+  提醒调度 10、提醒设置 6、启动重排 3、二级页渲染守卫 1；各测试文件覆盖的场景见
   [规格第 9 章](docs/superpowers/specs/2026-09-28-night-sleep-design.md)）
 - `flutter build macos --debug` → 成功产出 `night_sleep.app`（本轮在最终代码上重跑）
 - `flutter build ios --simulator --no-codesign` → 成功产出 `Runner.app`

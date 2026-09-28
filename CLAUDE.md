@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 界面按 Figma Make 原型的**最终生效层**实现。
 
 **动手前先读 `docs/superpowers/specs/2026-09-28-night-sleep-design.md` 第 8 章「与原型的有意偏差」。**
-里面 17 条都是刻意为之的，
+里面 19 条都是刻意为之的，
 每条附了理由和回归方法。其中「不伪造睡眠阶段 / 不画没有真实音频的波形 / 不显示读不到的余额 /
 不猜小米导入字段」这几条是产品红线，不是待办：原型里这些是演示数据，规格书明令不得当真实能力实现。
 `README.md` 的「未实现」表同样不要当成已完成。
