@@ -51,9 +51,11 @@
 四个包在这一步一次装齐：`flutter pub get` 与原生依赖解析是最慢的一步，分三次做没有收益。
 
 ```bash
-export PUB_HOSTED_URL=https://pub.flutter-io.cn FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
 flutter pub add flutter_local_notifications timezone flutter_timezone share_plus
 ```
+
+**不要加 `PUB_HOSTED_URL` / `FLUTTER_STORAGE_BASE_URL`**：包已在本地 pub 缓存中，带上镜像
+会把 `pubspec.lock` 里 129 条 `url: "https://pub.dev"` 全部改写成镜像地址。
 
 预期：`pubspec.yaml` 的 dependencies 里出现四个包，版本为 22.3.1 / 0.11.1 / 5.1.0 / 13.3.0（或更高但不跨大版本）。
 
@@ -111,9 +113,9 @@ void main() {
   /// 取第 [index] 行的原文（0 是表头）。
   ///
   /// **先去掉开头的 BOM**：它是给 Excel 看的文件头，不是第一列内容的一部分。
-  /// 不剥掉的话，第一列会变成 `'﻿日期'`。
+  /// 不剥掉的话，第一列会变成 `'\uFEFF日期'`。
   String rowOf(String content, int index) =>
-      content.replaceFirst('﻿', '').split('\r\n')[index];
+      content.replaceFirst('\uFEFF', '').split('\r\n')[index];
 
   /// 按 RFC 4180 拆列。
   ///
@@ -165,7 +167,41 @@ void main() {
     // Excel 只在开头见到 BOM 时才按 UTF-8 解码，否则中文备注是乱码。
     expect(file.content.codeUnitAt(0), 0xFEFF);
     expect(file.content, contains('\r\n'));
-    expect(file.content, isNot(contains('\n\n')));
+    // 行与行之间不含裸换行：有的话说明某个字段没被引号包住。
+    final body = file.content.substring(1);
+    expect(body.split('\r\n').length, greaterThan(1));
+  });
+
+  test('记录按入睡时刻升序，不看调用方给的顺序', () {
+    // `sleepEntriesProvider` 给的是**倒序**（界面最新在前）。导出若继承它，
+    // 将来界面一改排序，文件就会静默跟着变。
+    final earlier = entry(id: 'earlier');
+    final later = SleepEntry(
+      id: 'later',
+      startAtUtc: DateTime.utc(2026, 9, 27, 23),
+      endAtUtc: DateTime.utc(2026, 9, 28, 7),
+      timeZoneId: 'UTC',
+      quality: SleepQuality.good,
+      createdAtUtc: DateTime.utc(2026, 9, 28, 8),
+      updatedAtUtc: DateTime.utc(2026, 9, 28, 8),
+    );
+
+    final file =
+        SleepExporter.csv([later, earlier], now: now).first; // 故意倒着传
+
+    expect(cells(rowOf(file.content, 1))[13], 'earlier');
+    expect(cells(rowOf(file.content, 2))[13], 'later');
+  });
+
+  test('备注里的回车也会被转义', () {
+    final file =
+        SleepExporter.csv([entry(notes: '断在\r这里')], now: now).first;
+
+    // `_cell` 的 `\r` 分支：回车与换行一样会破坏行结构，必须一起引起来。
+    expect(file.content, contains('"断在\r这里"'));
+    final row = cells(rowOf(file.content, 1));
+    expect(row, hasLength(16));
+    expect(row[11], '断在\r这里');
   });
 
   test('记录行取领域对象的派生值', () {
@@ -303,7 +339,10 @@ abstract final class SleepExporter {
 
   /// Excel 只在文件开头见到 BOM 时才按 UTF-8 解码；没有它就是乱码，
   /// 用户看到的是「导出坏了」。
-  static const _bom = '﻿';
+  ///
+  /// 写成转义而不是直接嵌一个字面量：U+FEFF 在 diff 里是不可见的，
+  /// 而它一旦丢失，失败方式正是「中文静默变成乱码」这种最难发现的一种。
+  static const _bom = '\uFEFF';
 
   /// RFC 4180 的行结束符。Excel 是这里最严格的消费方。
   static const _eol = '\r\n';
@@ -316,12 +355,21 @@ abstract final class SleepExporter {
 
   static const _stageHeader = ['记录ID', '阶段', '开始时间', '结束时间', '时长(分钟)', '来源'];
 
-  /// 允许离开应用的那部分记录：除演示数据之外的全部。
+  /// 允许离开应用的那部分记录：除演示数据之外的全部，按入睡时刻**升序**。
   ///
   /// 演示之夜从阶段到转写全是合成的，写进用户的备份就是把伪造数据掺进真实数据——
   /// 与「演示数据不可编辑」「演示数据只在 DEMO_DATA 下安装」是同一条原则。
-  static List<SleepEntry> exportableOf(List<SleepEntry> entries) =>
-      entries.where((e) => e.source != AppConfig.demoSource).toList();
+  ///
+  /// 排序放在这里，而不是沿用调用方给的顺序：`sleepEntriesProvider` 给的是**倒序**
+  /// （界面要最新在前）。让导出格式继承它，等于把导出和界面隐式绑在一起——将来
+  /// `SleepRepository.loadAll()` 一改排序，导出的文件会静默跟着变。显式排序断开这个
+  /// 耦合，也让表格软件里按时间轴自然展开。
+  static List<SleepEntry> exportableOf(List<SleepEntry> entries) {
+    final exportable =
+        entries.where((e) => e.source != AppConfig.demoSource).toList();
+    exportable.sort((a, b) => a.startAtUtc.compareTo(b.startAtUtc));
+    return exportable;
+  }
 
   /// 两张表：记录一行一晚，阶段一行一段。
   ///
@@ -438,7 +486,7 @@ abstract final class SleepExporter {
 flutter test test/sleep_export_test.dart
 ```
 
-预期：全部通过（9 个用例）。
+预期：全部通过（11 个用例）。
 
 - [ ] **Step 6: 提交**
 
