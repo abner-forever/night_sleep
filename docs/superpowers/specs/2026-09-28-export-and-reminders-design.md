@@ -384,13 +384,19 @@ const kWakeNotificationId = 9002;
 界面上那两个默认值因此必须是**具名常量**，显示与写库共用同一个：分开写字面量的话，
 「显示 22:30、库里 NULL」这种不一致迟早以别的形式回来。
 
-**启动时的回收。** 偏好为真只可能来自一次成功授权，所以「偏好为真 + 当前权限不是 granted」
+**启动时的回收。** 偏好为真只可能来自一次成功授权，所以「偏好为真 + 权限为 `denied`」
 只可能是用户在系统设置里**撤销**了授权。启动时 `sync` 之前先查权限，遇到这种情况就把
 两项偏好写回 `false`，界面上的开关随之回到关闭态并显示「去系统设置」那一行。
 
 不这么做，撤销授权后应用会进入一个更糟的状态：开关看着是开的、设置里也写着开着，
 而实际上永远不会响——这正是本轮要消灭的那类假状态，只是换了个入口进来。
 回收之后用户想恢复，重新打开开关即可，代价是一次点击。
+
+**回收的触发条件必须是 `denied`，不能写成 `!= granted`。** `unsupported` 的含义是
+「本设备此刻安排不了」，它可能只是一次偶发的时区查询失败——`initialize()` 被刻意做成
+可重试的正是为了这种情况。把它一并当成「用户撤销了授权」，就会在**启动路径上把用户的
+提醒偏好清空**，而且用户完全看不见：等下次启动时区正常了，偏好已经没了。
+`denied` 才是系统明确说「不行」，也只有它才对应「用户撤销」这个结论。
 
 **「去系统设置」入口的显隐——无状态方案。**
 插件在 Dart 侧只暴露 `checkPermissions().isEnabled`，**不区分「从未询问」与「已被拒绝」**
@@ -438,7 +444,7 @@ Android 用 `AndroidScheduleMode.inexactAllowWhileIdle`。
 | 平台 | 改动 |
 | --- | --- |
 | iOS | `ios/Runner/AppDelegate.swift` 的 `didFinishLaunchingWithOptions` 里加 `UNUserNotificationCenter.current().delegate = self`——不加则前台不展示通知。**不改 `Info.plist`**：本地通知的权限由 `UNUserNotificationCenter` 在运行时申请，不需要 `NS*UsageDescription` 键 |
-| macOS | 同上，`macos/Runner/AppDelegate.swift` |
+| macOS | **不改动 `macos/Runner/AppDelegate.swift`**。插件自己的 macOS 实现里已经 `center.delegate = instance`，而 macOS 的 `FlutterAppLifecycleProvider` 继承自 `NSObject`、**不实现** `UNUserNotificationCenterDelegate`（`self as?` 恒为 nil），`application(_:didFinishLaunchingWithOptions:)` 更是 UIKit 方法、在 macOS 的 `FlutterAppDelegate` 里无从 `override`——照搬 iOS 写法会直接编译不过 |
 | Android | `AndroidManifest.xml` 加 `RECEIVE_BOOT_COMPLETED` 权限、`ScheduledNotificationReceiver` 与 `ScheduledNotificationBootReceiver` 两个 receiver。`POST_NOTIFICATIONS` 与 `VIBRATE` 由插件自己的 manifest 合并进来，不必重复声明。**当前不构建 Android，但一次性补齐**——留着不补，将来构建出来的就是一个「开关看着有效、实际不响」的包 |
 
 不为通知申请任何新权限的 `Info.plist` 文案，这与规格 §7「未接入的能力不得申请权限」一致：

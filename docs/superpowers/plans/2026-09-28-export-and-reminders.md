@@ -2558,7 +2558,10 @@ git commit -m "feat: 设置页提醒开关接真实通知权限，拒绝时不�
 **Files:**
 - Modify: `lib/main.dart`
 - Modify: `ios/Runner/AppDelegate.swift`
-- Modify: `macos/Runner/AppDelegate.swift`
+- Modify: `ios/Runner/AppDelegate.swift`
+
+**`macos/Runner/AppDelegate.swift` 不在改动清单里**——那里的 delegate 由插件自己设，
+搬 iOS 的写法过去编译不过（详见 Step 2）。
 
 **Interfaces:**
 - Consumes: `LocalReminderScheduler`、`ReminderScheduler.sync`、`ReminderPlan`、`reminderSchedulerProvider`、`AppDatabase.getSettings` / `updateSettings`
@@ -2630,10 +2633,17 @@ Future<void> _reconcileReminders(
     final wantsWake = stored.wakeReminderEnabled;
     final permission = await scheduler.permission();
 
-    if (permission != ReminderPermission.granted &&
+    // **只认 `denied`，不写 `!= granted`。**
+    //
+    // `unsupported` 的含义是「本设备此刻安排不了」，它可能只是一次偶发的时区查询
+    // 失败——`initialize()` 是刻意做成可重试的正是为了这种情况。把它也当成「用户
+    // 撤销了授权」，就会在启动路径上**把用户的提醒偏好清空**，而用户完全看不见：
+    // 下次启动时区好了，偏好已经没了。
+    //
+    // `denied` 才是「系统明确说了不行」。而偏好为真只可能来自一次成功授权，
+    // 所以那才是「用户在应用之外撤销了授权」。
+    if (permission == ReminderPermission.denied &&
         (wantsBedtime || wantsWake)) {
-      // 偏好为真只可能来自一次成功授权，所以走到这里基本只有一种可能：
-      // 用户在应用之外撤销了授权。
       await database.updateSettings(
         const AppSettingsCompanion(
           bedtimeReminderEnabled: Value(false),
@@ -2683,32 +2693,22 @@ import UserNotifications
 }
 ```
 
-`macos/Runner/AppDelegate.swift` 整体改成：
+**`macos/Runner/AppDelegate.swift` 一个字都不要改。**
 
-```swift
-import Cocoa
-import FlutterMacOS
-import UserNotifications
+一开始这里写的是「同上」，那是把 iOS 的写法硬搬过来，**三处都错**：
 
-@main
-class AppDelegate: FlutterAppDelegate {
-  override func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-    return true
-  }
+1. `application(_:didFinishLaunchingWithOptions:)` 是 **UIKit** 方法。macOS 的
+   `FlutterAppDelegate` 既没声明也没实现它，所以 `override` 编译不过
+   （`error: method does not override any method from its superclass`）。
+2. macOS 的 `FlutterAppLifecycleProvider` 继承自 `NSObject`，**不实现**
+   `UNUserNotificationCenterDelegate`，因此 `self as?` 恒为 `nil`，那行赋值等于没写。
+3. **最要紧的是：这处改动根本不需要。** 插件自己的 macOS 实现里已经
+   `center.delegate = instance`（`flutter_local_notifications/macos/.../FlutterLocalNotificationsPlugin.swift:103`），
+   它的 macOS 示例 AppDelegate 与本仓库原文件逐字相同，压根不碰 delegate。
 
-  override func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
-    return true
-  }
-
-  override func application(
-    _ application: NSApplication,
-    didFinishLaunchingWithOptions launchOptions: [String: Any]?
-  ) -> Bool {
-    UNUserNotificationCenter.current().delegate = self as? UNUserNotificationCenterDelegate
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
-  }
-}
-```
+（iOS 那一处**是**对的且必要：`FlutterPlugin.h` 里 `FlutterAppLifeCycleProvider`
+确实继承 `UNUserNotificationCenterDelegate`，转换成功；而插件的 iOS 实现从不设 delegate。
+同一条规则在两个平台上结论相反——这正是那种「照抄另一平台」最容易翻车的地方。）
 
 - [ ] **Step 3: 验证构建与测试**
 
@@ -2730,8 +2730,8 @@ flutter build ios --simulator --no-codesign
 - [ ] **Step 4: 提交**
 
 ```bash
-git add lib/main.dart ios/Runner/AppDelegate.swift macos/Runner/AppDelegate.swift
-git commit -m "feat: 启动时重排提醒，iOS/macOS 设通知 delegate"
+git add lib/main.dart ios/Runner/AppDelegate.swift
+git commit -m "feat: 启动时重排提醒，iOS 设通知 delegate"
 ```
 
 ---
