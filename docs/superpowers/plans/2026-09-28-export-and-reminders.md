@@ -2576,6 +2576,9 @@ git commit -m "feat: 设置页提醒开关接真实通知权限，拒绝时不�
 ```dart
 import 'dart:async';
 
+// `kIsWeb` 必须从 foundation 显式导入：`material.dart` → `widgets.dart` 只
+// `export 'foundation.dart' show Brightness, UniqueKey`，拿不到它。
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -2756,11 +2759,14 @@ void main() {
   /// 造一条「两项提醒都开着」的偏好。
   Future<void> seedBothOn() async {
     await database.updateSettings(
-      AppSettingsCompanion(
-        bedtimeReminderEnabled: const Value(true),
-        bedtimeReminderMinutes: const Value(22 * 60 + 30),
-        wakeReminderEnabled: const Value(true),
-        wakeReminderMinutes: const Value(7 * 60),
+      // 整个 companion 是 const：全部实参都是常量，外层不加 `const` 会被
+      // `prefer_const_constructors` 拦下；加了之后内层的 `Value(...)` 就不能再写
+      // `const`，否则换 `unnecessary_const` 报警。
+      const AppSettingsCompanion(
+        bedtimeReminderEnabled: Value(true),
+        bedtimeReminderMinutes: Value(22 * 60 + 30),
+        wakeReminderEnabled: Value(true),
+        wakeReminderMinutes: Value(7 * 60),
       ),
     );
   }
