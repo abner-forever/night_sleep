@@ -25,7 +25,10 @@ abstract final class SleepExporter {
 
   /// Excel 只在文件开头见到 BOM 时才按 UTF-8 解码；没有它就是乱码，
   /// 用户看到的是「导出坏了」。
-  static const _bom = '﻿';
+  ///
+  /// 写成转义而不是直接嵌一个字面量：U+FEFF 在 diff 里是不可见的，
+  /// 而它一旦丢失，失败方式正是「中文静默变成乱码」这种最难发现的一种。
+  static const _bom = '\uFEFF';
 
   /// RFC 4180 的行结束符。Excel 是这里最严格的消费方。
   static const _eol = '\r\n';
@@ -38,12 +41,21 @@ abstract final class SleepExporter {
 
   static const _stageHeader = ['记录ID', '阶段', '开始时间', '结束时间', '时长(分钟)', '来源'];
 
-  /// 允许离开应用的那部分记录：除演示数据之外的全部。
+  /// 允许离开应用的那部分记录：除演示数据之外的全部，按入睡时刻**升序**。
   ///
   /// 演示之夜从阶段到转写全是合成的，写进用户的备份就是把伪造数据掺进真实数据——
   /// 与「演示数据不可编辑」「演示数据只在 DEMO_DATA 下安装」是同一条原则。
-  static List<SleepEntry> exportableOf(List<SleepEntry> entries) =>
-      entries.where((e) => e.source != AppConfig.demoSource).toList();
+  ///
+  /// 排序放在这里，而不是沿用调用方给的顺序：`sleepEntriesProvider` 给的是**倒序**
+  /// （界面要最新在前）。让导出格式继承它，等于把导出和界面隐式绑在一起——将来
+  /// `SleepRepository.loadAll()` 一改排序，导出的文件会静默跟着变。显式排序断开这个
+  /// 耦合，也让表格软件里按时间轴自然展开。
+  static List<SleepEntry> exportableOf(List<SleepEntry> entries) {
+    final exportable =
+        entries.where((e) => e.source != AppConfig.demoSource).toList();
+    exportable.sort((a, b) => a.startAtUtc.compareTo(b.startAtUtc));
+    return exportable;
+  }
 
   /// 两张表：记录一行一晚，阶段一行一段。
   ///

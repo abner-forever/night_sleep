@@ -47,9 +47,9 @@ void main() {
   /// 取第 [index] 行的原文（0 是表头）。
   ///
   /// **先去掉开头的 BOM**：它是给 Excel 看的文件头，不是第一列内容的一部分。
-  /// 不剥掉的话，第一列会变成 `'﻿日期'`。
+  /// 不剥掉的话，第一列会变成 `'\uFEFF日期'`。
   String rowOf(String content, int index) =>
-      content.replaceFirst('﻿', '').split('\r\n')[index];
+      content.replaceFirst('\uFEFF', '').split('\r\n')[index];
 
   /// 按 RFC 4180 拆列。
   ///
@@ -101,7 +101,39 @@ void main() {
     // Excel 只在开头见到 BOM 时才按 UTF-8 解码，否则中文备注是乱码。
     expect(file.content.codeUnitAt(0), 0xFEFF);
     expect(file.content, contains('\r\n'));
-    expect(file.content, isNot(contains('\n\n')));
+    // 行与行之间不含裸换行：有的话说明某个字段没被引号包住。
+    final body = file.content.substring(1);
+    expect(body.split('\r\n').length, greaterThan(1));
+  });
+
+  test('记录按入睡时刻升序，不看调用方给的顺序', () {
+    // `sleepEntriesProvider` 给的是**倒序**（界面最新在前）。导出若继承它，
+    // 将来界面一改排序，文件就会静默跟着变。
+    final earlier = entry(id: 'earlier');
+    final later = SleepEntry(
+      id: 'later',
+      startAtUtc: DateTime.utc(2026, 9, 27, 23),
+      endAtUtc: DateTime.utc(2026, 9, 28, 7),
+      timeZoneId: 'UTC',
+      quality: SleepQuality.good,
+      createdAtUtc: DateTime.utc(2026, 9, 28, 8),
+      updatedAtUtc: DateTime.utc(2026, 9, 28, 8),
+    );
+
+    final file = SleepExporter.csv([later, earlier], now: now).first; // 故意倒着传
+
+    expect(cells(rowOf(file.content, 1))[13], 'earlier');
+    expect(cells(rowOf(file.content, 2))[13], 'later');
+  });
+
+  test('备注里的回车也会被转义', () {
+    final file = SleepExporter.csv([entry(notes: '断在\r这里')], now: now).first;
+
+    // `_cell` 的 `\r` 分支：回车与换行一样会破坏行结构，必须一起引起来。
+    expect(file.content, contains('"断在\r这里"'));
+    final row = cells(rowOf(file.content, 1));
+    expect(row, hasLength(16));
+    expect(row[11], '断在\r这里');
   });
 
   test('记录行取领域对象的派生值', () {
