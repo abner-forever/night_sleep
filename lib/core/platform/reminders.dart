@@ -346,6 +346,9 @@ class LocalReminderScheduler extends ReminderScheduler {
       request.hour,
       request.minute,
     );
+    // 严格比较。等于此刻**不算未来**：那一秒已经过去，语义上归到明天。
+    // 若写成 `!today.isBefore(now)`，用户恰在提醒时刻那一分钟打开开关时，
+    // 调度时刻就是「此刻」，会立刻补一条通知——一个纯粹由比较符号引入的假提醒。
     if (today.isAfter(now)) return today;
 
     // 用「下一天 + 同一墙钟时刻」重建，而不是加 24 小时——后者跨夏令时会落到

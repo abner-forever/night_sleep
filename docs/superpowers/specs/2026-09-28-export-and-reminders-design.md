@@ -1,7 +1,7 @@
 # 导出与提醒设计
 
 > 日期：2026-09-28
-> 状态：待实施
+> 状态：已完成（小米手环导入仍被外部资料阻塞，不在本轮范围）
 > 范围：设置页新增「睡眠数据导出」子页；就寝/起床提醒接入真实本地通知
 > 设计基准：[夜深项目规格说明书](2026-09-28-night-sleep-design.md)。本文不重复其第 8 章的产品红线，但受其约束——
 > 不伪造数据、不让开关声称自己没有的能力、演示数据与真实数据隔离。
@@ -261,6 +261,10 @@ iOS/macOS/Android 的文件系统与分享面板都按 UTF-8 处理，没有兼�
 **不动现有的小米区块**：它用 `IosListGroup` 的 group 级 `onTap` 实现整行可点，
 把导出行塞进同一个 group 会让整组都变成跳转到导入页。
 
+**这一行也不加图标**，理由与上面「导出行不加图标」逐字相同（同一个 section 的两处入口
+必须一致，否则设置页里唯一一行没有 `ListIconBadge` 的入口会显得像漏画了）。
+它同样是全页唯一没有图标的一行，是刻意的，不是待补项。
+
 ## 提醒
 
 ### 分层
@@ -443,9 +447,9 @@ Android 用 `AndroidScheduleMode.inexactAllowWhileIdle`。
 
 | 平台 | 改动 |
 | --- | --- |
-| iOS | `ios/Runner/AppDelegate.swift` 的 `didFinishLaunchingWithOptions` 里加 `UNUserNotificationCenter.current().delegate = self`——不加则前台不展示通知。**不改 `Info.plist`**：本地通知的权限由 `UNUserNotificationCenter` 在运行时申请，不需要 `NS*UsageDescription` 键 |
+| iOS | `ios/Runner/AppDelegate.swift` 的 `didFinishLaunchingWithOptions` 里加 `UNUserNotificationCenter.current().delegate = self as? UNUserNotificationCenterDelegate`（iOS 上 `FlutterAppDelegate` 确实实现该协议，转换非 nil）——不加则前台不展示通知。**不改 `Info.plist`**：本地通知的权限由 `UNUserNotificationCenter` 在运行时申请，不需要 `NS*UsageDescription` 键 |
 | macOS | **不改动 `macos/Runner/AppDelegate.swift`**。插件自己的 macOS 实现里已经 `center.delegate = instance`，而 macOS 的 `FlutterAppLifecycleProvider` 继承自 `NSObject`、**不实现** `UNUserNotificationCenterDelegate`（`self as?` 恒为 nil），`application(_:didFinishLaunchingWithOptions:)` 更是 UIKit 方法、在 macOS 的 `FlutterAppDelegate` 里无从 `override`——照搬 iOS 写法会直接编译不过 |
-| Android | `AndroidManifest.xml` 加 `RECEIVE_BOOT_COMPLETED` 权限、`ScheduledNotificationReceiver` 与 `ScheduledNotificationBootReceiver` 两个 receiver。`POST_NOTIFICATIONS` 与 `VIBRATE` 由插件自己的 manifest 合并进来，不必重复声明。**当前不构建 Android，但一次性补齐**——留着不补，将来构建出来的就是一个「开关看着有效、实际不响」的包 |
+| Android | `AndroidManifest.xml` 加 `RECEIVE_BOOT_COMPLETED` 权限、`ScheduledNotificationReceiver` 与 `ScheduledNotificationBootReceiver` 两个 receiver。`POST_NOTIFICATIONS` 与 `VIBRATE` 由插件自己的 manifest 合并进来，不必重复声明。**本轮无法执行**：仓库里没有 `android/` 目录（`.metadata` 只登记了 ios / macos / web），没有文件可改。接入 Android 时按 README「未实现」表补齐——留着不补，将来构建出来的就是一个「开关看着有效、实际不响」的包。Dart 侧已保留 Android 分支（权限查询、`inexactAllowWhileIdle` 与前台通知详情都按 Android 写好了），缺的只是平台目录与这份 manifest |
 
 不为通知申请任何新权限的 `Info.plist` 文案，这与规格 §7「未接入的能力不得申请权限」一致：
 通知是**本轮接入**的，麦克风不是。

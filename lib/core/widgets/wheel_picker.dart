@@ -319,7 +319,9 @@ class PickerSheet extends StatelessWidget {
                     alignment: Alignment.centerLeft,
                     child: _PickerAction(
                       label: '取消',
-                      onTap: () => Navigator.of(context).pop(),
+                      // 带结果 pop：调用方要能区分「取消」与「完成」。
+                      // 两者都只是 `pop()` 时，滚了轮再点取消的草稿照样会被提交。
+                      onTap: () => Navigator.of(context).pop(false),
                       color: tokens.textMuted,
                     ),
                   ),
@@ -343,7 +345,7 @@ class PickerSheet extends StatelessWidget {
                       onTap: () {
                         AppHaptics.tap();
                         onDone?.call();
-                        Navigator.of(context).pop();
+                        Navigator.of(context).pop(true);
                       },
                     ),
                   ),
@@ -404,12 +406,19 @@ class _PickerAction extends StatelessWidget {
 }
 
 /// Convenience for pushing a picker sheet from a page.
-Future<void> showPickerSheet({
+///
+/// 返回值就是路由的结果，调用方据此决定要不要提交草稿：
+/// `true` = 点了「完成」，`false` = 点了「取消」，`null` = 下滑或点遮罩关掉
+/// （都算没确认）。**只有 `true` 才该落库**——弹层里的滚动是即时的，
+/// 草稿与「用户确认过」是两件事。
+///
+/// 向后兼容：忽略返回值的调用方（编辑页的两个 picker）行为不变。
+Future<bool?> showPickerSheet({
   required BuildContext context,
   required String title,
   required Widget child,
 }) {
-  return showAppSheet<void>(
+  return showAppSheet<bool>(
     context: context,
     builder: (context) => PickerSheet(title: title, child: child),
   );

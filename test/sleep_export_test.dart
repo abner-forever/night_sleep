@@ -275,6 +275,12 @@ void main() {
       'restless': true,
       'nightmare': false,
     });
+
+    // 钉住「存档不写派生值」。时长、阶段合计与占比都由起止时间派生，
+    // 规格已定「时长派生不存储」，存档里塞一份只会多一个会过期的事实。
+    // 没有这条断言时，往 `_record` 里加一个 `durationMinutes` 不会让任何用例变红。
+    expect(record.keys, isNot(contains('durationMinutes')),
+        reason: '规格明写不写派生值：时长由起止时间派生，不进存档');
   });
 
   test('JSON 阶段写稳定 id 而不是中文标签', () {
@@ -329,6 +335,10 @@ void main() {
 
   test('JSON 不含任何 AppSettings 字段', () {
     final content = SleepExporter.json([entry()], now: now).single.content;
+
+    // 正向锚点：三条断言全是否定的，空串会让它们一起通过。
+    // 先钉住「这确实是那份存档」，否定断言才说明得了问题。
+    expect(content, contains('night-sleep-export'));
 
     // 设置是设备偏好，跨设备回灌只会污染；顺带把 API Key 从结构上排除掉。
     expect(content, isNot(contains('themeMode')));

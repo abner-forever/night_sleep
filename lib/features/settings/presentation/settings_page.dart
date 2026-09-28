@@ -118,7 +118,11 @@ class SettingsPage extends ConsumerWidget {
     required int currentMinutes,
   }) async {
     var draft = _minutesToClock(currentMinutes);
-    await showPickerSheet(
+    // 只有「完成」才提交草稿。
+    //
+    // 弹层里的滚动立刻改的是 `draft`，与「用户确认过」是两件事；不看返回值的话，
+    // 滚了轮再点「取消」也会落库并重排——用户明确放弃的那次改动照样生效，而且是静默生效。
+    final confirmed = await showPickerSheet(
       context: context,
       title: bedtime ? '就寝提醒时间' : '起床提醒时间',
       child: AppTimePicker(
@@ -126,6 +130,8 @@ class SettingsPage extends ConsumerWidget {
         onChanged: (value) => draft = value,
       ),
     );
+    if (confirmed != true) return;
+
     final minutes = _clockToMinutes(draft);
     await _update(
       ref,

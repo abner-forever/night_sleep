@@ -10,6 +10,7 @@ import 'package:night_sleep/core/database/app_database.dart';
 import 'package:night_sleep/core/platform/reminders.dart';
 import 'package:night_sleep/core/theme/app_theme.dart';
 import 'package:night_sleep/core/widgets/ios_controls.dart';
+import 'package:night_sleep/core/widgets/wheel_picker.dart';
 import 'package:night_sleep/features/settings/presentation/settings_page.dart';
 import 'package:night_sleep/features/sleep/data/sleep_repository.dart';
 
@@ -224,5 +225,44 @@ void main() {
     final row = await database.getSettings();
     expect(row.bedtimeReminderEnabled, isFalse);
     expect(toastOf(tester), contains('无法安排本地通知'));
+  });
+
+  testWidgets('滚了轮再点「取消」，库里与计划都不变', (tester) async {
+    final scheduler = _FakeScheduler(grants: true);
+    await pumpSettings(tester, scheduler);
+
+    // 先打开就寝提醒：时间那一行只在开关开着时出现。
+    await tester.tap(reminderToggle(0));
+    await tester.pumpAndSettle();
+    echoSettings(bedtimeEnabled: true);
+    await tester.pumpAndSettle();
+
+    final before = await database.getSettings();
+    final planBefore = scheduler.lastSynced;
+
+    // 从常量算出界面上那行时钟，不重抄字面量——线上面板上的 22:30 若改了默认值，
+    // 抄死的那一份只会让这条用例在找不到文字时失败，而失败原因与草稿无关。
+    final defaultClock =
+        '${(SettingsPage.defaultBedtimeMinutes ~/ 60).toString().padLeft(2, '0')}:'
+        '${(SettingsPage.defaultBedtimeMinutes % 60).toString().padLeft(2, '0')}';
+
+    await tester.tap(find.text(defaultClock));
+    await tester.pumpAndSettle();
+
+    // 滚轮。弹层里的滚动会立刻改写草稿，这正是这条用例要覆盖的那个草稿。
+    await tester.drag(
+      find.byType(WheelColumn).first,
+      const Offset(0, -WheelColumn.itemExtent * 2),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+
+    final after = await database.getSettings();
+    expect(after.bedtimeReminderMinutes, before.bedtimeReminderMinutes,
+        reason: '「取消」必须整条丢弃草稿：滚了轮再取消也不得落库');
+    expect(scheduler.lastSynced?.bedtimeMinutes, planBefore?.bedtimeMinutes,
+        reason: '没确认就不该重排，否则用户放弃的那个时刻照样会响');
   });
 }

@@ -45,21 +45,22 @@ class SystemExportSharer implements ExportSharer {
       );
       await directory.create(recursive: true);
 
-      final paths = <String>[];
+      final attachments = <XFile>[];
       for (final file in files) {
         final target = File(path.join(directory.path, file.fileName));
         // 文件名带日期，同一天重复导出覆盖同一路径。不做主动清理：
         // 临时目录由系统回收，自己扫一遍删旧文件既多一份代码，
         // 也多一种「分享面板还开着、文件已被删掉」的边界情况。
         await target.writeAsString(file.content, flush: true);
-        paths.add(target.path);
+        // **必须带上 mimeType**：不传时 `XFile` 的默认值是
+        // `application/octet-stream`，Android 的分享 intent 靠这个类型决定收件方，
+        // 于是 CSV 会以「未知二进制」的身份进到别的应用里。类型只由
+        // `SleepExporter` 生成，这里原样透传，不再猜一遍。
+        attachments.add(XFile(target.path, mimeType: file.mimeType));
       }
 
       final result = await SharePlus.instance.share(
-        ShareParams(
-          files: [for (final file in paths) XFile(file)],
-          subject: subject,
-        ),
+        ShareParams(files: attachments, subject: subject),
       );
 
       return switch (result.status) {
