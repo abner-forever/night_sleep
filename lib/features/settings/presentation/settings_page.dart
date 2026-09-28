@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../app/app_shell.dart';
 import '../../../app/app.dart';
 import '../../../app/app_toast.dart';
+import '../../../app/reminder_sync.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/platform/reminders.dart';
@@ -81,8 +82,8 @@ class SettingsPage extends ConsumerWidget {
     // `*ReminderMinutes` 是可空列，且全新安装时是 NULL——全项目没有任何地方给它
     // 播种，界面只是用 `?? 默认值` 显示了一个从没存过的时刻。若这里只写 enabled，
     // 计划里就没有这一项：`sync` 只 cancel、不 schedule，开关显示「开」却永远不会响。
-    // 那正是规格书要消灭的假状态，而且 Task 6 的启动回收也救不了它（回收只在权限
-    // 不是 granted 时才动手）。
+    // 那正是规格书要消灭的假状态，而且启动回收也救不了它（回收只在权限为 `denied`
+    // 且偏好为真时才动手）。
     final stored = await ref.read(databaseProvider).getSettings();
     final minutes = bedtime
         ? (stored.bedtimeReminderMinutes ?? defaultBedtimeMinutes)
@@ -107,15 +108,7 @@ class SettingsPage extends ConsumerWidget {
   /// 把已调度的通知重排成与数据库里的偏好一致。
   Future<void> _syncReminders(WidgetRef ref) async {
     final stored = await ref.read(databaseProvider).getSettings();
-    await ref.read(reminderSchedulerProvider).sync(
-          ReminderPlan(
-            bedtimeMinutes: stored.bedtimeReminderEnabled
-                ? stored.bedtimeReminderMinutes
-                : null,
-            wakeMinutes:
-                stored.wakeReminderEnabled ? stored.wakeReminderMinutes : null,
-          ),
-        );
+    await ref.read(reminderSchedulerProvider).sync(reminderPlanFrom(stored));
   }
 
   Future<void> _pickReminderTime(
