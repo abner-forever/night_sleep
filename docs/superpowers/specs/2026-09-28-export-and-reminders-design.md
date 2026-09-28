@@ -369,7 +369,7 @@ const kWakeNotificationId = 9002;
 | --- | --- |
 | `granted` | 写入偏好（`bedtimeReminderEnabled` / `wakeReminderEnabled` = true）→ `sync` |
 | `denied` | **不写库**，开关回弹到关，toast 说明原因 |
-| `unsupported` | **不写库**，开关回弹到关，toast 说明本平台不支持 |
+| `unsupported` | **不写库**，开关回弹到关，toast 说明**当前设备**无法安排本地通知 |
 
 「不写库」是这一节的关键：规格要求「拒绝时设置状态与实际能力一致」。写一个开着但不会响的
 偏好，就是在设置里留一个假状态。
@@ -458,6 +458,8 @@ tz.setLocalLocation(tz.getLocation(await FlutterTimezone.getLocalTimezone()));
 | Widget 测试 | 提醒开关：`denied` 时开关回弹且**数据库未被写入**；`granted` 时写入并按传入的 `ReminderPlan` 重排；`unsupported` 时同样不写库 | `test/reminder_settings_test.dart` |
 | Widget 测试 | 权限不是 granted 时出现「去系统设置」入口且可点；已授予时不出现 | 同上 |
 | 单元测试 | `sync` 幂等：连续两次调用产生相同的调度序列；空计划只取消不排入；`requestsFor` 只把开着的提醒变成请求 | `test/reminder_scheduler_test.dart` |
+| 单元测试 | `nextOccurrence`：当天该时刻未到 → 当天；已过 → 次日；**跨夏令时切换日仍落在同一墙上时刻**（不是绝对时刻 +24h） | 同上 |
+| 单元测试 | 四句通知文案（两个标题两个正文）与规格逐字一致 | 同上 |
 
 **不测**：真实通知投递、分享面板本身、iOS/macOS 前台展示行为。这些需要真机或模拟器人工验证，
 结果记入 README 的「未验证」项，不写成已完成。

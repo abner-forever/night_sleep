@@ -1503,6 +1503,8 @@ import 'package:night_sleep/core/theme/app_tokens.dart';
 ```dart
 import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sleep/core/platform/reminders.dart';
+import 'package:timezone/data/latest_all.dart' as tzdata;
+import 'package:timezone/timezone.dart' as tz;
 
 /// 调度契约的单元测试。
 ///
@@ -1593,6 +1595,64 @@ void main() {
       ReminderPermission.unsupported,
       reason: '不能假装权限拿到了',
     );
+  });
+
+  test('通知文案是规格钉死的那四句', () {
+    final requests = ReminderScheduler.requestsFor(
+      const ReminderPlan(bedtimeMinutes: 22 * 60 + 30, wakeMinutes: 7 * 60),
+    );
+
+    expect(requests.map((request) => request.title).toList(),
+        ['到就寝时间了', '早上好']);
+    expect(requests.map((request) => request.body).toList(),
+        ['该休息了，晚安。', '记录一下昨晚睡得怎么样。']);
+  });
+
+  group('nextOccurrence', () {
+    setUpAll(tzdata.initializeTimeZones);
+
+    final ny = tz.getLocation('America/New_York');
+    final shanghai = tz.getLocation('Asia/Shanghai');
+
+    final wake = ReminderScheduler.requestsFor(
+      const ReminderPlan(wakeMinutes: 7 * 60),
+    ).single;
+
+    test('当天该时刻还没到时，就排在当天', () {
+      final next = LocalReminderScheduler.nextOccurrence(
+        wake,
+        now: tz.TZDateTime(shanghai, 2026, 9, 28, 3),
+      );
+
+      expect(next, tz.TZDateTime(shanghai, 2026, 9, 28, 7));
+    });
+
+    test('当天该时刻已过时，排到第二天', () {
+      final next = LocalReminderScheduler.nextOccurrence(
+        wake,
+        now: tz.TZDateTime(shanghai, 2026, 9, 28, 9),
+      );
+
+      expect(next, tz.TZDateTime(shanghai, 2026, 9, 29, 7));
+    });
+
+    test('跨夏令时切换日，仍落在同一墙上时刻而不是绝对时刻加 24 小时', () {
+      // 美国 2026 年春季切换在 3 月 8 日 02:00 → 03:00。
+      // 3 月 7 日 23:00 已过 07:00，所以下一次是 3 月 8 日。
+      //
+      // 若把「重建墙钟时刻」错写成「today.add(Duration(days: 1))」，
+      // 结果会是 3 月 8 日 08:00（EST 07:00 的绝对时刻 +24h 落在 EDT 上），
+      // 这条断言会红——这正是它是可证伪的、而不是在复述实现的原因。
+      final next = LocalReminderScheduler.nextOccurrence(
+        wake,
+        now: tz.TZDateTime(ny, 2026, 3, 7, 23),
+      );
+
+      expect(next.year, 2026);
+      expect(next.month, 3);
+      expect(next.day, 8);
+      expect(next.hour, 7, reason: '墙上时刻必须还是 07:00');
+    });
   });
 }
 ```
@@ -1763,13 +1823,15 @@ class LocalReminderScheduler extends ReminderScheduler {
   final FlutterLocalNotificationsPlugin _plugin;
   final TimezoneResolver _timezone;
 
-  bool _initialized = false;
   bool _ready = false;
 
-  @override
+  /// **可重入，且只有成功才算初始化过。**
+  ///
+  /// 失败时保留未初始化状态，下一次调用会重试。反过来的写法（进函数先置
+  /// 「已初始化」）会把一次**偶发**的时区查询失败变成整个进程生命周期的静默失效——
+  /// 用户打开提醒开关，什么都不会响，而且没有任何办法在这一进程里恢复。
   Future<void> initialize() async {
-    if (_initialized) return;
-    _initialized = true;
+    if (_ready) return;
 
     try {
       // 必须两步：initializeTimeZones() 之后 tz.local 默认是 UTC，
@@ -1777,8 +1839,9 @@ class LocalReminderScheduler extends ReminderScheduler {
       tzdata.initializeTimeZones();
       tz.setLocalLocation(tz.getLocation(await _timezone.identifier()));
 
+      // v20 起这个插件的 `initialize` 改成了具名参数，别写回位置参数。
       await _plugin.initialize(
-        const InitializationSettings(
+        settings: const InitializationSettings(
           android: AndroidInitializationSettings('@mipmap/ic_launcher'),
           iOS: DarwinInitializationSettings(
             // 权限留到用户真的打开提醒开关时再申请，不在首次启动时弹。
@@ -1901,7 +1964,10 @@ class LocalReminderScheduler extends ReminderScheduler {
       body: request.body,
       // 按**墙上时间**重复，因此夏令时切换后提醒跟着走，而不是漂一小时。
       matchDateTimeComponents: DateTimeComponents.time,
-      scheduledDate: _nextOccurrence(request),
+      scheduledDate: nextOccurrence(
+        request,
+        now: tz.TZDateTime.now(tz.local),
+      ),
       notificationDetails: const NotificationDetails(
         android: AndroidNotificationDetails(
           _channelId,
@@ -1931,11 +1997,20 @@ class LocalReminderScheduler extends ReminderScheduler {
     );
   }
 
-  /// 今天（或明天）在 `tz.local` 下的下一次该时刻。
-  static tz.TZDateTime _nextOccurrence(ReminderRequest request) {
-    final now = tz.TZDateTime.now(tz.local);
+  /// 从 [now] 起，下一次该时刻落在哪。
+  ///
+  /// 做成**纯函数**：`now` 由调用方给，时区取自 `now.location` 而不是全局的
+  /// `tz.local`。除了让依赖显式化，更要紧的是这样测试才能钉住**夏令时**那条规则——
+  /// 跨切换日时提醒必须仍在同样的**墙上时刻**响，而不是「前一次的绝对时刻 + 24 小时」。
+  /// 那是这段代码里唯一一处不写测试就只能靠读注释相信的地方。
+  @visibleForTesting
+  static tz.TZDateTime nextOccurrence(
+    ReminderRequest request, {
+    required tz.TZDateTime now,
+  }) {
+    final location = now.location;
     final today = tz.TZDateTime(
-      tz.local,
+      location,
       now.year,
       now.month,
       now.day,
@@ -1945,9 +2020,9 @@ class LocalReminderScheduler extends ReminderScheduler {
     if (today.isAfter(now)) return today;
 
     // 用「下一天 + 同一墙钟时刻」重建，而不是加 24 小时——后者跨夏令时会落到
-    // 另一个钟点上。
+    // 另一个钟点上（美国 2026-03-08 那次切换会让 07:00 变成 08:00）。
     return tz.TZDateTime(
-      tz.local,
+      location,
       now.year,
       now.month,
       now.day + 1,
@@ -1985,7 +2060,7 @@ flutter analyze
 flutter test test/reminder_scheduler_test.dart
 ```
 
-预期：analyze 无问题；6 个用例通过。
+预期：analyze 无问题；10 个用例通过（6 个调度契约 + 1 个文案 + 3 个 nextOccurrence）。
 
 - [ ] **Step 5: 提交**
 
@@ -2168,7 +2243,7 @@ void main() {
 
     final row = await database.getSettings();
     expect(row.bedtimeReminderEnabled, isFalse);
-    expect(toastOf(tester), contains('不支持'));
+    expect(toastOf(tester), contains('无法安排本地通知'));
   });
 }
 ```
@@ -2224,9 +2299,12 @@ final reminderPermissionProvider = FutureProvider<ReminderPermission>((ref) {
       final permission = await scheduler.requestPermission();
       if (permission != ReminderPermission.granted) {
         if (!context.mounted) return;
+        // 这里不说「这个平台不支持」：走到这一步也可能是**这台设备上**取不到可用
+        // 时区导致的初始化失败，那是应用侧的问题，不是平台的限制。两种情况都成立的
+        // 实话是「当前设备无法安排本地通知」。
         ref.read(toastProvider.notifier).show(
               permission == ReminderPermission.unsupported
-                  ? '这个平台不支持本地通知，提醒无法生效。'
+                  ? '当前设备无法安排本地通知，提醒未开启。'
                   : '没有获得通知权限，提醒未开启。可在系统设置中允许「夜深」发送通知。',
             );
         ref.invalidate(reminderPermissionProvider);
