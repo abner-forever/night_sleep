@@ -1464,8 +1464,17 @@ flutter test test/export_page_test.dart
 git add lib/features/settings/data/export_sharer.dart \
         lib/features/settings/presentation/export_page.dart \
         lib/app/app.dart lib/features/settings/presentation/settings_page.dart \
-        test/export_page_test.dart
+        test/export_page_test.dart test/pages_widget_test.dart
 git commit -m "feat: 导出页、系统分享层与设置页入口"
+```
+
+**`test/pages_widget_test.dart` 不能漏**——Step 7 把新二级页并进了那个文件里的渲染守卫，
+漏掉它等于新守卫没提交，而工作树看起来是干净的。
+
+Step 6 的 (c) 要在 `test/export_page_test.dart` 顶部补一行导入：
+
+```dart
+import 'package:night_sleep/core/theme/app_tokens.dart';
 ```
 
 ---
