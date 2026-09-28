@@ -1,9 +1,13 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sleep/features/settings/domain/sleep_export.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_entry.dart';
+import 'package:night_sleep/features/sleep/domain/sleep_insight.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_quality.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_score.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_stage.dart';
+import 'package:night_sleep/features/sleep/domain/sound_event.dart';
 
 /// 导出格式的单元测试。
 ///
@@ -231,5 +235,140 @@ void main() {
   test('exportableOf 只留下非演示记录', () {
     final all = [entry(id: 'a'), entry(id: 'b', source: 'demo')];
     expect(SleepExporter.exportableOf(all).map((e) => e.id), ['a']);
+  });
+
+  test('JSON 表头字段齐全，数组恒为数组', () {
+    final file = SleepExporter.json([entry()], now: now).single;
+    final doc = jsonDecode(file.content) as Map<String, dynamic>;
+
+    expect(file.fileName, '夜深-睡眠数据-20260928.json');
+    expect(file.mimeType, SleepExporter.jsonMime);
+    expect(doc['format'], 'night-sleep-export');
+    expect(doc['version'], 1);
+    expect(doc['schemaVersion'], 2);
+    expect(doc['recordCount'], 1);
+    expect(doc['excludedDemoCount'], 0);
+    expect(doc['exportedAtUtc'], now.toUtc().toIso8601String());
+
+    final record = (doc['records'] as List).single as Map<String, dynamic>;
+    expect(record['tags'], isEmpty);
+    expect(record['stages'], isEmpty);
+    expect(record['soundClips'], isEmpty);
+    expect(record['insight'], isNull);
+  });
+
+  test('JSON 记录里写的是 schema 字段名与 UTC 时间戳', () {
+    final only = entry(events: const LoggedEvents(restless: true));
+    final doc = jsonDecode(SleepExporter.json([only], now: now).single.content)
+        as Map<String, dynamic>;
+    final record = (doc['records'] as List).single as Map<String, dynamic>;
+
+    expect(record['id'], 'r1');
+    expect(record['startAtUtc'], only.startAtUtc.toUtc().toIso8601String());
+    expect(record['endAtUtc'], only.endAtUtc.toUtc().toIso8601String());
+    expect(record['timeZoneId'], 'UTC');
+    expect(record['quality'], 4);
+    expect(record['source'], 'manual');
+    expect(record['loggedEvents'], {
+      'snore': false,
+      'talk': false,
+      'restless': true,
+      'nightmare': false,
+    });
+  });
+
+  test('JSON 阶段写稳定 id 而不是中文标签', () {
+    final withStages = entry(stages: [
+      SleepStageSegment(
+        stage: SleepStageType.light,
+        startAtUtc: DateTime.utc(2026, 9, 26, 23),
+        endAtUtc: DateTime.utc(2026, 9, 27),
+      ),
+    ]);
+    final doc =
+        jsonDecode(SleepExporter.json([withStages], now: now).single.content)
+            as Map<String, dynamic>;
+    final record = (doc['records'] as List).single as Map<String, dynamic>;
+    final stage = (record['stages'] as List).single as Map<String, dynamic>;
+
+    expect(stage['stage'], 'light', reason: '存档字段用稳定 id，中文标签留给 CSV');
+    expect(stage['source'], 'import');
+    expect(stage['startAtUtc'], '2026-09-26T23:00:00.000Z');
+  });
+
+  test('JSON 不写出任何本地文件路径', () {
+    const localPath =
+        '/var/mobile/Containers/Data/Application/ABC/Documents/clips/c1.wav';
+    final withClip = entry();
+    final withAudio = SleepEntry(
+      id: withClip.id,
+      startAtUtc: withClip.startAtUtc,
+      endAtUtc: withClip.endAtUtc,
+      timeZoneId: withClip.timeZoneId,
+      quality: withClip.quality,
+      createdAtUtc: withClip.createdAtUtc,
+      updatedAtUtc: withClip.updatedAtUtc,
+      soundClips: [
+        SoundClip(
+          id: 'c1',
+          kind: SoundEventKind.snore,
+          startedAtUtc: DateTime.utc(2026, 9, 27, 2),
+          durationMs: 4200,
+          localUri: localPath,
+        ),
+      ],
+    );
+
+    final content = SleepExporter.json([withAudio], now: now).single.content;
+
+    // 音频文件本身不进导出，路径留着只会悬空；而导出是要分享出去的。
+    expect(content, isNot(contains('localUri')));
+    expect(content, isNot(contains('/var/mobile')));
+    expect(content, contains('"hasLocalAudio": true'));
+  });
+
+  test('JSON 不含任何 AppSettings 字段', () {
+    final content = SleepExporter.json([entry()], now: now).single.content;
+
+    // 设置是设备偏好，跨设备回灌只会污染；顺带把 API Key 从结构上排除掉。
+    expect(content, isNot(contains('themeMode')));
+    expect(content, isNot(contains('sleepGoalMinutes')));
+    expect(content, isNot(contains('insightProvider')));
+  });
+
+  test('JSON 写洞察全文，演示计数如实', () {
+    final withInsight = SleepEntry(
+      id: 'r1',
+      startAtUtc: DateTime.utc(2026, 9, 26, 23),
+      endAtUtc: DateTime.utc(2026, 9, 27, 7),
+      timeZoneId: 'UTC',
+      quality: SleepQuality.good,
+      createdAtUtc: DateTime.utc(2026, 9, 27, 8),
+      updatedAtUtc: DateTime.utc(2026, 9, 27, 8),
+      insight: Insight(
+        id: 'i1',
+        recordId: 'r1',
+        content: '本周入睡时间比上周晚。',
+        provider: 'deepseek',
+        model: 'deepseek-chat',
+        score: 82,
+        generatedAtUtc: DateTime.utc(2026, 9, 27, 9),
+        status: InsightStatus.ok,
+      ),
+    );
+    final doc = jsonDecode(
+      SleepExporter.json([withInsight, entry(id: 'd', source: 'demo')],
+              now: now)
+          .single
+          .content,
+    ) as Map<String, dynamic>;
+
+    expect(doc['recordCount'], 1);
+    expect(doc['excludedDemoCount'], 1);
+    final record = (doc['records'] as List).single as Map<String, dynamic>;
+    final insight = record['insight'] as Map<String, dynamic>;
+    expect(insight['status'], 'ok');
+    expect(insight['score'], 82);
+    expect(insight['content'], '本周入睡时间比上周晚。');
   });
 }

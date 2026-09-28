@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import '../../../core/config/app_config.dart';
 import '../../sleep/domain/sleep_entry.dart';
+import '../../sleep/domain/sleep_insight.dart';
 import '../../sleep/domain/sleep_stage.dart';
 
 /// 一份交给分享面板的文件。
@@ -86,6 +89,94 @@ abstract final class SleepExporter {
       ),
     ];
   }
+
+  /// 完整嵌套的一份存档。
+  ///
+  /// 字段名与 schema 对齐、时间戳写 ISO-8601 UTC，为将来做回灌留路。
+  /// **不写派生值**（时长、阶段合计、占比）：规格已定「时长派生不存储」，
+  /// 存档里塞一份派生快照只会多一个会过期的事实。
+  static List<ExportFile> json(
+    List<SleepEntry> entries, {
+    required DateTime now,
+  }) {
+    final exportable = exportableOf(entries);
+    final document = <String, Object?>{
+      'format': 'night-sleep-export',
+      'version': 1,
+      'exportedAtUtc': now.toUtc().toIso8601String(),
+      'schemaVersion': 2,
+      'recordCount': exportable.length,
+      'excludedDemoCount': entries.length - exportable.length,
+      'records': [for (final entry in exportable) _record(entry)],
+    };
+
+    return [
+      ExportFile(
+        fileName: '夜深-睡眠数据-${_dateStamp(now)}.json',
+        mimeType: jsonMime,
+        content: const JsonEncoder.withIndent('  ').convert(document),
+      ),
+    ];
+  }
+
+  static Map<String, Object?> _record(SleepEntry entry) => {
+        'id': entry.id,
+        'startAtUtc': _iso(entry.startAtUtc),
+        'endAtUtc': _iso(entry.endAtUtc),
+        'timeZoneId': entry.timeZoneId,
+        'quality': entry.quality.value,
+        'notes': entry.notes,
+        'tags': entry.tags,
+        'source': entry.source,
+        'loggedEvents': {
+          'snore': entry.loggedEvents.snore,
+          'talk': entry.loggedEvents.talk,
+          'restless': entry.loggedEvents.restless,
+          'nightmare': entry.loggedEvents.nightmare,
+        },
+        'createdAtUtc': _iso(entry.createdAtUtc),
+        'updatedAtUtc': _iso(entry.updatedAtUtc),
+        'stages': [
+          for (final segment in entry.stages)
+            {
+              'stage': segment.stage.id,
+              'startAtUtc': _iso(segment.startAtUtc),
+              'endAtUtc': _iso(segment.endAtUtc),
+              'source': segment.source,
+            },
+        ],
+        'soundClips': [
+          for (final clip in entry.soundClips)
+            {
+              'id': clip.id,
+              'kind': clip.kind.id,
+              'startedAtUtc': _iso(clip.startedAtUtc),
+              'durationMs': clip.durationMs,
+              // 只留布尔量。绝对路径含设备容器的 UUID，而音频本身不进导出，
+              // 留着既悬空、又把设备本地细节捎了出去。
+              'hasLocalAudio': clip.localUri != null,
+              'transcript': clip.transcript,
+              'analysis': clip.analysis,
+              'analysisStatus': clip.analysisStatus.id,
+              'source': clip.source,
+            },
+        ],
+        'insight': entry.insight == null ? null : _insight(entry.insight!),
+      };
+
+  static Map<String, Object?> _insight(Insight insight) => {
+        'id': insight.id,
+        'recordId': insight.recordId,
+        'kind': insight.kind,
+        'content': insight.content,
+        'provider': insight.provider,
+        'model': insight.model,
+        'score': insight.score,
+        'generatedAtUtc': _iso(insight.generatedAtUtc),
+        'status': insight.status.id,
+      };
+
+  static String _iso(DateTime utc) => utc.toUtc().toIso8601String();
 
   // ── 行 ──────────────────────────────────────────────────────────────────
 
