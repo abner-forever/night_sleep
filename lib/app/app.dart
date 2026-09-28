@@ -12,6 +12,7 @@ import '../features/log/presentation/log_edit_page.dart';
 import '../features/log/presentation/log_page.dart';
 import '../features/onboarding/presentation/onboarding_overlay.dart';
 import '../features/settings/presentation/demo_data_page.dart';
+import '../features/settings/presentation/export_page.dart';
 import '../features/settings/presentation/insight_config_page.dart';
 import '../features/settings/presentation/settings_page.dart';
 import '../features/settings/presentation/sleep_import_page.dart';
@@ -44,6 +45,10 @@ final _router = GoRouter(
         GoRoute(
           path: 'settings/import',
           builder: (context, state) => const SleepImportPage(),
+        ),
+        GoRoute(
+          path: 'settings/export',
+          builder: (context, state) => const ExportPage(),
         ),
         GoRoute(
           path: 'settings/insight',

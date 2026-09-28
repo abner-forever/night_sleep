@@ -291,6 +291,49 @@ class SettingsPage extends ConsumerWidget {
         ),
         const SizedBox(height: 22),
 
+        // ── Data export ────────────────────────────────────────────────────
+        // 与导入分开一个 section：导入那一组用的是 group 级 onTap，
+        // 把导出行塞进同一个 group 会让整组都跳去导入页。
+        const SectionHeader('睡眠数据导出'),
+        IosListGroup(
+          onTap: () => context.go('/settings/export'),
+          semanticLabel: '睡眠数据导出',
+          children: [
+            IosListItem(
+              haptic: false,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '导出睡眠数据',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: tokens.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'CSV（记录与阶段）或 JSON（完整存档）',
+                          style:
+                              TextStyle(fontSize: 12, color: tokens.textMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  AppIcons.chevronRight(
+                      size: 18, color: tokens.textMuted, strokeWidth: 2),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 22),
+
         // ── Reminders ──────────────────────────────────────────────────────
         const SectionHeader('提醒'),
         IosListGroup(
