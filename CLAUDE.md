@@ -131,6 +131,12 @@ Drift + SQLite，schema v3（`schemaVersion => 3`，`onUpgrade` 在 `app_databas
 - 测试里带 `Timer`/无限动画的组件（波形指示器）会让 `pumpAndSettle` 超时 → 改用显式 `pump()`。
 - 手势阈值：约 18px 以下会被判定为点击，测下拉要拖够距离；sheet 的阈值是速度 > 700 或
   位移 > 面板高度 28%。
+- **schema 迁移测试要用裸 DDL 把旧版本「冻成文本」**（`test/schema_migration_test.dart`），
+  不要用 Dart 表类建夹具：表类会随 `app_database.dart` 一起演进，夹具会悄悄不再代表旧版本，
+  用例就在迁移代码一行没跑的情况下空跑通过。夹具先写出旧版本的真实库文件、再打开当前 schema
+  触发 `onUpgrade`，并配两重防空跑自检——夹具必须停在旧 `user_version`，且夹具的旧表 DDL 必须
+  **不含**本次新加的外键（否则「约束从无到有」测不出来）。新增/修改迁移条件时，先做变异验证
+  （去掉条件看用例是否变红），确认新用例不是空跑。
 
 ## 其他约定
 

@@ -266,7 +266,7 @@
 | 17 | 原型的音效时长无限循环 | 每条循环 20 秒，接缝做了等功率交叉淡化 | 循环必须无缝，否则每次重播都会「咔」一声。生成器按种类固定种子，因此同一条循环每次渲染结果一致。 |
 | 18 | 原型没有导出功能（纯前端演示，数据不落地） | 新增导出（`/settings/export`）：CSV 两张表（记录 + 阶段）+ JSON 完整存档，经系统分享面板交付 | 规格 M2 要求本地导出，而原型的记录只活在内存里、无导出可言。回归方法：确认设置页有「睡眠数据导出」区块（`lib/features/settings/presentation/settings_page.dart` 的 `SectionHeader('睡眠数据导出')`），且导出的 CSV 首字节是 BOM（`test/sleep_export_test.dart` 的 BOM 用例）。 |
 | 19 | 原型的提醒开关是纯装饰——开关状态不驱动任何调度 | 接真实本地通知：权限被拒时**不写入偏好**、开关回弹；权限为 `denied` 时给出「去系统设置」入口；启动时回收被撤销的授权（把偏好写回 `false`） | 一个写着「开」却不会响的开关，正是规格书说的「设置状态与实际能力不一致」。回归方法：拒绝通知权限后确认 `bedtimeReminderEnabled` 仍为 `false`（`test/reminder_settings_test.dart`）；把启动回收条件改回 `!= granted` 会让 `test/reminder_sync_test.dart` 的 `unsupported` 用例变红。 |
-| 20 | 原型的二次确认走 Material 默认外观（Android 观感） | 按项目令牌**自绘** iOS 风格确认弹窗（`lib/core/widgets/confirm_dialog.dart` 的 `showConfirmDialog`），**不引入 `flutter/cupertino.dart`**；应用内三处危险操作统一走它 | 整个应用是 iOS/令牌体系，唯独确认弹窗走了 Material 默认的配色与圆角。`CupertinoAlertDialog` 自带系统色与圆角，会**绕过 `AppTokens`**，与「设计令牌只有一份」的硬约定冲突，所以自绘。三处统一为：删除单条记录、删除全部本地数据、**清除演示数据**——第三处此前**根本没有二次确认**（点一下就删）。自绘走 `showGeneralDialog`，必须自己补 `Material` 祖先，否则所有 `Text` 落到黄色双下划线错误样式（`confirm_dialog.dart` 已显式补上）。回归方法：`test/confirm_dialog_test.dart`（`Material` 祖先、取消返回 `false`、破坏性取 `danger`、内容区与按钮区两条分隔线）；把任一处改回 `showDialog`/`AlertDialog`，或在 `demo_data_page` 摘掉确认块，都会让对应用例变红（已变异验证）。 |
+| 20 | 原型的二次确认走 Material 默认外观（Android 观感） | 按项目令牌**自绘** iOS 风格确认弹窗（`lib/core/widgets/confirm_dialog.dart` 的 `showConfirmDialog`），**不引入 `flutter/cupertino.dart`**；应用内三处危险操作统一走它 | 整个应用是 iOS/令牌体系，唯独确认弹窗走了 Material 默认的配色与圆角。`CupertinoAlertDialog` 自带系统色与圆角，会**绕过 `AppTokens`**，与「设计令牌只有一份」的硬约定冲突，所以自绘。三处统一为：删除单条记录、删除全部本地数据、**清除演示数据**——第三处此前**根本没有二次确认**（点一下就删）。自绘走 `showGeneralDialog`，必须自己补 `Material` 祖先，否则所有 `Text` 落到黄色双下划线错误样式（`confirm_dialog.dart` 已显式补上）。回归方法：`test/confirm_dialog_test.dart`（`Material` 祖先、取消返回 `false`、破坏性取 `danger`、内容区与按钮区两条 0.5 发丝线——与全仓其余分隔线同口径）；把任一处改回 `showDialog`/`AlertDialog`，或在 `demo_data_page` 摘掉确认块，都会让对应用例变红（已变异验证）。 |
 
 ## 9. 测试与验收矩阵
 
@@ -282,7 +282,7 @@
 | 单元测试 | `buildSleepWindow` 跨午夜与同日、时钟/日期格式化往返 | ✅ `test/sleep_window_test.dart` |
 | 单元测试 | `SleepStatistics` 平均值分母、图表上下界、柱高钳制、计数口径 | ✅ `test/sleep_statistics_test.dart` |
 | 数据测试 | 演示数据安装与来源标记、清除演示数据、CRUD 往返、醒来日归档、级联删除、全部删除 | ✅ `test/sleep_data_test.dart` |
-| 数据测试 | schema v1→v2→v3 迁移：用**真实的旧版库文件**升级。v1 段校验旧数据保留、`source` 不重置、新列默认值、新表可读写、重复打开不重跑；v2 段校验**孤儿洞察行被清除**、仍有关联的洞察保留、迁移后外键真的存在且级联生效、已损坏的库（`records=0 / insights=5`）能被修好 | ✅ `test/schema_migration_test.dart`（含防止夹具空跑的自检：夹具必须停在 v2，且 `insights` 确实不带外键） |
+| 数据测试 | schema v1→v2→v3 迁移：用**真实的旧版库文件**升级。v1 段校验旧数据保留、`source` 不重置、新列默认值、新表可读写、重复打开不重跑；v2 段校验**孤儿洞察行被清除**、仍有关联的洞察保留、**`record_id` 为空的洞察存活**（含记录表为空、`IS NOT NULL` 守卫真正吃重的情形）、迁移后外键真的存在且级联生效、已损坏的库（`records=0 / insights=5`）能被修好 | ✅ `test/schema_migration_test.dart`（含防止夹具空跑的自检：夹具必须停在 v2，且 `insights` 确实不带外键） |
 | 数据测试 | 演示数据**重装与幂等**：清除后重装条数一致、不留孤儿洞察、连装两次结果不变（所有写入路径 upsert） | ✅ `test/sleep_data_test.dart` |
 | 数据测试 | 冷启动播种失败**不中断启动**：`installDemoSeedIfNeeded` 在写入失败时只记日志不外抛，开关关闭时连库都不查，判据是「有没有 demo 行」而非「表是否为空」 | ✅ `test/demo_seed_startup_test.dart`（含变异验证：拆掉 try/catch、把判据改成 `isEmpty` 都会变红） |
 | Widget 测试 | 四页空状态与数据态、表单保存、设置写回、二次确认、二级页内边距、下拉不受裁剪 | ✅ `test/pages_widget_test.dart` |

@@ -229,7 +229,8 @@ Bundle ID、Android application ID、签名和发布账号保持 Flutter 默认�
 
 - `dart format --set-exit-if-changed .` → 无改动（80 文件，0 changed）
 - `flutter analyze` → **No issues found**
-- `flutter test` → **216/216 通过**（本轮从 176 起，逐步增至 216：schema v3 迁移 5、
+- `flutter test` → **217/217 通过**（本轮从 176 起，逐步增至 216，终审修复波再补 1 至 217：
+  schema v3 迁移 6（含 `record_id` 为空的洞察存活分支）、
   演示数据重装与幂等 2、冷启动播种兜底 4、图标取色 4、顶部渐变与安全区/错误分支留白 3、
   关于卡片居中与版本号 2、自绘确认弹窗 7（另有演示数据页的确认 1，落在 `pages_widget_test`）、
   删除图标 2、`PrimaryAction` 禁用态 10；
