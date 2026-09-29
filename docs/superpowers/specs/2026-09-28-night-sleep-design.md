@@ -1,6 +1,6 @@
 # 夜深：Flutter 睡眠记录 App 项目规格说明书
 
-> 版本：2.8（2026-09-29）
+> 版本：2.9（2026-09-29）
 > 用途：本项目的实现与验收基准。
 > 设计原型：[Figma Make：睡眠记录 APP 设计](https://www.figma.com/make/hKbqp1qjtcNQmmiDtVvXpk/%E7%9D%A1%E7%9C%A0%E8%AE%B0%E5%BD%95APP%E8%AE%BE%E8%AE%A1)
 > 变更史见 [CHANGELOG.md](../../../CHANGELOG.md)
@@ -135,7 +135,7 @@
 | 助眠音效（原型用 Web Audio 合成） | `lib/features/sleep/data/noise_synth.dart`（DSP 与 WAV 编码）、`noise_player.dart`（渲染缓存与播放） |
 | 导出页（原型无对应） | `lib/features/settings/presentation/export_page.dart`（`/settings/export`）；格式规则（CSV 两张表 / JSON 存档）在 `lib/features/settings/domain/sleep_export.dart`，交付在 `data/export_sharer.dart`（`share_plus`） |
 | 就寝/起床提醒（原型只有装饰性开关） | `lib/core/platform/reminders.dart`（权限、时区与调度，含 `nextOccurrence` 的夏令时口径）、`lib/app/reminder_sync.dart`（启动全量重排与「偏好 → 计划」映射） |
-| 应用图标 | `assets/branding/app-icon.svg` → `tool/generate_app_icons.dart` → 两个平台的 `AppIcon.appiconset` |
+| 应用图标 | `assets/branding/app-icon.svg` → `tool/generate_app_icons.dart` → 两个平台的 `AppIcon.appiconset`。**v2.9 起是两条渲染路径**：iOS 满幅直角 + 无 alpha 通道（色型 2）；macOS 按 Apple 网格烘焙圆角留白 + 保留 alpha（色型 6）。见偏差 #16 |
 | `SEED_RECORDS` | `lib/features/sleep/data/demo_seed.dart` |
 | `estimateScore` / `estimateSummary` | `lib/features/sleep/domain/sleep_score.dart` |
 | `STAGE_LBL` / `Q_LBL` / `durationColor` / `scoreColor` | `lib/features/sleep/domain/sleep_stage.dart`、`sleep_quality.dart`、`sleep_score.dart`、`presentation/widgets/stage_style.dart` |
@@ -274,7 +274,7 @@
 | 13 | 原型为每个声音片段硬编码同一条 38 柱波形 | 演示片段有确定性包络（打鼾为缓慢起伏、梦话为断续爆发），**真实记录一律没有包络**，画等高轨道 | 演示之夜整体是合成的（阶段、转写同样是示例），且界面标注为演示、可一键清除。真实片段若要波形，只能来自解码后的文件——[SoundClip.waveformEnvelope] 为 null 时不许画形状。 |
 | 14 | 原型 `data.ts` 里写死三家服务商的模型名与余额 | 不写死未经核实的模型名；DeepSeek 与 Anthropic 用**对照官方文档核实过**的 ID 并注明核实日期，OpenAI 文档不可访问故留空，改由「获取可用模型」调 `GET /models` 实时拉取 | 模型 ID 变动快于发版。一个看着合理但不存在的名字比空列表更糟：用户选中它、请求 404、还会以为是应用的问题。余额仍然不显示（偏差 #3）。 |
 | 15 | 原型的时间选择器有 `wheel-selection-rail`（选中行上下各一条 1px 强调色线） | 不绘制 | 按使用方要求去掉。原型的版本是 30% accent 混入 `--border-strong` 的灰蓝色，比先前实现的纯 accent 淡得多——若要恢复，改的是颜色而不是这个元素。 |
-| 16 | 原型没有应用图标文件 | 用设计原型 `index.html` 引用的 `app-icon.svg`（新月 + 两道声波），由脚本生成 iOS/macOS 全部尺寸 | 图标来自设计本身，不是自绘。生成时去掉原图的 `rx="236"` 圆角（系统会自己套遮罩）并压掉 alpha 通道（App Store 会因此拒收）。 |
+| 16 | 原型没有应用图标文件 | 用设计原型 `index.html` 引用的 `app-icon.svg`（新月 + 两道声波），由脚本生成 iOS/macOS 全部尺寸。**v2.9 起两个平台不再共用同一份像素**：iOS 保持满幅直角 + 压掉 alpha；macOS 按 Apple 图标网格**烘焙**圆角与留白——实体 824×824 居中、四边留白 100、圆角半径 185.4——再加一层向下偏移的投影（1024 基准：偏移 (0, 12)、模糊 σ≈8——由系统图标的 `alpha>8` 包络反推，属估算，实现时对照系统图标复核），**保留 alpha 通道** | 图标来自设计本身，不是自绘。**本版订正一条错了的前提**：旧稿写「生成时去掉原图的 `rx="236"`（iOS 和 macOS 都会自己套遮罩）」——**macOS 不会**。把系统 app 的 `.icns` 抠出来实测（Calculator、Notes 结果一致）：`alpha>128` 的实体恰为 206/256 = **0.8047**，即 Apple 网格的 824/1024，且四边留白全等——**圆角与留白是烘焙在图标文件里的**，macOS 只负责原样绘制。于是满幅直角图标在 Dock 里被撑成一个方块（用户报「为什么没有圆角」）。另需说明：「压掉 alpha」是针对 **iOS 提交**的规则（App Store 拒收带 alpha 的应用图标），macOS 的圆角图标**必须有** alpha——两条规则分平台，不冲突。**已知项**：Apple 在新系统上改了应用图标体系（改由系统套新遮罩），届时这里烘焙的圆角有被二次遮罩的可能；当前基线是 macOS 14，升级系统后需回头复核。回归方法：`tool/generate_app_icons.dart` 的自检断言——角像素透明、中心像素不透明、`alpha>128` 的实体包围盒 = 824×824 且四边留白 100、iOS 图标仍满幅且无 alpha 通道；去掉遮罩会让第一条立刻变红。 |
 | 17 | 原型的音效时长无限循环 | 每条循环 20 秒，接缝做了等功率交叉淡化 | 循环必须无缝，否则每次重播都会「咔」一声。生成器按种类固定种子，因此同一条循环每次渲染结果一致。 |
 | 18 | 原型没有导出功能（纯前端演示，数据不落地） | 新增导出（`/settings/export`）：CSV 两张表（记录 + 阶段）+ JSON 完整存档，经系统分享面板交付 | 规格 M2 要求本地导出，而原型的记录只活在内存里、无导出可言。回归方法：确认设置页有「睡眠数据导出」区块（`lib/features/settings/presentation/settings_page.dart` 的 `SectionHeader('睡眠数据导出')`），且导出的 CSV 首字节是 BOM（`test/sleep_export_test.dart` 的 BOM 用例）。 |
 | 19 | 原型的提醒开关是纯装饰——开关状态不驱动任何调度 | 接真实本地通知：权限被拒时**不写入偏好**、开关回弹；权限为 `denied` 时给出「去系统设置」入口；启动时回收被撤销的授权（把偏好写回 `false`） | 一个写着「开」却不会响的开关，正是规格书说的「设置状态与实际能力不一致」。回归方法：拒绝通知权限后确认 `bedtimeReminderEnabled` 仍为 `false`（`test/reminder_settings_test.dart`）；把启动回收条件改回 `!= granted` 会让 `test/reminder_sync_test.dart` 的 `unsupported` 用例变红。 |
@@ -316,6 +316,7 @@
 | Widget 测试 | 删除入口用**垃圾桶**图标（非借用的停止方块）且带 `danger` 底板——身份断言经变异验证（换回 `stop` 必红） | ✅ `test/pages_widget_test.dart`、`test/record_edit_delete_test.dart` |
 | Widget 测试 | 标签条浮起量：带 home indicator 的设备上胶囊底边离屏幕底 **20pt**、无安全区 12pt、小安全区不被回收量削到下限以下；页面底部留白始终等于「浮起量 + 胶囊**实测**高度 + 16」（量渲染出的矩形，不量函数返回值） | ✅ `test/tab_bar_inset_test.dart`（含变异验证：`_tabBarFloatRelief` 归零，两条用例变红） |
 | Widget 测试 | 底部模糊带：遮罩套在 `BackdropFilter` 外面（结构断言，防硬边）、模糊半径 14、填充上透明下 78% 且单调递增、遮罩方向相反、高度 = 底部预留 + 20（含无安全区的 113）、宽屏不渲染、整条带不拦手势 | ✅ `test/bottom_fade_test.dart`（含变异验证：遮罩方向反转、带子排到标签条之后、高度写死，均变红） |
+| 单元测试 | 应用图标几何（分平台）：macOS 图标角像素**透明**、中心**不透明**、`alpha>128` 的实体包围盒 = 824×824 且四边留白各 100；iOS 图标仍是 1024 满幅**且 PNG 无 alpha 通道**（色型 2，防误伤） | 待实现（断言随生成器放 `tool/generate_app_icons.dart`，并做变异验证：去掉遮罩必红） |
 | 集成/真机 | iOS/Android/macOS 核心流程；通知权限；锁屏录音与中断 | macOS 构建、iOS 模拟器构建已验证；**真机、通知投递与分享面板未验证** |
 | 视觉检查 | 对照 Figma Make 四页在手机/宽屏、浅色/深色核对层级、间距、字体与安全区 | **部分**：v2.5 的巡检覆盖了四个一级页与详情/音效面板；v2.6 那一版追加确认了顶部渐变顶到物理顶端后硬分界消失（iPhone 16 Pro 模拟器，浅色/深色各一遍）。**v2.6 其余新增/改动的界面（自绘确认弹窗、垃圾桶图标、禁用按钮的页内提示、关于卡片）没有做目视核对**，只有几何/结构断言。v2.7 的标签条浮起量同样**只有几何断言**（`test/tab_bar_inset_test.dart`），没有截图核对；v2.8 的底部模糊带已在 2026-09-29 补做目视核对（iPhone 16 Pro 模拟器；浅色看过首页滚动后 / 统计页 / 睡眠详情与助眠音效弹层，**深色仅首页静置态**）：带子顶边（离屏幕底 121pt）无硬边（离带顶约 20pt 的标题处有效 wash 约 9%，越靠屏底越重）、方向为「下重上轻」（越靠近屏幕底越实）、胶囊下半部未发闷（深色下 `bgNavbar` 76% 填充主导）。**仍未逐页逐屏核对，深色覆盖面只有首页**；证据图见 `screenshots/v2.8-*.png` |
 
