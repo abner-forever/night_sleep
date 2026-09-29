@@ -812,7 +812,8 @@ class SettingsPage extends ConsumerWidget {
 
 /// 「关于」卡片里的版本号。
 ///
-/// 版本号来自构建信息，而 `PackageInfo.fromPlatform()` **只在 `initState` 取一次**：
+/// 版本号来自构建信息，而 `PackageInfo.fromPlatform()` **只在 State 首次构建时取一次**
+/// （`late final` 字段初始化器，首次访问即首次 `build`）：
 ///
 /// - 直接把它写在 `build` 里当 `FutureBuilder(future: ...)` 的实参，设置页每次
 ///   重建（切主题、调目标都会）就会拿到一个新 future，`FutureBuilder` 在

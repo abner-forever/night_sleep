@@ -320,9 +320,10 @@ class AppDatabase extends _$AppDatabase {
   Future<void> deleteAllUserData() async {
     await transaction(() async {
       await delete(sleepRecords).go();
-      // 仍然必要，而且不与级联重复：外键只覆盖 `record_id` 指向一条真实存在
-      // 的记录的洞察。`record_id` 为空的、或记录早已不在的那类行，任何级联
-      // 都够不着。
+      // 留作兜底，不与级联重复：外键只覆盖 `record_id` 指向一条真实存在的记录的
+      // 洞察，`record_id` 为空的那类行任何级联都够不着。当前唯一的洞察写入方
+      // `DemoSeed` 恒传 `record_id`，v3 之后外键又保证没有悬空引用，所以这一行
+      // 并不必需——保留只为兜住将来可能出现的无主洞察。
       await delete(insights).go();
     });
   }

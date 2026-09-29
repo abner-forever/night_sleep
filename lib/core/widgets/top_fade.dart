@@ -77,10 +77,8 @@ class TopFade extends StatelessWidget {
                     // 自己构造饱和度矩阵，经 `ImageFilter.compose` 与 blur 合成）。
                     // 刻意很淡：要的是设计里那点色彩抬升，不是染色。
                     Positioned.fill(
-                      child: IgnorePointer(
-                        child: ColoredBox(
-                          color: tokens.accent.withValues(alpha: 0.04),
-                        ),
+                      child: ColoredBox(
+                        color: tokens.accent.withValues(alpha: 0.04),
                       ),
                     ),
                     // 填充渐变原样保留，只是从 `BackdropFilter` 的 child 变成兄弟节点。
