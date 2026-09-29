@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../app/app_toast.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_icons.dart';
@@ -32,15 +31,22 @@ class _DemoDataPageState extends ConsumerState<DemoDataPage> {
   /// 在它之上，会把提示条整个盖住，所以失败反馈必须留在本页。
   String? _error;
 
+  /// 最近一次成功的文案，同样显示在页内（原因见 [_error]）。
+  ///
+  /// 与 [_error] 互斥：两个动作开始时都先把两者清空，且每次只设置其中一个，
+  /// 因此页面上最多只出现一条提示。
+  String? _success;
+
   Future<void> _install() async {
     setState(() {
       _busy = true;
       _error = null;
+      _success = null;
     });
     try {
       await ref.read(sleepRepositoryProvider).installDemoData();
       if (!mounted) return;
-      ref.read(toastProvider.notifier).show('演示数据已安装。');
+      setState(() => _success = '演示数据已安装。');
     } catch (error) {
       // 失败必须看得见。此前异常直接逃出去，界面只会表现为「点了没反应」。
       if (!mounted) return;
@@ -54,11 +60,12 @@ class _DemoDataPageState extends ConsumerState<DemoDataPage> {
     setState(() {
       _busy = true;
       _error = null;
+      _success = null;
     });
     try {
       await ref.read(sleepRepositoryProvider).deleteDemoData();
       if (!mounted) return;
-      ref.read(toastProvider.notifier).show('演示数据已清除。');
+      setState(() => _success = '演示数据已清除。');
     } catch (error) {
       // 同 _install：清除失败同样要在页内可见，不能静默。
       if (!mounted) return;
@@ -145,6 +152,13 @@ class _DemoDataPageState extends ConsumerState<DemoDataPage> {
           Text(
             _error!,
             style: TextStyle(fontSize: 12, height: 1.5, color: tokens.danger),
+          ),
+        ],
+        if (_success != null) ...[
+          const SizedBox(height: 12),
+          Text(
+            _success!,
+            style: TextStyle(fontSize: 12, height: 1.5, color: tokens.accent),
           ),
         ],
         const SizedBox(height: 18),
