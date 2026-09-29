@@ -239,7 +239,7 @@ Bundle ID、Android application ID、签名和发布账号保持 Flutter 默认�
 
 - `dart format --set-exit-if-changed .` → 无改动（84 文件，0 changed）
 - `flutter analyze` → **No issues found**
-- `flutter test` → **237/237 通过**（本轮从 176 起，逐步增至 216，终审修复波再补 1 至 217：
+- `flutter test` → **238/238 通过**（本轮从 176 起，逐步增至 216，终审修复波再补 1 至 217：
   schema v3 迁移 6（含 `record_id` 为空的洞察存活分支）、
   演示数据重装与幂等 2、冷启动播种兜底 4、图标取色 4、顶部渐变与安全区/错误分支留白 3、
   关于卡片居中与版本号 2、自绘确认弹窗 7（另有演示数据页的确认 1，落在 `pages_widget_test`）、
@@ -248,8 +248,9 @@ Bundle ID、Android application ID、签名和发布账号保持 Flutter 默认�
   v2.8 再补 12：底部模糊带的遮罩层级（套在 `BackdropFilter` 外面）与遮罩方向、模糊半径 14、
   填充 0→78% 且单调递增、高度 = 底部预留 + 20（含无安全区的 113）、宽屏不渲染、整条带不拦手势
   （`test/bottom_fade_test.dart`）；
-  v2.9 再补 4：应用图标几何分平台断言（实体四角透明、中心不透明、实体包围盒 824×824 且四边留白 100、
-  iOS 仍满幅无色型 2，`test/app_icons_asset_test.dart`）；
+  v2.9 再补 5：应用图标几何分平台断言（实体四角透明、中心不透明、实体包围盒 824×824 且四边留白 100、
+  iOS 仍满幅、无 alpha 通道（色型 2）；另有一条覆盖七个尺寸——文件名与真实像素尺寸绑定、实体宽随尺寸
+  等比、实体下方投影存在、圆角半径带宽。`test/app_icons_asset_test.dart`）；
   各测试文件覆盖的场景见
   [规格第 9 章](docs/superpowers/specs/2026-09-28-night-sleep-design.md)）。
   本轮多处断言做了**变异验证**（拆掉实现会真的变红），不是「不可能失败的断言」

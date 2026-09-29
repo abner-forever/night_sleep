@@ -74,11 +74,18 @@ const Map<String, int> macosIcons = {
 /// Side of the canvas the SVG is rasterised onto before any downscaling.
 const int masterSize = 1024;
 
-/// macOS 图标的 Apple 网格：1024 画布上实体占 824×824 居中，圆角半径 185.4。
+/// macOS 图标的 Apple 网格：1024 画布上实体占 824×824 居中。
 ///
-/// 实测自系统 app 的 `.icns`（Calculator / Notes 结果一致）：`alpha>128` 的实体恰为
-/// 206/256 = 824/1024，四边留白全等，圆角半径量得 44/256。
+/// 实体比例与四边留白**实测自系统 app 的 `.icns`**（Calculator / Notes 结果一致）：
+/// `alpha>128` 的实体恰为 206/256 = 824/1024，四边留白全等。
 const double macosBodyFraction = 824 / 1024;
+
+/// 圆角半径 = 实体宽的 22.5%（0.225 × 824 = 185.4），这是**比例**来源，不是量出来的
+/// 像素值——早先的注释写「半径量得 44/256」，但 44/256 × 1024 = 176，与 185.4 对不上，
+/// 那句话是错的。
+///
+/// 系统图标只作**交叉验证**：同一套量法（顶行 `alpha>128` 收敛量）下系统图标量得
+/// 44/256，本图标量得 176/1024 = 44×(1024/256)，两者一致，说明比例选得对。
 const double macosCornerRadius = 185.4;
 
 /// macOS 图标的投影。三个值由系统图标的 `alpha>8` 包络反推后扫参逼近得到：
@@ -199,12 +206,24 @@ Future<void> _writeAll(
 
   for (final entry in icons.entries) {
     final scaled = await _resample(master, entry.value, opaque: opaque);
-    final pixels = await scaled.toByteData(format: ui.ImageByteFormat.rawRgba);
+    // 必须取**直乘** alpha 的字节：PNG 色型 6 的规定如此。`rawRgba` 是**预乘**的
+    // （SDK 文档与实测均如此），写进色型 6 后渲染时 alpha 会被乘第二次——每个半透明
+    // 像素（烘焙的圆角轮廓、投影软边）都变暗，alpha 越低越暗（50% 处约暗一半）。
+    // iOS 那条路整幅 alpha=255，两种格式在那里等价，所以两平台共用这一行。
+    final pixels =
+        await scaled.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
     final size = entry.value;
     scaled.dispose();
     expect(pixels, isNotNull, reason: '${entry.key} 读取像素失败');
     File(p.join(directory, entry.key)).writeAsBytesSync(
-      encodePng(pixels!.buffer.asUint8List(), size, size, alpha: !opaque),
+      // 显式带上 offset/length：`asUint8List()` 不带参数时从 ByteData 的**缓冲区**起点读，
+      // 引擎把像素放进带偏移的视图里时会多读到前面的字节。
+      encodePng(
+        pixels!.buffer.asUint8List(pixels.offsetInBytes, pixels.lengthInBytes),
+        size,
+        size,
+        alpha: !opaque,
+      ),
     );
   }
 }
@@ -219,8 +238,11 @@ Future<void> _writeAll(
 //    所以在生成期就钉死。
 //  * macOS 走 `alpha: true`，写颜色类型 6（真彩 + alpha）。圆角外的透明必须有 alpha
 //    才存得下——这正是 macOS 这条路存在的理由。
+//
+// 色型 6 存的是**直乘**（非关联）alpha，所以调用方传进来的 RGBA 也必须是直乘的
+// （见 `_writeAll` 用 `rawStraightRgba` 而非 `rawRgba` 的理由）。
 
-/// 把 [rgba]（每像素 4 字节，RGBA 顺序）编码成 [width]×[height] 的 PNG。
+/// 把 [rgba]（每像素 4 字节、RGBA 顺序、**直乘** alpha）编码成 [width]×[height] 的 PNG。
 ///
 /// [alpha] 为 false 时丢弃第 4 个通道、写颜色类型 2；为 true 时保留、写颜色类型 6。
 Uint8List encodePng(Uint8List rgba, int width, int height,

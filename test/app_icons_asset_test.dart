@@ -14,21 +14,36 @@ import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 
-const String _macos1024 =
-    'macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_1024.png';
-const String _macos256 =
-    'macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_256.png';
-const String _ios1024 =
-    'ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-1024x1024@1x.png';
+const String _macosDir = 'macos/Runner/Assets.xcassets/AppIcon.appiconset';
+const String _iosDir = 'ios/Runner/Assets.xcassets/AppIcon.appiconset';
+
+const String _macos1024 = '$_macosDir/app_icon_1024.png';
+const String _macos256 = '$_macosDir/app_icon_256.png';
+const String _ios1024 = '$_iosDir/Icon-App-1024x1024@1x.png';
+
+/// macOS 图标集：文件名 → 像素尺寸。
+///
+/// 与生成器的 `macosIcons` 是同一份约定，故意**各写一遍**：这一组用例要钉的正是
+/// 「文件名与真实像素尺寸绑定」这件事，从生成器 import 过来就等于共用同一个
+/// 可能出错的定义，绑定被写错时两边一起错、用例照样绿。
+const Map<String, int> _macosIcons = {
+  'app_icon_16.png': 16,
+  'app_icon_32.png': 32,
+  'app_icon_64.png': 64,
+  'app_icon_128.png': 128,
+  'app_icon_256.png': 256,
+  'app_icon_512.png': 512,
+  'app_icon_1024.png': 1024,
+};
 
 void main() {
   // 用普通 test() 而非 testWidgets：FakeAsync 下引擎的异步解码不保证完成。
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test('macOS 1024 图标：圆角烘焙 + 四边留白 100', () async {
-    final bytes = File(_macos1024).readAsBytesSync();
-    final rgba = await _decode(bytes, _macos1024);
-    final img = _Geometry.of(rgba, 1024);
+    final decoded =
+        await _decode(File(_macos1024).readAsBytesSync(), _macos1024);
+    final img = _Geometry.of(decoded.rgba, decoded.width);
 
     expect(img.cornerAlpha, lessThan(8), reason: '左上角应当是透明的（圆角在文件里）');
     expect(img.centreAlpha, 255, reason: '中心必须不透明');
@@ -58,11 +73,46 @@ void main() {
     // 那一列带抗锯齿（1024 上实测 alpha 244），往里一像素才是 255。
     expect(img.alphaAt(img.left + 1, img.size ~/ 2), 255,
         reason: '实体左边缘中点是直边，必须不透明');
+
+    // 投影必须存在。实体下缘（`bottom` = 923）**之外**仍应有 alpha——实体是 824×824
+    // 且四边留白全等，正下方这一带只剩投影能给出像素。1024 上 `bottom + 6` 实测 103；
+    // 抹掉 `macosShadowOffset` 那一笔就会变 0。
+    expect(img.alphaAt(img.size ~/ 2, img.bottom + 6), greaterThan(0),
+        reason: '实体下方应有一圈投影，删掉投影这里会变 0');
+
+    // 半径带宽：把 185.4（实体宽的 22.5%）与「退回 60」分开，也挡住「圆角放大到把
+    // 实体削没」。两点都在 1024 上实测：`(120,120)` = 0（在半径 185.4 的切角里，
+    // 半径 60 时它会落回实体内部变成不透明），`(165,165)` = 255（沿对角线往内回到
+    // 实体内部，防「裁过头」）。
+    expect(img.alphaAt(120, 120), lessThan(8),
+        reason: '实体左上角外侧应被圆角切掉——半径退回 60 时这一点会变不透明');
+    expect(img.alphaAt(165, 165), greaterThan(128),
+        reason: '沿对角线往内走应回到实体内部——防圆角裁过头');
+  });
+
+  test('macOS 七个尺寸：文件名与像素尺寸绑定、实体宽随尺寸等比', () async {
+    for (final entry in _macosIcons.entries) {
+      final path = '$_macosDir/${entry.key}';
+      final decoded = await _decode(File(path).readAsBytesSync(), path);
+
+      expect(decoded.width, entry.value,
+          reason: '${entry.key} 的像素宽必须等于文件名里的尺寸');
+      expect(decoded.height, entry.value,
+          reason: '${entry.key} 的像素高必须等于文件名里的尺寸');
+
+      final img = _Geometry.of(decoded.rgba, decoded.width);
+      // 实体宽 = round(size × 824/1024)。乘积落在半像素时最邻近整数会差 1
+      // （16px 上实测 12 而非 13、128px 上实测 104 而非 103），所以给 ±1。
+      expect(img.bodyWidth, closeTo((entry.value * 824 / 1024).round(), 1),
+          reason: '${entry.key} 的实体宽应随尺寸等比');
+      expect(img.padLeft, closeTo(img.padRight, 1),
+          reason: '${entry.key} 的实体应居中，左右留白相等');
+    }
   });
 
   test('macOS 256 图标：同一套比例缩下来', () async {
-    final rgba = await _decode(File(_macos256).readAsBytesSync(), _macos256);
-    final img = _Geometry.of(rgba, 256);
+    final decoded = await _decode(File(_macos256).readAsBytesSync(), _macos256);
+    final img = _Geometry.of(decoded.rgba, decoded.width);
 
     // 824/1024×256 = 206；留白 (256−206)/2 = 25。
     expect(img.bodyWidth, closeTo(206, 1));
@@ -93,8 +143,8 @@ void main() {
     final bytes = File(_ios1024).readAsBytesSync();
     expect(_colourType(bytes), 2, reason: 'App Store 拒收带 alpha 的应用图标');
 
-    final rgba = await _decode(bytes, _ios1024);
-    final img = _Geometry.of(rgba, 1024);
+    final decoded = await _decode(bytes, _ios1024);
+    final img = _Geometry.of(decoded.rgba, decoded.width);
     expect(img.cornerAlpha, 255, reason: 'iOS 由系统套遮罩，文件本身必须满幅不透明');
     expect(img.bodyWidth, 1024);
     expect(img.padLeft, 0);
@@ -104,15 +154,27 @@ void main() {
 /// PNG 的 IHDR 里，颜色类型在第 25 个字节（8 签名 + 4 长度 + 4 `IHDR` + 4 宽 + 4 高 + 1 位深）。
 int _colourType(Uint8List png) => png[25];
 
-/// 解码成未预乘的 RGBA 字节。
-Future<Uint8List> _decode(Uint8List bytes, String path) async {
+/// 解码一张 PNG，返回**直乘**（非关联）alpha 的 RGBA 字节与像素尺寸。
+///
+/// 取 `rawStraightRgba` 而非 `rawRgba`：后者是**预乘** alpha（SDK 文档明写，实测也如此）。
+/// 本组用例只读 alpha 通道，两种格式在那里等价；但生成器写色型 6 时必须给直乘字节
+/// （`rawRgba` 会让半透明像素变暗），测试与产物走同一格式，注释才对得上实物。
+Future<({Uint8List rgba, int width, int height})> _decode(
+    Uint8List bytes, String path) async {
   final codec = await ui.instantiateImageCodec(bytes);
   final frame = await codec.getNextFrame();
-  final data = await frame.image.toByteData(format: ui.ImageByteFormat.rawRgba);
+  final data =
+      await frame.image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
+  final width = frame.image.width;
+  final height = frame.image.height;
   frame.image.dispose();
   codec.dispose();
   expect(data, isNotNull, reason: '$path 解码失败');
-  return data!.buffer.asUint8List();
+  return (
+    rgba: data!.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+    width: width,
+    height: height,
+  );
 }
 
 /// 按 `alpha > 128` 量实体（与量系统图标时同一口径，投影的软边因此不参与）。
