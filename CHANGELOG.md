@@ -14,7 +14,8 @@
 于是状态栏那段 `[0, safeTop]` 既无填充也无模糊，边界处出现 `0 → 0.92` 的硬跳变。
 改为**外壳去掉顶部安全区缩进**，状态栏留白由各页滚动视图按新接口 `pageTopInset` 施加，
 渐变带原点回到屏幕物理顶端。顺带补上规格要求、此前缺失的 `saturate(125%)`
-（`ImageFilter` 没有对应物，用 `alpha 0.04` 的 accent 叠加层近似）与 320ms 时长。
+（`ImageFilter` 没有内置的 saturate 构造器，本轮用 `alpha 0.04` 的 accent 叠加层近似；
+也可用 `ColorFilter.matrix` 自行构造饱和度矩阵，经 `ImageFilter.compose` 与 blur 合成）与 320ms 时长。
 
 ② **清除演示数据后点「重新安装」毫无反应**（最严重）。根因有两层。数据层：
 `Insights.recordId` **没有外键**（对照 stages/clips 都有 `ON DELETE CASCADE`），
@@ -54,7 +55,8 @@ schema v3**；`DemoSeed.install` 四条写入路径全部改成 upsert（幂等�
 `AppIcons.glyph` 退回硬编码的黑色，而该值被**文本替换进 SVG 的 `stroke`** 再交给
 `SvgPicture.string`——颜色在构造那一刻就烤进去了，外面那圈 `IconTheme.merge` **从未起作用**
 （`SvgPicture` 不读 `IconTheme`），选中/未选中两态都是黑的。改为把颜色真正传下去，
-并把兜底的黑改成**断言**，让同类疏漏不再静默。
+并**加**一条断言（`assert(color != null)`）：debug 下漏传即炸，让同类疏漏不再静默——**release 下
+仍退回黑色**（`color ?? const Color(0xFF000000)` 保留着，与本轮修复前的行为一致）。
 
 改动同步进规格（§2.2、§2.3、§5.1、§8 偏差 #12/#20、§9 测试矩阵）、`README.md`
 （实现范围 / 验证记录）与 `CLAUDE.md`（schema v3）。**未验证项**（含本轮新增的

@@ -83,9 +83,9 @@ test/                  领域计算测试
 - **顶部渐变**：一级页面滚动超过 12px 后，顶部浮出 144px 的 `blur(14px)` 渐变带
   （宽屏和弹层打开时自动停用），与设计的 `.ios-top-fade` 一致；带顶到**屏幕物理顶端**
   （状态栏那段也参与模糊，不再有硬分界），滚动超 12px 后 320ms 淡入上移。
-  `saturate(125%)` 在 `ImageFilter` 里没有对应物，用一层极淡的 accent 叠加（`alpha 0.04`）**近似**
-  （与 `glass_surface.dart` 同一手法）。外壳不再套顶部 `SafeArea`，状态栏留白改由各页滚动视图
-  按 `pageTopInset` 施加。
+  `ImageFilter` 没有内置的 saturate 构造器，本轮用一层极淡的 accent 叠加（`alpha 0.04`）**近似**
+  （也可用 `ColorFilter.matrix` 自行构造饱和度矩阵）；与 `glass_surface.dart` 同一手法。
+  外壳不再套顶部 `SafeArea`，状态栏留白改由各页滚动视图按 `pageTopInset` 施加。
 - **弹层手势**：底部弹层支持点击蒙层关闭、点击把手关闭、把手跟手下拉超过阈值关闭；蒙层是独立
   的淡入层，不随面板从底部滑入。
 - **编辑与删除**：睡眠详情的底部提供「编辑记录」「删除记录」。编辑复用记录表单并预填原值，
@@ -231,7 +231,8 @@ Bundle ID、Android application ID、签名和发布账号保持 Flutter 默认�
 - `flutter analyze` → **No issues found**
 - `flutter test` → **216/216 通过**（本轮从 176 起，逐步增至 216：schema v3 迁移 5、
   演示数据重装与幂等 2、冷启动播种兜底 4、图标取色 4、顶部渐变与安全区/错误分支留白 3、
-  关于卡片居中与版本号 2、自绘确认弹窗 8、删除图标 2、`PrimaryAction` 禁用态 10；
+  关于卡片居中与版本号 2、自绘确认弹窗 7（另有演示数据页的确认 1，落在 `pages_widget_test`）、
+  删除图标 2、`PrimaryAction` 禁用态 10；
   各测试文件覆盖的场景见
   [规格第 9 章](docs/superpowers/specs/2026-09-28-night-sleep-design.md)）。
   本轮多处断言做了**变异验证**（拆掉实现会真的变红），不是「不可能失败的断言」
