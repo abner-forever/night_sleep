@@ -1,9 +1,39 @@
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../../core/config/app_config.dart';
 import '../../../core/database/app_database.dart';
 import '../domain/sleep_stage.dart';
 import '../domain/sound_event.dart';
+
+/// 需要时安装演示数据，任何失败都只记录、不外抛。
+///
+/// 由 `main()` 在 `runApp` **之前**调用，所以这里不能往外抛：一次写入失败
+/// （残留行撞主键、库文件损坏、磁盘写满）会一路冒到 `runApp` 之前，
+/// 屏幕上什么都留不下——用户既看不到首页，也没有任何可上报的现象。
+/// 一个空首页是用户能上报的 bug；一次死在这里的启动不是。
+///
+/// 判据是「还没有演示行」而不是「表是空的」，这样后开开关才真的生效。
+/// 已有的真实记录一律不碰：演示行带 `source = 'demo'`，界面会标注它们，
+/// 而 `deleteDemoData` 只删这些行。
+///
+/// 抽成顶层函数是为了能被测到——`main()` 在测试里跑不起来，而这条路径的
+/// 全部价值就在于「失败时仍然不抛」。
+Future<void> installDemoSeedIfNeeded(
+  AppDatabase database, {
+  required bool enabled,
+}) async {
+  if (!enabled) return;
+
+  try {
+    final existing = await database.allRecords();
+    final hasDemo = existing.any((row) => row.source == AppConfig.demoSource);
+    if (hasDemo) return;
+    await DemoSeed.install(database);
+  } on Object catch (error, stack) {
+    debugPrint('演示数据安装失败，应用继续启动：$error\n$stack');
+  }
+}
 
 /// The prototype's bundled sample nights, used so the UI can be built and
 /// reviewed against realistic data.

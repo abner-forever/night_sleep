@@ -18,18 +18,13 @@ Future<void> main() async {
   final scheduler = LocalReminderScheduler();
   await scheduler.initialize();
 
-  // 演示数据只装一次，且只在开关打开的构建里。
-  //
-  // 判据是「还没有演示行」而不是「表是空的」，这样后开开关才真的生效。
-  // 已有的真实记录一律不碰：演示行带 `source = 'demo'`，界面会标注它们，
-  // 而 `deleteDemoData` 只删这些行。
-  if (AppConfig.demoDataEnabled) {
-    final existing = await database.allRecords();
-    final hasDemo = existing.any((row) => row.source == AppConfig.demoSource);
-    if (!hasDemo) {
-      await DemoSeed.install(database);
-    }
-  }
+  // 演示数据只装一次，且只在开关打开的构建里。判断依据、以及「失败也不许把应用
+  // 带下水」的兜底都在 `installDemoSeedIfNeeded` 里——那条路径需要有测试盯着，
+  // 而 `main()` 在测试里跑不起来，所以它必须待在能被单独调用的地方。
+  await installDemoSeedIfNeeded(
+    database,
+    enabled: AppConfig.demoDataEnabled,
+  );
 
   runApp(
     ProviderScope(
