@@ -504,9 +504,33 @@ void main() {
       await tester.tap(find.text('清除演示数据'));
       await tester.pumpAndSettle();
 
+      // 清除是不可撤销的删除，与另外两处一样要过二次确认。此前它点一下就删。
+      expect(find.text('清除演示数据？'), findsOneWidget);
+      await tester.tap(find.text('清除'));
+      await tester.pumpAndSettle();
+
       final remaining = await repository.loadAll();
       expect(remaining, hasLength(1), reason: '只应删掉演示行');
       expect(remaining.single.id, 'manual-1');
+    });
+
+    testWidgets('取消清除演示数据的确认后，演示行一条都不动', (tester) async {
+      await DemoSeed.install(database, now: DateTime(2026, 9, 27, 12));
+      final repository = SleepRepository(database);
+      final entries = await repository.loadAll();
+      await pumpWithOverrides(tester, const DemoDataPage(), entries: entries);
+
+      await tester.tap(find.text('清除演示数据'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('清除演示数据？'), findsNothing, reason: '点取消后弹窗应关闭');
+      expect(
+        await repository.loadAll(),
+        hasLength(entries.length),
+        reason: '取消不得删除任何演示行',
+      );
     });
 
     testWidgets('展开下拉菜单不依赖卡片内部裁剪', (tester) async {

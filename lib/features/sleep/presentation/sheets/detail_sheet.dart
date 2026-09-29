@@ -10,6 +10,7 @@ import '../../../../core/theme/app_tokens.dart';
 import '../../../../core/widgets/app_basics.dart';
 import '../../../../core/widgets/app_icons.dart';
 import '../../../../core/widgets/app_sheet.dart';
+import '../../../../core/widgets/confirm_dialog.dart';
 import '../../data/sleep_repository.dart';
 import '../../domain/sleep_entry.dart';
 import '../../domain/sleep_stage.dart';
@@ -58,25 +59,12 @@ class _DetailSheetState extends ConsumerState<DetailSheet> {
   }
 
   Future<void> _delete() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('删除 ${widget.entry.dateLabel} 的记录？'),
-        content: const Text('这一晚的睡眠记录、睡眠阶段与声音事件都会被永久删除，此操作无法撤销。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(
-              '删除',
-              style: TextStyle(color: AppTokens.of(context).danger),
-            ),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: '删除 ${widget.entry.dateLabel} 的记录？',
+      message: '这一晚的睡眠记录、睡眠阶段与声音事件都会被永久删除，此操作无法撤销。',
+      confirmLabel: '删除',
+      destructive: true,
     );
     if (confirmed != true) return;
 

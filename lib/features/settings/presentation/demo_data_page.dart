@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_icons.dart';
+import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/glass_surface.dart';
 import '../../../core/widgets/ios_controls.dart';
 import '../../../core/widgets/subpage.dart';
@@ -57,6 +58,18 @@ class _DemoDataPageState extends ConsumerState<DemoDataPage> {
   }
 
   Future<void> _clear() async {
+    // 清除是不可撤销的删除，与另外两处删除一样要过二次确认——此前这里点一下就删，
+    // 是应用内唯一的例外。
+    final confirmed = await showConfirmDialog(
+      context,
+      title: '清除演示数据？',
+      message: '所有演示记录及其睡眠阶段、声音事件都会被永久删除，你自己的记录不受影响。',
+      confirmLabel: '清除',
+      destructive: true,
+    );
+    if (confirmed != true) return;
+    if (!mounted) return;
+
     setState(() {
       _busy = true;
       _error = null;
