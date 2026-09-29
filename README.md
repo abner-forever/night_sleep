@@ -281,7 +281,8 @@ Bundle ID、Android application ID、签名和发布账号保持 Flutter 默认�
     偏好**临时**改成 dark、用 `flutter run` 起应用截的，截完已还原为 light（演示数据 5 条未受影响）；
     巡检中途在助眠音效面板**卡住不动**（95 秒内每帧完全相同），已终止——上节本来就记过
     `flutter drive` 这条通道在本机不可靠。
-    证据图（`screenshots/`，均为 1206×460 的底部裁剪，来自同一次采样的原始帧，未重新生成或美化）：
+    证据图（`screenshots/`，**该目录在 `.gitignore` 里、未入库**，这三张只存在于本机工作树；
+    均为 1206×460 的底部裁剪，来自同一次采样的原始帧，未重新生成或美化）：
     `screenshots/v2.8-light-home-scrolled.png`（浅色首页滚动后，「最近记录」清晰、其下化开）、
     `screenshots/v2.8-light-stats.png`（浅色统计页，最底部「平均时长」只剩残影）、
     `screenshots/v2.8-dark-home.png`（深色首页，胶囊下方洗到接近黑）。
