@@ -201,7 +201,7 @@ class SettingsPage extends ConsumerWidget {
     return ListView(
       padding: EdgeInsets.fromLTRB(
         pageGutter(context),
-        0,
+        pageTopInset(context),
         pageGutter(context),
         pageBottomInset(context),
       ),

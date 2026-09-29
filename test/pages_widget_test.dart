@@ -6,6 +6,7 @@ import 'package:night_sleep/app/app.dart';
 import 'package:night_sleep/core/database/app_database.dart';
 import 'package:night_sleep/core/theme/app_theme.dart';
 import 'package:night_sleep/core/widgets/app_icons.dart';
+import 'package:night_sleep/core/widgets/top_fade.dart';
 import 'package:night_sleep/features/home/presentation/home_page.dart';
 import 'package:night_sleep/features/log/presentation/log_page.dart';
 import 'package:night_sleep/features/settings/presentation/demo_data_page.dart';
@@ -478,6 +479,29 @@ void main() {
       final menuRect = tester.getRect(find.text('Claude'));
       expect(menuRect.left, greaterThanOrEqualTo(0));
       expect(menuRect.right, lessThanOrEqualTo(430));
+    });
+  });
+
+  group('应用外壳', () {
+    testWidgets('顶部渐变带贴在屏幕物理顶端，不被顶部安全区推下去', (tester) async {
+      // 分界线来自「整条带被 SafeArea 一起下移」。把顶部安全区设成非零，
+      // 这条断言才看得见东西——pad 为 0 时推不推下去都一样。
+      tester.view.physicalSize = const Size(430, 900);
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.padding = const FakeViewPadding(top: 47);
+      addTearDown(tester.view.reset);
+
+      await pumpWithOverrides(tester, const AppScaffold());
+
+      final fade = find.byType(TopFade);
+      expect(fade, findsOneWidget, reason: '外壳里没有顶部渐变带');
+      expect(
+        tester.getTopLeft(fade).dy,
+        0,
+        reason: '渐变带被顶部安全区推下去了——状态栏那段会完全没有渐变，'
+            '而带内第一个停点是满值 alpha，两者形成一条硬分界',
+      );
+      expect(tester.getSize(fade).height, 144);
     });
   });
 }

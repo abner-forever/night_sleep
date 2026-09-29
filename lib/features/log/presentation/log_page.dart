@@ -444,7 +444,7 @@ class _LogPageState extends ConsumerState<LogPage> {
     return ListView(
       padding: EdgeInsets.fromLTRB(
         pageGutter(context),
-        0,
+        pageTopInset(context),
         pageGutter(context),
         pageBottomInset(context),
       ),

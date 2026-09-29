@@ -48,7 +48,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
         return ListView(
           padding: EdgeInsets.fromLTRB(
             pageGutter(context),
-            0,
+            pageTopInset(context),
             pageGutter(context),
             pageBottomInset(context),
           ),

@@ -119,7 +119,6 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
     final tokens = AppTokens.of(context);
     final settings = ref.watch(settingsProvider).valueOrNull;
     final showOnboarding = settings != null && !settings.onboarded;
-    final isWide = MediaQuery.sizeOf(context).width >= kWideLayoutBreakpoint;
     final tab = ref.watch(activeTabProvider);
 
     return Scaffold(
@@ -128,6 +127,7 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
         child: Stack(
           children: [
             SafeArea(
+              top: false,
               bottom: false,
               child: AppShell(
                 current: tab,
@@ -139,7 +139,6 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
                   onRingConsumed: () => _ringHasPlayed = true,
                   onOpenNoise: _openNoiseSheet,
                   onRecordNow: _goToLog,
-                  isWide: isWide,
                 ),
               ),
             ),
@@ -167,7 +166,6 @@ class _TabContent extends StatelessWidget {
     required this.onRingConsumed,
     required this.onOpenNoise,
     required this.onRecordNow,
-    required this.isWide,
   });
 
   final AppTab tab;
@@ -175,7 +173,6 @@ class _TabContent extends StatelessWidget {
   final VoidCallback onRingConsumed;
   final VoidCallback onOpenNoise;
   final VoidCallback onRecordNow;
-  final bool isWide;
 
   @override
   Widget build(BuildContext context) {
@@ -184,23 +181,18 @@ class _TabContent extends StatelessWidget {
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 720),
-        child: Padding(
-          // Top only. The bottom is a page-level content inset — see
-          // [pageBottomInset] — so the scroll viewport still reaches the bottom
-          // of the screen and content passes under the floating tab bar.
-          padding: EdgeInsets.only(top: isWide ? 48 : 24),
-          child: switch (tab) {
-            AppTab.home => HomePage(
-                animateRing: !ringHasPlayed,
-                onRingConsumed: onRingConsumed,
-                onOpenNoise: onOpenNoise,
-                onRecordNow: onRecordNow,
-              ),
-            AppTab.log => const LogPage(),
-            AppTab.stats => const StatsPage(),
-            AppTab.settings => const SettingsPage(),
-          },
-        ),
+        // 顶部留白改由各页自己的滚动视图施加——见 [pageTopInset]。
+        child: switch (tab) {
+          AppTab.home => HomePage(
+              animateRing: !ringHasPlayed,
+              onRingConsumed: onRingConsumed,
+              onOpenNoise: onOpenNoise,
+              onRecordNow: onRecordNow,
+            ),
+          AppTab.log => const LogPage(),
+          AppTab.stats => const StatsPage(),
+          AppTab.settings => const SettingsPage(),
+        },
       ),
     );
   }

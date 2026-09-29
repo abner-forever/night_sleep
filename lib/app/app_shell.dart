@@ -59,6 +59,18 @@ double pageBottomInset(BuildContext context) {
   return tabBarReserve(context);
 }
 
+/// 页面在状态栏下方需要的留白。
+///
+/// 与 [pageBottomInset]、[pageGutter] 一样，由各页自己的滚动视图施加，
+/// **不是**外壳上的 `SafeArea`。外壳级的 `SafeArea` 会把整个外壳按该内边距
+/// 一起下移，于是渐变带的原点落到了状态栏下沿：状态栏那段完全没有渐变填充，
+/// 而带内第一个停点正好是满值，两者形成一条横贯页面的硬分界。
+/// 把留白放在这里，视口才能顶到物理顶端，内容滚进状态栏下面，
+/// 渐变带整整 144px 也才有东西可模糊。
+double pageTopInset(BuildContext context) =>
+    MediaQuery.paddingOf(context).top +
+    (MediaQuery.sizeOf(context).width >= kWideLayoutBreakpoint ? 48 : 24);
+
 /// The page's horizontal gutter.
 ///
 /// Applied by each page's own scroll view rather than by the shell, so the

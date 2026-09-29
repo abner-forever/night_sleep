@@ -98,7 +98,7 @@ class _HomeContent extends StatelessWidget {
     return ListView(
       padding: EdgeInsets.fromLTRB(
         pageGutter(context),
-        0,
+        pageTopInset(context),
         pageGutter(context),
         pageBottomInset(context),
       ),
