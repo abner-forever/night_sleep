@@ -131,7 +131,10 @@ test/                  领域计算测试
   （用户在系统设置里撤销过），把偏好写回 `false`。Android 用 `inexactAllowWhileIdle`
   （刻意不申请精确闹钟权限）。
 - **应用图标**：由 `assets/branding/app-icon.svg` 生成，`tool/generate_app_icons.dart` 一次
-  产出 iOS 15 张 + macOS 7 张，全部无 alpha 通道、无自带圆角。
+  产出 iOS 15 张 + macOS 7 张。**v2.9 起是两条渲染路径**：iOS 满幅直角、无 alpha 通道（色型 2，
+  由系统套遮罩）；macOS 按 Apple 图标网格烘焙圆角与留白（实体 824×824、四边留白 100、半径 185.4）
+  并加投影，**保留 alpha**（色型 6）——因为 macOS **不套遮罩**，圆角得写在文件里。回归断言见
+  `test/app_icons_asset_test.dart`，偏差见规格 #16。
 - **数据**：SQLite（Drift）schema v3，含阶段、声音片段、洞察三张新表与 v1→v2→v3 迁移；
   外键级联删除；仓库用 3 条批量查询组装聚合。v3 给 `Insights.recordId` 补上 `ON DELETE CASCADE`
   外键（此前没有，`deleteDemoData` 会留下孤儿洞察行，重装演示数据时主键冲突、异常还被静默吞掉），
@@ -234,17 +237,19 @@ Bundle ID、Android application ID、签名和发布账号保持 Flutter 默认�
 
 本机环境：macOS 14.8.9（23J631，Intel），Flutter 3.47.5 stable。最近一次复跑：**2026-09-29**。
 
-- `dart format --set-exit-if-changed .` → 无改动（83 文件，0 changed）
+- `dart format --set-exit-if-changed .` → 无改动（84 文件，0 changed）
 - `flutter analyze` → **No issues found**
-- `flutter test` → **232/232 通过**（本轮从 176 起，逐步增至 216，终审修复波再补 1 至 217：
+- `flutter test` → **237/237 通过**（本轮从 176 起，逐步增至 216，终审修复波再补 1 至 217：
   schema v3 迁移 6（含 `record_id` 为空的洞察存活分支）、
   演示数据重装与幂等 2、冷启动播种兜底 4、图标取色 4、顶部渐变与安全区/错误分支留白 3、
   关于卡片居中与版本号 2、自绘确认弹窗 7（另有演示数据页的确认 1，落在 `pages_widget_test`）、
   删除图标 2、`PrimaryAction` 禁用态 10；
   v2.7 再补 4：标签条浮起量与页面底部留白同源、胶囊实测高度 65px（`test/tab_bar_inset_test.dart`）；
-  v2.8 再补 11：底部模糊带的遮罩层级（套在 `BackdropFilter` 外面）与遮罩方向、模糊半径 14、
+  v2.8 再补 12：底部模糊带的遮罩层级（套在 `BackdropFilter` 外面）与遮罩方向、模糊半径 14、
   填充 0→78% 且单调递增、高度 = 底部预留 + 20（含无安全区的 113）、宽屏不渲染、整条带不拦手势
   （`test/bottom_fade_test.dart`）；
+  v2.9 再补 4：应用图标几何分平台断言（实体四角透明、中心不透明、实体包围盒 824×824 且四边留白 100、
+  iOS 仍满幅无色型 2，`test/app_icons_asset_test.dart`）；
   各测试文件覆盖的场景见
   [规格第 9 章](docs/superpowers/specs/2026-09-28-night-sleep-design.md)）。
   本轮多处断言做了**变异验证**（拆掉实现会真的变红），不是「不可能失败的断言」
@@ -253,6 +258,13 @@ Bundle ID、Android application ID、签名和发布账号保持 Flutter 默认�
   `package_info_plus` 依赖虽然连 `macos/Flutter/GeneratedPluginRegistrant.swift` 一并提交了，
   但它在新构建里的原生注册、以及设置页版本号的实际取值**都没有在构建/运行中验证过**
   （测试里用的是包自带的 `setMockInitialValues`）
+- **应用图标构建（v2.9）**：`flutter build macos --debug` 于 **2026-09-29** 成功，
+  `build/macos/Build/Products/Debug/night_sleep.app/Contents/Resources/AppIcon.icns` 的时间戳为
+  **2026-09-29 18:56:15**（源 PNG 为 18:12:25，确认本次重建吃到了新产物）。用 `iconutil` 把该
+  `.icns` 抠出来量了 256px 那一档：色型 6、实体 206×206、四边留白各 25、**画布角与实体角 alpha 均为 0**、
+  中心 255——即**构建产物里确实带着烘焙好的圆角**，不是只有源文件对。
+  **但 Dock 里实际画出来的样子仍未经人眼确认**（本任务不做目视，见下「未验证」）——断言与量产物
+  只能保证文件几何正确，保证不了 Dock 的绘制；清缓存步骤见 CHANGELOG 2.9
 - **界面巡检**：
   - v2.5 那轮完整巡检（iOS 模拟器截图，浅色/深色各一遍，逐屏看过首页/记录/统计/设置/
     二级页/睡眠详情/助眠音效面板）的记录仍适用。
@@ -300,6 +312,9 @@ Bundle ID、Android application ID、签名和发布账号保持 Flutter 默认�
     标签条浮起量（v2.7）仍未经眼。底部模糊带（v2.8）已在 2026-09-29 看过一遍（浅色：首页滚动后 /
     统计页 / 详情与助眠音效弹层；深色：首页静置态），但**深色只有首页这一屏、没有逐页核对**，
     浅色下详情/音效弹层以外的二级页（设置、数据导入、洞察服务、演示数据）也未见，故仍有未覆盖面
+  - **macOS Dock 图标的目视确认（v2.9）**：产物已重建、其几何也经像素核对（见上「应用图标构建」），
+    但**没有人看过 Dock 里实际画出来的样子**——Dock 图标缓存、macOS 版本差异都可能在文件正确的前提下
+    画出别的东西。**需人工确认后**才能把 v2.9 这条划掉
   - 真机交互、窄屏宽屏溢出检查：**尚未执行**
     （宽屏侧边栏布局只在 macOS 桌面构建里跑过，未逐屏核对）
   - Android / Web 构建：**尚未执行**（Android 平台目录也不存在，见「未实现」表）

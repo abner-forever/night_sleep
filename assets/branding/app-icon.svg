@@ -13,10 +13,14 @@
     </linearGradient>
   </defs>
   <!--
-    Full-bleed square. The delivered icon carries rx="236" on this rect for use
-    as a web favicon and apple-touch-icon; that radius is removed here because
-    iOS and macOS apply their own mask to an app icon, and a pre-rounded icon
-    ends up with rounded corners inside a rounded mask.
+    满幅直角。交付的原图在 rect 上带 rx="236"，是给 web favicon 与
+    apple-touch-icon 用的；这里去掉它是因为 **iOS** 会给应用图标套遮罩，
+    预先倒过角的图标会变成「圆角套圆角」。
+
+    注意 macOS **不套遮罩**——它的圆角是烘焙在图标文件里的。所以 macOS 那套
+    不是直接用这份满幅图，而是由 tool/generate_app_icons.dart 按 Apple 图标网格
+    重新裁出圆角与留白。历史注释把两个平台混为一谈，导致 macOS 的 Dock 图标
+    被撑成方块，别再改回去。
   -->
   <rect width="1024" height="1024" fill="url(#night)"/>
   <path d="M839 695c-58 63-141 102-233 102-175 0-317-142-317-317 0-103 49-194 125-252-28 52-44 112-44 175 0 204 165 369 369 369 35 0 69-5 100-15Z" fill="#171D71" fill-opacity=".2"/>

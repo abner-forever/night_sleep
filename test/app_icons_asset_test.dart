@@ -70,7 +70,10 @@ void main() {
     expect(img.padTop, closeTo(25, 1));
     expect(img.cornerAlpha, lessThan(8));
 
-    // 缩小之后角上依然是透明的（实测四点均为 0）：圆角不会被重采样糊回来。
+    // 256px 上实体四角仍是透明的（实测四点均为 0）：在这个尺寸上圆角不会被重采样糊回来。
+    // 这只对本用例覆盖的 256 成立，**不能推广到所有尺寸**——小到 16px 时一个像素平均的是
+    // 源图 64×64 的一块，而实体角上那一块整个落在圆角内部，量到的 alpha 是 255 而非 0。
+    // 换言之「圆角在文件里」由 1024 那条保证，这里只是同一比例缩下来的复核。
     expect(img.alphaAt(img.left, img.top), lessThan(8),
         reason: '实体左上角应当透明——圆角没烘焙进去时这一点是实心的');
     expect(img.alphaAt(img.right, img.top), lessThan(8),

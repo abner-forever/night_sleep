@@ -327,7 +327,10 @@ final Rect macosBodyRect = Rect.fromLTWH(
 ```
 
 > **注意**：`masterSize * (1 - macosBodyFraction)` 是 `int * double`，结果是 `double`，
-> 所以这里用 `final` 而不是 `const`——`toDouble()` 之类的调用不是常量表达式，会编译失败。
+> 且除法与乘法在常量求值里都成立，`Rect.fromLTWH` 又是 const 构造器，所以整条表达式是编译期
+> 常量，**这里可以是 `const`**（实现即用 `const`，Task 2 已由分析器实测确认）。
+> 本计划初稿曾断言它「不能是 `const`」，那是错的——但下面那条 `const s = masterSize.toDouble();`
+> 是真错：`toDouble()` 不是常量表达式。
 
 - [ ] **Step 3: 编码器加 alpha 分支**
 
