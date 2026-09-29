@@ -88,9 +88,10 @@ void main() {
   }
 
   /// 写出一份 v2 的库，形态就是线上应用在「清除演示数据」之后留下的样子：
-  /// 一条幸存下来的夜晚记录和它的洞察，外加一条记录已经不在了的洞察
+  /// 一条幸存下来的夜晚记录和它的洞察，一条记录已经不在了的洞察
   /// （`demo-9`——演示行被删掉了，洞察没被删，因为 v2 的 `insights.record_id`
-  /// 没有外键）。
+  /// 没有外键），外加一条 `record_id` 为空的洞察——它从未挂到任何记录上，
+  /// 迁移的孤儿删除条件够不着它，所以必须原样活下来。
   ///
   /// 写完就把文件关掉，好让升级跑的正是用户设备会交给它的那串字节。
   Future<void> writeV2DatabaseWithOrphans() async {
@@ -149,6 +150,54 @@ void main() {
           'demo',
           'demo',
           71,
+          _epoch(_bedtime),
+          'ok',
+        ],
+      );
+      await v2.customStatement(
+        'INSERT INTO insights '
+        '(id, record_id, kind, content, provider, model, score, '
+        ' generated_at_utc, status) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          'unbound-insight',
+          // `record_id` 为空：这条洞察从未挂到任何记录上。迁移只清「指向不存在的
+          // 记录」的行，`IS NOT NULL` 的守卫让它必须活下来。
+          null,
+          'record_summary',
+          '这条洞察没有关联记录，迁移必须留下它。',
+          'demo',
+          'demo',
+          64,
+          _epoch(_bedtime),
+          'ok',
+        ],
+      );
+    } finally {
+      await v2.close();
+    }
+  }
+
+  /// 只写出 v2 的 `insights`、**一条记录都不写**：这是「记录表为空」的极端形态，
+  /// 迁移里 `record_id IS NOT NULL` 那道守卫正是为它而设——记录表为空时
+  /// `record_id NOT IN (...)` 对空值也求值为真，少了守卫，没有关联记录的洞察会被
+  /// 一并清掉。上面的夹具带有记录，跑不到这个分支，只能另起一份。
+  Future<void> writeV2DatabaseWithoutRecords() async {
+    final v2 = _V2Database(NativeDatabase(file));
+    try {
+      await v2.customStatement(
+        'INSERT INTO insights '
+        '(id, record_id, kind, content, provider, model, score, '
+        ' generated_at_utc, status) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          'unbound-insight',
+          null,
+          'record_summary',
+          '这条洞察没有关联记录，记录表为空时也必须留下。',
+          'demo',
+          'demo',
+          64,
           _epoch(_bedtime),
           'ok',
         ],
@@ -349,6 +398,34 @@ void main() {
         variables: const [Variable<String>('v1-night')],
       ).getSingle();
       expect(kept.read<int>('c'), 1, reason: '迁移误删了仍有关联的洞察');
+
+      // 而从未挂到记录上的那条（`record_id` 为空）也必须留下——迁移的删除条件是
+      // 「record_id 非空且指向不存在的记录」，空值不在其中。
+      //
+      // 这份夹具有一条记录，`NULL NOT IN (非空集合)` 在 SQL 里求值为 NULL（不删），
+      // 所以「删掉 `IS NOT NULL` 守卫」在这里不会变红；真正让那道守卫吃重的是记录表
+      // 为空的情形，见下面那条用例。
+      final unbound = await db
+          .customSelect(
+            'SELECT count(*) AS c FROM insights WHERE record_id IS NULL',
+          )
+          .getSingle();
+      expect(unbound.read<int>('c'), 1, reason: '迁移误删了没有关联记录的洞察');
+    });
+
+    test('记录表为空时，没有关联记录的洞察也不被清掉', () async {
+      await writeV2DatabaseWithoutRecords();
+      final db = openCurrent();
+      addTearDown(db.close);
+
+      // 记录表为空时 `record_id NOT IN (SELECT id FROM sleep_records)` 对空值也
+      // 求值为真，只有 `IS NOT NULL` 守卫挡得住；去掉守卫这条用例变红。
+      final kept = await db
+          .customSelect(
+            'SELECT count(*) AS c FROM insights WHERE record_id IS NULL',
+          )
+          .getSingle();
+      expect(kept.read<int>('c'), 1, reason: '空表下 IS NOT NULL 守卫没挡住，误删了无主洞察');
     });
 
     test('迁移后删除记录会级联带走它的洞察', () async {
@@ -360,9 +437,11 @@ void main() {
       await (db.delete(db.sleepRecords)..where((t) => t.id.equals('v1-night')))
           .go();
 
+      // 只数有归属的行：夹具里那条 `record_id` 为空的洞察没有外键可级联，
+      // 应当原样留下，不能算进这次删除的结果里。
       final left = await db
           .customSelect(
-            'SELECT count(*) AS c FROM insights',
+            'SELECT count(*) AS c FROM insights WHERE record_id IS NOT NULL',
           )
           .getSingle();
       expect(left.read<int>('c'), 0, reason: '外键级联没生效——这正是本 bug 的根因');
