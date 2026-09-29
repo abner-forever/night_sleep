@@ -35,10 +35,10 @@ Future<bool> showConfirmDialog(
     barrierColor: tokens.overlayScrim,
     transitionDuration: AppDurations.standard,
     transitionBuilder: (context, animation, secondaryAnimation, child) {
-      final curve = CurvedAnimation(
-        parent: animation,
-        curve: AppMotion.standardCurve,
-      );
+      // `drive` 而不是 `CurvedAnimation`：后者要手动 `dispose`，而
+      // `transitionBuilder` 每帧都会新建一个、从不释放，每次开关弹窗都会在路由
+      // controller 上留下几十个陈旧的 status listener。
+      final curve = animation.drive(CurveTween(curve: AppMotion.standardCurve));
       // iOS 的 alert 是「微微收紧 + 淡入」，而不是从屏幕底部推上来。
       return FadeTransition(
         opacity: curve,
@@ -129,20 +129,22 @@ class _ConfirmDialog extends StatelessWidget {
                       ],
                     ),
                   ),
-                  // 内容区与按钮区之间一条 1px 横线，左右满宽、贴着按钮行上沿。它与
-                  // 下面那条竖线一起构成 iOS alert 的分隔线：横线把「正文」和「动作」
-                  // 分开，竖线把两个按钮分开。少一条就不像 iOS 的弹窗了。
+                  // 内容区与按钮区之间一条 0.5 发丝线横线，左右满宽、贴着按钮行上沿。
+                  // 它与下面那条竖线一起构成 iOS alert 的分隔线：横线把「正文」和
+                  // 「动作」分开，竖线把两个按钮分开。少一条就不像 iOS 的弹窗了。
+                  // 0.5 与全仓其余分隔线（`IosListGroup`、`AppSheet` 表头）同口径——
+                  // iOS 的 alert 描边也是发丝线。
                   //
                   // `width: double.infinity` 不能省：外层的 `Column` 默认居中，给非
                   // flex 子项的是**宽松**宽度约束，没有它 `ColoredBox` 会按最小尺寸
                   // 收缩成 0 宽——线在布局里，只是看不见。
                   SizedBox(
-                    height: 1,
+                    height: 0.5,
                     width: double.infinity,
                     child: ColoredBox(color: tokens.border),
                   ),
                   // 动作区分左右两半，取消在左、确认在右，与它替换掉的那两处弹窗一致。
-                  // `IntrinsicHeight` 让中间那条 1px 分隔线跟着最高的按钮走，而不是
+                  // `IntrinsicHeight` 让中间那条 0.5 发丝线跟着最高的按钮走，而不是
                   // 写死一个高度——写死的值会在字号或行高一变时露出破绽。
                   IntrinsicHeight(
                     child: Row(
@@ -155,11 +157,11 @@ class _ConfirmDialog extends StatelessWidget {
                             onTap: () => Navigator.of(context).pop(false),
                           ),
                         ),
-                        // 1px 分隔线。用 `SizedBox` + `ColoredBox` 而不是
+                        // 0.5 发丝线。用 `SizedBox` + `ColoredBox` 而不是
                         // `VerticalDivider`：这一行是拉伸的，要的是「跟两边按钮一样高」，
                         // 而 `VerticalDivider` 的高度由它自己的 `height`/`indent` 决定。
                         SizedBox(
-                          width: 1,
+                          width: 0.5,
                           child: ColoredBox(color: tokens.border),
                         ),
                         Expanded(

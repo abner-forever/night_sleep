@@ -174,8 +174,10 @@ void main() {
     final vertical = verticals.single;
     final cancel = tester.getRect(find.text('取消'));
 
-    expect(horizontal.height, 1);
-    expect(vertical.width, 1);
+    // 0.5 的发丝线，与全仓其余分隔线（`IosListGroup`、`AppSheet` 表头）同口径；
+    // 写回 1 会与 iOS 的 alert 描边口径不一致。
+    expect(horizontal.height, 0.5);
+    expect(vertical.width, 0.5);
     expect(
       horizontal.width,
       greaterThan(cancel.width),
