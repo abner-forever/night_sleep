@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sleep/app/app_toast.dart';
 import 'package:night_sleep/core/theme/app_theme.dart';
+import 'package:night_sleep/core/theme/app_tokens.dart';
 import 'package:night_sleep/core/widgets/app_basics.dart';
 import 'package:night_sleep/core/widgets/subpage.dart';
 import 'package:night_sleep/features/settings/presentation/sleep_import_page.dart';
@@ -228,8 +229,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      final tokens = AppTokens.of(tester.element(find.byType(SleepImportPage)));
+      const resident = '需要你提供小米的导出样本后，这里才会启用。';
+      const blockedNotice = '还没有接入导入：需要小米的导出样本或官方字段说明。';
+
+      // 未点按：常驻那行是人人第一眼就能看到的解释，必须在。
+      expect(find.text(resident), findsOneWidget);
       expect(
-        find.textContaining('还没有接入导入'),
+        find.text(blockedNotice),
         findsNothing,
         reason: '提示只该在点过之后出现',
       );
@@ -238,11 +245,31 @@ void main() {
       await tester.tap(find.text('导入睡眠记录'));
       await tester.pumpAndSettle();
 
-      final notice = find.descendant(
-        of: find.byType(Subpage),
-        matching: find.textContaining('还没有接入导入'),
+      // 点按后：同一个槽位**换成**新提示——是替换，不是并列成两句说同一件事的话。
+      expect(
+        find.descendant(
+          of: find.byType(Subpage),
+          matching: find.text(blockedNotice),
+        ),
+        findsOneWidget,
+        reason: '点了必须给一句解释，而不是毫无反应',
       );
-      expect(notice, findsOneWidget, reason: '点了必须给一句解释，而不是毫无反应');
+      expect(
+        find.text(resident),
+        findsNothing,
+        reason: '常驻那行必须被替换掉，不能与新提示并列',
+      );
+      expect(
+        tester.widget<Text>(find.text(blockedNotice)).style?.color,
+        tokens.caution,
+        reason: '替换后要用 caution 色，与常驻那行的 muted 区分开',
+      );
+
+      // 再点一次不叠加、不新增第二行。
+      await tester.tap(find.text('导入睡眠记录'));
+      await tester.pumpAndSettle();
+      expect(find.text(blockedNotice), findsOneWidget);
+      expect(find.text(resident), findsNothing);
 
       // 提示必须是页内的：`ToastOverlay` 挂在 `AppScaffold` 里，而导入页 push 在外壳
       // 之上，全局提示条会被整个盖住。这里确认 tap 没有去动那个 provider。

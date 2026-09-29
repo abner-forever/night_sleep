@@ -221,21 +221,21 @@ class _SleepImportPageState extends State<SleepImportPage> {
                   strokeWidth: 2.2,
                 ),
               ),
-              if (_blockedNotice) ...[
-                const SizedBox(height: 8),
-                Text(
-                  '还没有接入导入：需要小米的导出样本或官方字段说明。',
-                  style: TextStyle(
-                    fontSize: 12,
-                    height: 1.5,
-                    color: tokens.caution,
-                  ),
-                ),
-              ],
               const SizedBox(height: 8),
+              // 两句话说的是同一件事，共用一个槽位：第一眼是那句常驻说明，点过按钮之后
+              // 整句换成「还没有接入导入……」。并列成两行只会让人怀疑它们在说不同的
+              // 事——也正因为如此，常驻那行不能删：它是从不点按钮的人唯一的解释来源。
               Text(
-                '需要你提供小米的导出样本后，这里才会启用。',
-                style: TextStyle(fontSize: 12, color: tokens.textMuted),
+                _blockedNotice
+                    ? '还没有接入导入：需要小米的导出样本或官方字段说明。'
+                    : '需要你提供小米的导出样本后，这里才会启用。',
+                style: _blockedNotice
+                    ? TextStyle(
+                        fontSize: 12,
+                        height: 1.5,
+                        color: tokens.caution,
+                      )
+                    : TextStyle(fontSize: 12, color: tokens.textMuted),
               ),
             ],
           ),
