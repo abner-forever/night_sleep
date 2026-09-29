@@ -29,18 +29,36 @@ enum AppTab {
 /// prototype does.
 final activeTabProvider = StateProvider<AppTab>((ref) => AppTab.home);
 
-/// The bar's own height: `min-height: 56px` inside `padding: 4px 6px`, plus its
-/// 0.5px top and 1px bottom border.
-const double _tabBarHeight = 56 + 8 + 1.5;
+/// The bar's own height: `min-height: 56px` inside `padding: 4px 6px`, plus the
+/// `Border.all(width: 0.5)` that wraps it — 1px in total, not 1.5.
+/// `test/tab_bar_inset_test.dart` 量的是渲染出来的胶囊，改这里之前先跑它。
+const double _tabBarHeight = 56 + 8 + 1;
+
+/// 标签条从安全区底部往回收多少。
+///
+/// 原型写的是 `bottom: max(12px, env(safe-area-inset-bottom))`，本实现特意
+/// **更贴底** 14px（见规格书第 8 章偏差 #21）：安全区底部那 34px 是留给系统
+/// 手势的**整块**空间，而 home indicator 本身只画在底部 8–13px，照搬安全区
+/// 会让玻璃胶囊平白悬空一大截。下限 12px 留给没有安全区的 macOS / Web。
+const double _tabBarFloatRelief = 14;
+
+/// 标签条玻璃胶囊下边缘到屏幕底边的浮起量。
+///
+/// [tabBarReserve] 与 `_TabBar` 必须共用它：两处各算一遍时，任何一侧单独
+/// 调整都会让页面底部留白与胶囊的位置脱节——留白算小了最后一行压进玻璃，
+/// 算大了玻璃上方空出一条。
+double tabBarFloat(BuildContext context) {
+  final safeBottom = MediaQuery.paddingOf(context).bottom;
+  final float = safeBottom - _tabBarFloatRelief;
+  return float > 12 ? float : 12;
+}
 
 /// How much vertical room the floating bar takes out of the page, measured from
 /// the bottom of the viewport: the bar itself, its float offset
-/// (`max(12px, safe-area-inset-bottom)`), and a little breathing room so a card
-/// never ends flush against the glass.
-double tabBarReserve(BuildContext context) {
-  final safeBottom = MediaQuery.paddingOf(context).bottom;
-  return _tabBarHeight + (safeBottom > 12 ? safeBottom : 12) + 16;
-}
+/// ([tabBarFloat]), and a little breathing room so a card never ends flush
+/// against the glass.
+double tabBarReserve(BuildContext context) =>
+    _tabBarHeight + tabBarFloat(context) + 16;
 
 /// How much room the floating tab bar needs at the bottom of the page.
 ///
@@ -50,8 +68,8 @@ double tabBarReserve(BuildContext context) {
 /// content scrolls under the translucent bar the way the design intends — and
 /// the last item can still be scrolled clear of it.
 /// This is the whole reserve, not just the bar's own height: the bar floats
-/// `max(12px, safe-area-inset-bottom)` above the bottom edge, and the inset has
-/// to clear that too or the last card comes to rest behind the glass.
+/// [tabBarFloat] above the bottom edge, and the inset has to clear that too or
+/// the last card comes to rest behind the glass.
 double pageBottomInset(BuildContext context) {
   // Wide layouts have no floating bar, so they only need breathing room —
   // reserving the bar's band there would leave a gap nothing sits in.
@@ -183,11 +201,12 @@ class _TabBar extends StatelessWidget {
     final index = tabs.indexOf(current);
 
     return Padding(
-      // `bottom/left/right: max(12px, env(safe-area-inset-*))`.
+      // 左右仍是 `max(12px, env(safe-area-inset-*))`（横屏刘海要避开）；
+      // 底部改走 [tabBarFloat]，与页面底部留白同源。
       padding: EdgeInsets.only(
         left: padding.left > 12 ? padding.left : 12,
         right: padding.right > 12 ? padding.right : 12,
-        bottom: padding.bottom > 12 ? padding.bottom : 12,
+        bottom: tabBarFloat(context),
       ),
       // The shadow sits outside the clip: declared inside `ClipRRect` it is
       // simply discarded, which left the bar looking pasted on.

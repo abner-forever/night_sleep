@@ -3,6 +3,21 @@
 本文件记录「夜深」项目规格的版本变更。规格正文见
 [docs/superpowers/specs/2026-09-28-night-sleep-design.md](docs/superpowers/specs/2026-09-28-night-sleep-design.md)。
 
+## 2.7（2026-09-29）
+
+用户实机上报：**底部标签条离屏幕底边的间距偏大**。根因是浮起量照搬原型的
+`bottom: max(12px, env(safe-area-inset-bottom))`：安全区底部那 34px 是留给系统手势的**整块**
+空间，而 home indicator 本身只画在底部 8–13px，于是玻璃胶囊平白悬空一大截。改为
+`max(12px, 安全区底部 − 14px)`（`app_shell.dart` 的 `tabBarFloat`）：iPhone 带 home indicator
+时 34pt → **20pt**，胶囊底边仍高于指示条约 7pt；macOS / Web 等无安全区处仍是 12pt。
+
+顺带拆掉同一处的一个隐患：浮起量此前在 `tabBarReserve`（页面底部留白）与 `_TabBar`
+（胶囊实际位置）**各算了一遍**，单改一侧就会让最后一行压进玻璃、或让玻璃上方空出一条；
+现在一处出、两处共用。改动还暴露了 `_tabBarHeight` 比实物多算 0.5px——`Border.all(width: 0.5)`
+只贡献 1px，不是注释里写的「0.5 顶边 + 1 底边」，已按**实测渲染高度 65px** 订正。
+回归方法：`test/tab_bar_inset_test.dart` 量渲染出来的胶囊矩形（把 `_tabBarFloatRelief`
+归零必红，已变异验证）。
+
 ## 2.6（2026-09-29）
 
 用户实机巡检上报 6 条，逐条定位根因后修复。**下面写的是「为什么坏」，不是「改了什么」**——

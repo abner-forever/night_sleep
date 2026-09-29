@@ -86,6 +86,10 @@ test/                  领域计算测试
   `ImageFilter` 没有内置的 saturate 构造器，本轮用一层极淡的 accent 叠加（`alpha 0.04`）**近似**
   （也可用 `ColorFilter.matrix` 自行构造饱和度矩阵）；与 `glass_surface.dart` 同一手法。
   外壳不再套顶部 `SafeArea`，状态栏留白改由各页滚动视图按 `pageTopInset` 施加。
+- **标签条浮起量**（v2.7）：浮起量改为 `max(12px, 安全区底部 − 14px)`，iPhone 带 home indicator
+  时胶囊底边离屏幕底 **20pt**（原型照搬安全区，是 34pt，实机看着悬空），macOS / Web 仍是 12px。
+  浮起量与页面底部留白现在**同源**（`app_shell.dart` 的 `tabBarFloat`，`tabBarReserve` 复用），
+  顺带修正常量 `_tabBarHeight` 比实测多算的 0.5px（胶囊实测 65px）。
 - **弹层手势**：底部弹层支持点击蒙层关闭、点击把手关闭、把手跟手下拉超过阈值关闭；蒙层是独立
   的淡入层，不随面板从底部滑入。
 - **编辑与删除**：睡眠详情的底部提供「编辑记录」「删除记录」。编辑复用记录表单并预填原值，
@@ -227,13 +231,14 @@ Bundle ID、Android application ID、签名和发布账号保持 Flutter 默认�
 
 本机环境：macOS 14.8.9（23J631，Intel），Flutter 3.47.5 stable。最近一次复跑：**2026-09-29**。
 
-- `dart format --set-exit-if-changed .` → 无改动（80 文件，0 changed）
+- `dart format --set-exit-if-changed .` → 无改动（81 文件，0 changed）
 - `flutter analyze` → **No issues found**
-- `flutter test` → **217/217 通过**（本轮从 176 起，逐步增至 216，终审修复波再补 1 至 217：
+- `flutter test` → **221/221 通过**（本轮从 176 起，逐步增至 216，终审修复波再补 1 至 217：
   schema v3 迁移 6（含 `record_id` 为空的洞察存活分支）、
   演示数据重装与幂等 2、冷启动播种兜底 4、图标取色 4、顶部渐变与安全区/错误分支留白 3、
   关于卡片居中与版本号 2、自绘确认弹窗 7（另有演示数据页的确认 1，落在 `pages_widget_test`）、
   删除图标 2、`PrimaryAction` 禁用态 10；
+  v2.7 再补 4：标签条浮起量与页面底部留白同源、胶囊实测高度 65px（`test/tab_bar_inset_test.dart`）；
   各测试文件覆盖的场景见
   [规格第 9 章](docs/superpowers/specs/2026-09-28-night-sleep-design.md)）。
   本轮多处断言做了**变异验证**（拆掉实现会真的变红），不是「不可能失败的断言」
@@ -252,6 +257,8 @@ Bundle ID、Android application ID、签名和发布账号保持 Flutter 默认�
     垃圾桶图标、禁用按钮的页内提示、关于卡片的居中与版本号行——这些只有几何/结构断言，
     没有截图核对。这是有意的取舍：有一位实现者曾在跑模拟器截图时卡死 600 秒，
     此后本轮禁止后续任务碰模拟器，目视集中留待下一轮。
+  - v2.7（标签条浮起量 34pt → 20pt）**同样只有几何断言**：只截了一张模拟器截图用于确认
+    改动前的现状，改完后没有再看一眼，实际观感需人工确认。
 - **未验证（不得视为已完成）**：
   - **通知投递**：没有真机 / 模拟器人工确认过「到点了真的会响」。Dart 侧的调度契约
     被测试钉住，但通知是否真的投递、前台是否展示、时区是否选对，都仍需人工确认
@@ -262,8 +269,8 @@ Bundle ID、Android application ID、签名和发布账号保持 Flutter 默认�
   - **`package_info_plus` 的实际返回值**：只验证过它的 API 形状与「取不到时不显示版本号」的
     降级分支；`version` / `buildNumber` 在**真机 macOS / iOS 上映射到 `CFBundleShortVersionString`
     / `CFBundleVersion` 的对应关系没有实测**（测试用 mock 注入）
-  - **本轮 UI 的目视观感**：见上「界面巡检」——确认弹窗、垃圾桶、禁用按钮提示、关于卡片
-    都未经眼
+  - **本轮 UI 的目视观感**：见上「界面巡检」——确认弹窗、垃圾桶、禁用按钮提示、关于卡片、
+    标签条浮起量（v2.7）都未经眼
   - 真机交互、窄屏宽屏溢出检查：**尚未执行**
     （宽屏侧边栏布局只在 macOS 桌面构建里跑过，未逐屏核对）
   - Android / Web 构建：**尚未执行**（Android 平台目录也不存在，见「未实现」表）

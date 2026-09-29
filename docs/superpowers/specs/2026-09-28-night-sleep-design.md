@@ -50,7 +50,7 @@
 - **玻璃卡片**：`backdrop-filter: blur(24px)`；填充 `--ios-material`；1px `--glass-border` 描边；内阴影 `inset 0 1px 0 var(--ios-specular)`；外阴影 `0 10px 28px rgba(32,47,86,.10)`（深色 `0 12px 30px rgba(0,0,0,.30)`）；另有 115° 斜向高光扫过。
 - **圆角**：玻璃卡 `24px`；内嵌面板 `16px`；列表组 `16px`；弹层顶部 `26px`；标签条 `34px`。
 - **底部弹层**：遮罩 `rgba(0,0,0,.30)` + `blur(14px)`；面板 `--sheet-bg` + `blur(38px)`；宽屏浮起 24px、宽 `min(560px, 100vw-48px)`、四角 26px。
-- **悬浮标签条**：左右下各 12px 外边距（或安全区）；圆角 34px；`blur(28px) saturate(160%)`；滑动胶囊 `accent 14%`，420ms `cubic-bezier(.22,1,.36,1)`。
+- **悬浮标签条**：左右下各 12px 外边距（或安全区）；圆角 34px；`blur(28px) saturate(160%)`；滑动胶囊 `accent 14%`，420ms `cubic-bezier(.22,1,.36,1)`。底部浮起量比原型的 `max(12px, env(safe-area-inset-bottom))` 低 14px，见第 8 章偏差 #21。
 - **主按钮**：高 58px、圆角 16px、`linear-gradient(135deg,#0A84FF,#5856D6)`。
 - **动效曲线**：标准 `cubic-bezier(.22,1,.36,1)`；回弹 `cubic-bezier(.34,1.56,.64,1)`；按压缩放 `.972`。
 - **顶部渐变**（`.ios-top-fade`）：高 144px、`blur(14px)` + `saturate(125%)`，填充四段 `bg-base`
@@ -64,8 +64,11 @@
   改它会波及无关动效，故不动）。渐变的原点必须顶到**屏幕物理顶端**：外壳不再套顶部
   `SafeArea`，状态栏留白改由各页滚动视图施加（见本节「页面的横向留白与底部留白」）。
 - **标签条尺寸**：内层 `min-height: 56px`（含自身 3px/2px 内边距），外层内边距 4px 6px，
-  合计约 64px，加上 `max(12px, 安全区底部)` 的浮起量。页面底部留白必须由**实际高度**推导，
-  写死的数值一旦小于它就会让最后一行永远压在玻璃下面。
+  另有 1px 描边，**实测渲染高度 65px**（v2.7 的量测测试所得；此前常量写成 65.5，比实物多
+  0.5px），加上浮起量 `tabBarFloat`（原型是 `max(12px, 安全区底部)`，本实现低 14px，见偏差 #21）。
+  页面底部留白必须由**实际高度**推导，写死的数值一旦小于它就会让最后一行永远压在玻璃下面。
+  浮起量由 `tabBarFloat` 一处出、`tabBarReserve` 与 `_TabBar` 共用：两处各算一遍时，
+  单改一侧就会让留白与胶囊脱节。
 - **页面的横向、**顶部**与底部留白都由页面自己的滚动视图提供**（`pageGutter` / `pageTopInset`
   / `pageBottomInset`），不放在滚动视图外面。放外面时视口被压缩，留白区变成一条不透明带、
   内容在带子上方被切断；放里面时视口直达屏幕边缘，内容按设计从悬浮玻璃下穿过，最后一行
@@ -267,6 +270,7 @@
 | 18 | 原型没有导出功能（纯前端演示，数据不落地） | 新增导出（`/settings/export`）：CSV 两张表（记录 + 阶段）+ JSON 完整存档，经系统分享面板交付 | 规格 M2 要求本地导出，而原型的记录只活在内存里、无导出可言。回归方法：确认设置页有「睡眠数据导出」区块（`lib/features/settings/presentation/settings_page.dart` 的 `SectionHeader('睡眠数据导出')`），且导出的 CSV 首字节是 BOM（`test/sleep_export_test.dart` 的 BOM 用例）。 |
 | 19 | 原型的提醒开关是纯装饰——开关状态不驱动任何调度 | 接真实本地通知：权限被拒时**不写入偏好**、开关回弹；权限为 `denied` 时给出「去系统设置」入口；启动时回收被撤销的授权（把偏好写回 `false`） | 一个写着「开」却不会响的开关，正是规格书说的「设置状态与实际能力不一致」。回归方法：拒绝通知权限后确认 `bedtimeReminderEnabled` 仍为 `false`（`test/reminder_settings_test.dart`）；把启动回收条件改回 `!= granted` 会让 `test/reminder_sync_test.dart` 的 `unsupported` 用例变红。 |
 | 20 | 原型的二次确认走 Material 默认外观（Android 观感） | 按项目令牌**自绘** iOS 风格确认弹窗（`lib/core/widgets/confirm_dialog.dart` 的 `showConfirmDialog`），**不引入 `flutter/cupertino.dart`**；应用内三处危险操作统一走它 | 整个应用是 iOS/令牌体系，唯独确认弹窗走了 Material 默认的配色与圆角。`CupertinoAlertDialog` 自带系统色与圆角，会**绕过 `AppTokens`**，与「设计令牌只有一份」的硬约定冲突，所以自绘。三处统一为：删除单条记录、删除全部本地数据、**清除演示数据**——第三处此前**根本没有二次确认**（点一下就删）。自绘走 `showGeneralDialog`，必须自己补 `Material` 祖先，否则所有 `Text` 落到黄色双下划线错误样式（`confirm_dialog.dart` 已显式补上）。回归方法：`test/confirm_dialog_test.dart`（`Material` 祖先、取消返回 `false`、破坏性取 `danger`、内容区与按钮区两条 0.5 发丝线——与全仓其余分隔线同口径）；把任一处改回 `showDialog`/`AlertDialog`，或在 `demo_data_page` 摘掉确认块，都会让对应用例变红（已变异验证）。 |
+| 21 | 悬浮标签条的浮起量是 `bottom: max(12px, env(safe-area-inset-bottom))` | 改为 `max(12px, 安全区底部 − 14px)`（`app_shell.dart` 的 `tabBarFloat`）：iPhone 带 home indicator 时浮起量从 34px 收到 20px，macOS / Web 等无安全区的平台仍是 12px | 安全区底部那 34px 是留给系统手势的**整块**空间，而 home indicator 本身只画在底部 8–13px；照搬安全区会让玻璃胶囊离屏幕底边悬空一大截（用户实机上报「间距偏大」）。回收 14px 后胶囊底边高于指示条约 7px，既贴着屏幕又不压到系统部件。**浮起量与页面底部留白必须同源**（`tabBarFloat` 一处出、`tabBarReserve` 复用），否则最后一行会压进玻璃。回归方法：`test/tab_bar_inset_test.dart` 量渲染出来的胶囊矩形——把 `_tabBarFloatRelief` 改回 0，两条用例立刻变红（已变异验证）。 |
 
 ## 9. 测试与验收矩阵
 
@@ -300,8 +304,9 @@
 | Widget 测试 | 顶部渐变带贴在**屏幕物理顶端**（不被顶部安全区推下去）；四个一级页的 `error`/`loading` 分支仍给状态栏留白 | ✅ `test/pages_widget_test.dart` |
 | Widget 测试 | `PrimaryAction` 禁用态：不画顶边高光与蓝色投影、不触发触觉，但接住点击并给出**页内**提示（不走会被二级页盖住的全局 toast）；启用态观感与手感逐项不变 | ✅ `test/primary_action_test.dart` |
 | Widget 测试 | 删除入口用**垃圾桶**图标（非借用的停止方块）且带 `danger` 底板——身份断言经变异验证（换回 `stop` 必红） | ✅ `test/pages_widget_test.dart`、`test/record_edit_delete_test.dart` |
+| Widget 测试 | 标签条浮起量：带 home indicator 的设备上胶囊底边离屏幕底 **20pt**、无安全区 12pt、小安全区不被回收量削到下限以下；页面底部留白始终等于「浮起量 + 胶囊**实测**高度 + 16」（量渲染出的矩形，不量函数返回值） | ✅ `test/tab_bar_inset_test.dart`（含变异验证：`_tabBarFloatRelief` 归零，两条用例变红） |
 | 集成/真机 | iOS/Android/macOS 核心流程；通知权限；锁屏录音与中断 | macOS 构建、iOS 模拟器构建已验证；**真机、通知投递与分享面板未验证** |
-| 视觉检查 | 对照 Figma Make 四页在手机/宽屏、浅色/深色核对层级、间距、字体与安全区 | **部分**：v2.5 的巡检覆盖了四个一级页与详情/音效面板；本版（v2.6）追加确认了顶部渐变顶到物理顶端后硬分界消失（iPhone 16 Pro 模拟器，浅色/深色各一遍）。**本版其余新增/改动的界面（自绘确认弹窗、垃圾桶图标、禁用按钮的页内提示、关于卡片）没有做目视核对**，只有几何/结构断言 |
+| 视觉检查 | 对照 Figma Make 四页在手机/宽屏、浅色/深色核对层级、间距、字体与安全区 | **部分**：v2.5 的巡检覆盖了四个一级页与详情/音效面板；本版（v2.6）追加确认了顶部渐变顶到物理顶端后硬分界消失（iPhone 16 Pro 模拟器，浅色/深色各一遍）。**本版其余新增/改动的界面（自绘确认弹窗、垃圾桶图标、禁用按钮的页内提示、关于卡片）没有做目视核对**，只有几何/结构断言。v2.7 的标签条浮起量同样**只有几何断言**（`test/tab_bar_inset_test.dart`），没有截图核对 |
 
 通过构建不等于录音后台能力、小米数据接入或 AI 服务已完成。
 
