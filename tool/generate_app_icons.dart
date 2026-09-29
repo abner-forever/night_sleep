@@ -15,13 +15,18 @@
 /// Rendering every size straight from the SVG with `FilterQuality.high` avoids
 /// the compounding softness of downscaling a downscale.
 ///
-/// Two platform rules are handled here rather than left to chance:
+/// 三个平台规则在这里被显式处理，而不是听天由命：
 ///
-///  * **No alpha.** Both platforms want an opaque icon; a transparent one is
-///    rejected at App Store submission and renders as a dark square elsewhere.
-///    Every tile is drawn onto an opaque canvas.
-///  * **No corner radius.** The mask belongs to the OS. `assets/branding/
-///    app-icon.svg` is therefore full-bleed; see the note in that file.
+///  * **iOS 不要 alpha。** App Store 校验拒收带 alpha 通道的应用图标，
+///    所以 iOS 那套每一块都画在不透明底上，并用色型 2 编码。
+///    （注：透明图标在别处会被画成黑方块，这是同一条规则的另一种表现。）
+///  * **iOS 不要圆角。** iOS 会给应用图标套遮罩，文件里再烘焙一层圆角，
+///    结果就是「圆角套圆角」。`assets/branding/app-icon.svg` 因此是满幅的。
+///  * **macOS 两条都要反过来。** macOS **不套遮罩**——实测系统 app 的 `.icns`，
+///    圆角与留白是烘焙在文件里的。所以 macOS 这套按 Apple 图标网格自己画圆角
+///    （实体 824/1024、半径 185.4、四边留白 100）、加投影，并**保留 alpha**。
+///    历史注释曾写「iOS 和 macOS 都会套遮罩」，据此后两个平台共用满幅直角像素，
+///    结果 macOS 的 Dock 图标被撑成一个方块。
 library;
 
 import 'dart:convert';
@@ -69,10 +74,33 @@ const Map<String, int> macosIcons = {
 /// Side of the canvas the SVG is rasterised onto before any downscaling.
 const int masterSize = 1024;
 
+/// macOS 图标的 Apple 网格：1024 画布上实体占 824×824 居中，圆角半径 185.4。
+///
+/// 实测自系统 app 的 `.icns`（Calculator / Notes 结果一致）：`alpha>128` 的实体恰为
+/// 206/256 = 824/1024，四边留白全等，圆角半径量得 44/256。
+const double macosBodyFraction = 824 / 1024;
+const double macosCornerRadius = 185.4;
+
+/// macOS 图标的投影。三个值由系统图标的 `alpha>8` 包络反推后扫参逼近得到：
+/// 目标包络 L84 T96 R84 B72，本组得 L85 T99 R85 B71（1024 基准，最大差 3px）。
+const Offset macosShadowOffset = Offset(0, 14);
+const double macosShadowSigma = 10;
+const Color macosShadowColor = Color(0x80000000);
+
+/// macOS 实体矩形（1024 画布，居中）。
+///
+/// `masterSize * (1 - macosBodyFraction)` 是 `int * double`，但除法与乘法在
+/// 常量求值里都成立，所以整条表达式是编译期常量，这里可以是 `const`。
+const Rect macosBodyRect = Rect.fromLTWH(
+  masterSize * (1 - macosBodyFraction) / 2,
+  masterSize * (1 - macosBodyFraction) / 2,
+  masterSize * macosBodyFraction,
+  masterSize * macosBodyFraction,
+);
+
 void main() {
-  // The binding is needed for `Picture.toImage`. Deliberately *not* a
-  // `testWidgets` body: that runs inside `FakeAsync`, where `flutter_svg`'s
-  // asynchronous parse never completes and the test hangs instead of failing.
+  // 需要 binding 才能用 `Picture.toImage`。**故意不用 `testWidgets`**：那会跑在
+  // FakeAsync 里，`flutter_svg` 的异步解析永不完成，症状是挂死而不是失败。
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test('regenerate app icons from the source SVG', () async {
@@ -81,79 +109,126 @@ void main() {
         File(p.join(root.path, 'assets', 'branding', 'app-icon.svg'));
     expect(svgFile.existsSync(), isTrue, reason: '找不到 ${svgFile.path}');
 
-    final master = await _rasterise(svgFile.readAsStringSync(), masterSize);
+    // 矢量只解析一次，两个平台各画各的。
+    final pictureInfo =
+        await vg.loadPicture(SvgStringLoader(svgFile.readAsStringSync()), null);
+    try {
+      final iosMaster = await _rasteriseOpaque(
+          pictureInfo.picture, pictureInfo.size, masterSize);
+      await _writeAll(
+        p.join(root.path, 'ios', 'Runner', 'Assets.xcassets',
+            'AppIcon.appiconset'),
+        iosIcons,
+        iosMaster,
+        opaque: true,
+      );
+      iosMaster.dispose();
 
-    await _writeAll(
-      p.join(
-          root.path, 'ios', 'Runner', 'Assets.xcassets', 'AppIcon.appiconset'),
-      iosIcons,
-      master,
-    );
-    await _writeAll(
-      p.join(root.path, 'macos', 'Runner', 'Assets.xcassets',
-          'AppIcon.appiconset'),
-      macosIcons,
-      master,
-    );
-
-    master.dispose();
+      final macosMaster =
+          await _rasteriseMacos(pictureInfo.picture, pictureInfo.size);
+      await _writeAll(
+        p.join(root.path, 'macos', 'Runner', 'Assets.xcassets',
+            'AppIcon.appiconset'),
+        macosIcons,
+        macosMaster,
+        opaque: false,
+      );
+      macosMaster.dispose();
+    } finally {
+      pictureInfo.picture.dispose();
+    }
   });
 }
 
-/// Draws [svg] at [size]×[size] onto an opaque canvas.
+/// 把 [picture] 满幅画到 [size]×[size] 的**不透明**画布上（iOS 用）。
 ///
-/// Opaque because a decoded PNG carries whatever alpha the rasteriser produced,
-/// and both platforms reject a translucent app icon.
-Future<ui.Image> _rasterise(String svg, int size) async {
-  final pictureInfo = await vg.loadPicture(SvgStringLoader(svg), null);
-  try {
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-    canvas.drawRect(
-      Rect.fromLTWH(0, 0, size.toDouble(), size.toDouble()),
-      Paint()..color = const Color(0xFF000000),
-    );
-    canvas.scale(size / pictureInfo.size.width, size / pictureInfo.size.height);
-    canvas.drawPicture(pictureInfo.picture);
-    return await recorder.endRecording().toImage(size, size);
-  } finally {
-    pictureInfo.picture.dispose();
-  }
+/// 不透明是必须的：解码出来的 PNG 会带着光栅器产生的任意 alpha，而 iOS 拒收半透明图标。
+Future<ui.Image> _rasteriseOpaque(
+    ui.Picture picture, Size srcSize, int size) async {
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
+  canvas.drawRect(
+    Rect.fromLTWH(0, 0, size.toDouble(), size.toDouble()),
+    Paint()..color = const Color(0xFF000000),
+  );
+  canvas.scale(size / srcSize.width, size / srcSize.height);
+  canvas.drawPicture(picture);
+  return recorder.endRecording().toImage(size, size);
+}
+
+/// 把 [picture] 画进 Apple 网格的圆角实体里，并在下方垫一层投影（macOS 用）。
+///
+/// 画布**保持透明**——四角的透明正是圆角本身。
+///
+/// 顺序不能颠倒：先画投影（它在实体之外、不会被裁），再 `clipRRect` 裁住实体。
+/// 反过来的话投影会被裁没。
+Future<ui.Image> _rasteriseMacos(ui.Picture picture, Size srcSize) async {
+  const body = macosBodyRect;
+  final rrect =
+      RRect.fromRectAndRadius(body, const Radius.circular(macosCornerRadius));
+
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
+
+  canvas.drawRRect(
+    rrect.shift(macosShadowOffset),
+    Paint()
+      ..color = macosShadowColor
+      ..maskFilter =
+          const ui.MaskFilter.blur(ui.BlurStyle.normal, macosShadowSigma),
+  );
+
+  canvas.save();
+  canvas.clipRRect(rrect);
+  canvas.translate(body.left, body.top);
+  canvas.scale(body.width / srcSize.width, body.height / srcSize.height);
+  canvas.drawPicture(picture);
+  canvas.restore();
+
+  return recorder.endRecording().toImage(masterSize, masterSize);
 }
 
 Future<void> _writeAll(
   String directory,
   Map<String, int> icons,
-  ui.Image master,
-) async {
+  ui.Image master, {
+  required bool opaque,
+}) async {
   final target = Directory(directory);
   expect(target.existsSync(), isTrue, reason: '找不到图标目录 $directory');
 
   for (final entry in icons.entries) {
-    final scaled = await _resample(master, entry.value);
+    final scaled = await _resample(master, entry.value, opaque: opaque);
     final pixels = await scaled.toByteData(format: ui.ImageByteFormat.rawRgba);
     final size = entry.value;
     scaled.dispose();
     expect(pixels, isNotNull, reason: '${entry.key} 读取像素失败');
     File(p.join(directory, entry.key)).writeAsBytesSync(
-      encodeOpaquePng(pixels!.buffer.asUint8List(), size, size),
+      encodePng(pixels!.buffer.asUint8List(), size, size, alpha: !opaque),
     );
   }
 }
 
-// ── A minimal RGB PNG encoder ───────────────────────────────────────────────
+// ── 一个最小的 PNG 编码器 ───────────────────────────────────────────────────
 //
-// `ui.Image.toByteData(format: png)` always writes RGBA, and `sips` re-adds an
-// alpha channel even after a round trip through a format that has none. The
-// bytes are therefore assembled here, as colour type 2 (truecolour, no alpha).
+// `ui.Image.toByteData(format: png)` 只会输出带 alpha 的 PNG，而 `sips` 在格式往返后
+// 也会把 alpha 通道加回来。两个平台的要求正好相反，所以通道数在这里显式决定：
 //
-// App Store validation rejects an app icon that carries an alpha channel. It
-// would not break a local build, which is exactly the kind of thing that goes
-// unnoticed until submission, so it is fixed at generation time.
-Uint8List encodeOpaquePng(Uint8List rgba, int width, int height) {
-  // One filter byte (0 = None) per scanline, then RGB triples. The image is
-  // mostly large flat areas and long gradients, where filtering buys little.
-  final raw = Uint8List(height * (1 + width * 3));
+//  * iOS 走 `alpha: false`，写颜色类型 2（真彩、无 alpha）。App Store 校验拒收带
+//    alpha 的应用图标；本地构建不会因此报错，正是那种「不到提交那天发现不了」的问题，
+//    所以在生成期就钉死。
+//  * macOS 走 `alpha: true`，写颜色类型 6（真彩 + alpha）。圆角外的透明必须有 alpha
+//    才存得下——这正是 macOS 这条路存在的理由。
+
+/// 把 [rgba]（每像素 4 字节，RGBA 顺序）编码成 [width]×[height] 的 PNG。
+///
+/// [alpha] 为 false 时丢弃第 4 个通道、写颜色类型 2；为 true 时保留、写颜色类型 6。
+Uint8List encodePng(Uint8List rgba, int width, int height,
+    {required bool alpha}) {
+  final channels = alpha ? 4 : 3;
+  // 每条扫描线一个滤波字节（0 = None），随后是像素。画面以大片平色与长渐变为主，
+  // 滤波收益很小。
+  final raw = Uint8List(height * (1 + width * channels));
   var out = 0;
   for (var y = 0; y < height; y++) {
     raw[out++] = 0;
@@ -162,6 +237,7 @@ Uint8List encodeOpaquePng(Uint8List rgba, int width, int height) {
       raw[out++] = rgba[src];
       raw[out++] = rgba[src + 1];
       raw[out++] = rgba[src + 2];
+      if (alpha) raw[out++] = rgba[src + 3];
       src += 4;
     }
   }
@@ -172,8 +248,8 @@ Uint8List encodeOpaquePng(Uint8List rgba, int width, int height) {
   final header = BytesBuilder()
     ..add(_u32(width))
     ..add(_u32(height))
-    // 8-bit depth, colour type 2, deflate, adaptive filtering, no interlace.
-    ..add(const [8, 2, 0, 0, 0]);
+    // 8 位深，颜色类型 2 或 6，deflate，自适应滤波，不隔行。
+    ..add([8, alpha ? 6 : 2, 0, 0, 0]);
   _chunk(png, 'IHDR', header.toBytes());
 
   _chunk(png, 'IDAT', ZLibCodec(level: 9).encode(raw));
@@ -212,26 +288,26 @@ int _crc32(List<int> bytes) {
   return (c ^ 0xFFFFFFFF) & 0xFFFFFFFF;
 }
 
-/// Resamples [source] to [size]×[size] on an opaque canvas.
+/// 把 [source] 缩放到 [size]×[size]。
 ///
-/// `FilterQuality.high` matters at the small end: the 20px tile is a 51:1
-/// reduction, and a nearest-neighbour or bilinear sample of that drops the
-/// crescent entirely.
-Future<ui.Image> _resample(ui.Image source, int size) async {
+/// [opaque] 为 true 时先铺不透明底（iOS）；为 false 时**不铺**（macOS）——
+/// 铺了会把圆角外的透明填成黑，四角变成黑方块。
+///
+/// `FilterQuality.high` 在小尺寸上很关键：20px 那块是 51:1 的缩小，
+/// 最近邻或双线性采样会把月牙整个丢掉。
+Future<ui.Image> _resample(ui.Image source, int size,
+    {required bool opaque}) async {
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder);
-  canvas.drawRect(
-    Rect.fromLTWH(0, 0, size.toDouble(), size.toDouble()),
-    Paint()..color = const Color(0xFF000000),
-  );
+  if (opaque) {
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, size.toDouble(), size.toDouble()),
+      Paint()..color = const Color(0xFF000000),
+    );
+  }
   canvas.drawImageRect(
     source,
-    Rect.fromLTWH(
-      0,
-      0,
-      source.width.toDouble(),
-      source.height.toDouble(),
-    ),
+    Rect.fromLTWH(0, 0, source.width.toDouble(), source.height.toDouble()),
     Rect.fromLTWH(0, 0, size.toDouble(), size.toDouble()),
     Paint()..filterQuality = FilterQuality.high,
   );
