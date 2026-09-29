@@ -7,6 +7,7 @@ import '../core/platform/haptics.dart';
 import '../core/theme/app_tokens.dart';
 import '../core/widgets/app_icons.dart';
 import '../core/widgets/app_sheet.dart' show openSheetCount;
+import '../core/widgets/bottom_fade.dart';
 import '../core/widgets/top_fade.dart';
 
 /// The four primary destinations. Order matches the prototype's `NAV`.
@@ -165,6 +166,17 @@ class _AppShellState extends State<AppShell> {
                       builder: (context, open, _) => TopFade(
                         visible: _scrolled && open == 0,
                       ),
+                    ),
+                  if (!isWide)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      // 高度由标签条的实际预留量推导：预留多少，带子就盖住多少，
+                      // 再多 20px 供内容化开。写死 120 会在别的机型上脱节。
+                      // 排在 `_TabBar` **之前**——`BackdropFilter` 模糊的是它之前
+                      // 画好的画面，排在后面会把玻璃胶囊本身糊掉。
+                      child: BottomFade(height: tabBarReserve(context) + 20),
                     ),
                   if (!isWide)
                     Positioned(

@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:night_sleep/app/app_shell.dart';
 import 'package:night_sleep/core/theme/app_theme.dart';
 import 'package:night_sleep/core/widgets/bottom_fade.dart';
 
@@ -125,5 +126,139 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  // ---- 接入外壳 ----
+  //
+  // 与 `test/tab_bar_inset_test.dart` 同构：`Scaffold` → `SafeArea(top: false,
+  // bottom: false)` → `AppShell`。底部安全区不会被 `SafeArea` 摘掉，外壳因此
+  // 读得到 34px，与真机一致。
+  Widget shell({required double safeBottom, required Size size}) => MaterialApp(
+        theme: AppTheme.light(),
+        home: MediaQuery(
+          data: MediaQueryData(
+            size: size,
+            padding: EdgeInsets.only(bottom: safeBottom),
+          ),
+          child: Scaffold(
+            body: SafeArea(
+              top: false,
+              bottom: false,
+              child: AppShell(
+                current: AppTab.home,
+                onSelect: (_) {},
+                child: Builder(
+                  builder: (context) => ListView(
+                    padding: EdgeInsets.only(bottom: pageBottomInset(context)),
+                    children: const [SizedBox(height: 2000)],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+  Future<void> pumpShell(
+    WidgetTester tester, {
+    double safeBottom = 34,
+    Size size = const Size(402, 874),
+  }) async {
+    tester.view.physicalSize = size;
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(shell(safeBottom: safeBottom, size: size));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('手机布局下贴着屏幕底边，高度 = 底部预留 + 20', (tester) async {
+    await pumpShell(tester);
+
+    final band = tester.getRect(find.byType(BottomFade));
+    expect(band.bottom, tester.getRect(find.byType(AppShell)).bottom);
+    // iPhone 16 Pro：预留 101（胶囊 65 + 浮起 20 + 呼吸 16）+ 20。
+    expect(band.height, 121);
+    // 与页面底部留白同源：留白一变，带子必须跟着变。
+    final reserve = tester
+        .widget<ListView>(find.byType(ListView))
+        .padding!
+        .resolve(TextDirection.ltr)
+        .bottom;
+    expect(band.height, closeTo(reserve + 20, 0.01));
+  });
+
+  testWidgets('无安全区（macOS / Web）时高度 113', (tester) async {
+    await pumpShell(tester, safeBottom: 0);
+
+    // 预留 93（65 + 12 + 16）+ 20。
+    expect(tester.getRect(find.byType(BottomFade)).height, 113);
+  });
+
+  testWidgets('带子排在标签条之前，胶囊在带子之上', (tester) async {
+    await pumpShell(tester);
+
+    // `Stack` 的子项顺序就是绘制顺序（后画的在上）。带子必须**不是**最后一项，
+    // 否则它会去模糊画在它之前的玻璃胶囊。
+    final stack = tester.widget<Stack>(
+      find
+          .ancestor(of: find.byType(BottomFade), matching: find.byType(Stack))
+          .first,
+    );
+    final bandIndex = stack.children.indexWhere(
+      (child) => child is Positioned && child.child is BottomFade,
+    );
+    expect(bandIndex, isNonNegative, reason: '带子没有被 Positioned 包住');
+    expect(
+      bandIndex,
+      lessThan(stack.children.length - 1),
+      reason: '带子排到了最后一项——它会去模糊玻璃胶囊本身',
+    );
+  });
+
+  testWidgets('宽屏（≥768px）不渲染带子', (tester) async {
+    await pumpShell(tester, size: const Size(1024, 900));
+
+    expect(find.byType(BottomFade), findsNothing);
+  });
+
+  testWidgets('带子盖住的位置仍能点到内容', (tester) async {
+    var taps = 0;
+    tester.view.physicalSize = const Size(402, 874);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: MediaQuery(
+          data: const MediaQueryData(
+            size: Size(402, 874),
+            padding: EdgeInsets.only(bottom: 34),
+          ),
+          child: Scaffold(
+            body: SafeArea(
+              top: false,
+              bottom: false,
+              child: AppShell(
+                current: AppTab.home,
+                onSelect: (_) {},
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => taps++,
+                  child: const SizedBox.expand(),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 屏幕底上方 8pt：在带子（高 121）里面，但在**胶囊之下**——胶囊占离底
+    // 20–85pt，点在那里会被标签条接走，测的就不是这条带了。
+    await tester.tapAt(const Offset(200, 874 - 8));
+    expect(taps, 1);
   });
 }
