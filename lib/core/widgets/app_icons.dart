@@ -253,9 +253,7 @@ class AppIcons {
       glyph(_fan, size: size, color: color, strokeWidth: strokeWidth);
 
   static Widget trash(
-          {double size = 24,
-          required Color? color,
-          double strokeWidth = 1.6}) =>
+          {double size = 24, Color? color, double strokeWidth = 1.6}) =>
       glyph(_trash, size: size, color: color, strokeWidth: strokeWidth);
 
   /// Filled tab glyph for [id]; returns null when the design has no filled
