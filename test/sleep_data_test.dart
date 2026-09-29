@@ -290,4 +290,41 @@ void main() {
       expect(await database.allInsightsByRecord(), isEmpty);
     });
   });
+
+  group('演示数据重装', () {
+    test('清除后重新安装能成功，且条数与首次一致', () async {
+      await repository.installDemoData();
+      final first = await repository.loadAll();
+      await repository.deleteDemoData();
+      expect(await repository.loadAll(), isEmpty);
+
+      // 安装必须是幂等的：孤立的 insights 行会让 `demo-1-insight` 主键冲突，
+      // 异常从事务里抛出来，调用方没有 handler，界面表现为「点了没反应」。
+      await repository.installDemoData();
+      final second = await repository.loadAll();
+      expect(second.length, first.length, reason: '重装没恢复出同样多的记录');
+
+      final orphans = await database
+          .customSelect(
+            'SELECT count(*) AS c FROM insights WHERE record_id IS NOT NULL '
+            'AND record_id NOT IN (SELECT id FROM sleep_records)',
+          )
+          .getSingle();
+      expect(orphans.read<int>('c'), 0, reason: '重装不得留下孤儿洞察行');
+    });
+
+    test('连续安装两次是幂等的', () async {
+      await repository.installDemoData();
+      final once = await repository.loadAll();
+      await repository.installDemoData(); // 不得抛异常，也不得翻倍
+      final twice = await repository.loadAll();
+
+      expect(twice.length, once.length);
+      final insights = await database
+          .customSelect('SELECT count(*) AS c FROM insights')
+          .getSingle();
+      expect(insights.read<int>('c'), once.length,
+          reason: 'insights 的 id 是固定的 demo-N-insight，重装应当覆盖而非新增');
+    });
+  });
 }

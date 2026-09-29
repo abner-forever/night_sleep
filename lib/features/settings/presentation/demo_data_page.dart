@@ -17,11 +17,59 @@ import '../../sleep/data/sleep_repository.dart';
 /// any. It lives on its own page because a control that wipes and re-seeds the
 /// database has no business sitting one row away from 「就寝提醒」, where it
 /// invites a mis-tap.
-class DemoDataPage extends ConsumerWidget {
+class DemoDataPage extends ConsumerStatefulWidget {
   const DemoDataPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DemoDataPage> createState() => _DemoDataPageState();
+}
+
+class _DemoDataPageState extends ConsumerState<DemoDataPage> {
+  /// 安装/清除正在进行时置为 true，用来挡住重复点击。
+  bool _busy = false;
+
+  /// 最近一次失败的原因，显示在页内。全局 toast 挂在 AppScaffold，二级页 push
+  /// 在它之上，会把提示条整个盖住，所以失败反馈必须留在本页。
+  String? _error;
+
+  Future<void> _install() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await ref.read(sleepRepositoryProvider).installDemoData();
+      if (!mounted) return;
+      ref.read(toastProvider.notifier).show('演示数据已安装。');
+    } catch (error) {
+      // 失败必须看得见。此前异常直接逃出去，界面只会表现为「点了没反应」。
+      if (!mounted) return;
+      setState(() => _error = '安装失败：$error');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _clear() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await ref.read(sleepRepositoryProvider).deleteDemoData();
+      if (!mounted) return;
+      ref.read(toastProvider.notifier).show('演示数据已清除。');
+    } catch (error) {
+      // 同 _install：清除失败同样要在页内可见，不能静默。
+      if (!mounted) return;
+      setState(() => _error = '清除失败：$error');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
     final entries = ref.watch(sleepEntriesProvider).valueOrNull ?? const [];
     final demoCount =
@@ -92,17 +140,18 @@ class DemoDataPage extends ConsumerWidget {
             ],
           ),
         ),
+        if (_error != null) ...[
+          const SizedBox(height: 12),
+          Text(
+            _error!,
+            style: TextStyle(fontSize: 12, height: 1.5, color: tokens.danger),
+          ),
+        ],
         const SizedBox(height: 18),
         IosListGroup(
           children: [
             IosListItem(
-              onTap: demoCount == 0
-                  ? () async {
-                      await ref.read(sleepRepositoryProvider).installDemoData();
-                      if (!context.mounted) return;
-                      ref.read(toastProvider.notifier).show('演示数据已安装。');
-                    }
-                  : null,
+              onTap: _busy || demoCount != 0 ? null : _install,
               child: _Row(
                 label: '重新安装演示数据',
                 muted: demoCount > 0,
@@ -111,13 +160,7 @@ class DemoDataPage extends ConsumerWidget {
               ),
             ),
             IosListItem(
-              onTap: demoCount == 0
-                  ? null
-                  : () async {
-                      await ref.read(sleepRepositoryProvider).deleteDemoData();
-                      if (!context.mounted) return;
-                      ref.read(toastProvider.notifier).show('演示数据已清除。');
-                    },
+              onTap: _busy || demoCount == 0 ? null : _clear,
               child: _Row(
                 label: '清除演示数据',
                 danger: demoCount > 0,

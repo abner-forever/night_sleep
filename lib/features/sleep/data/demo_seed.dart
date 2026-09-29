@@ -25,6 +25,10 @@ class DemoSeed {
     final reference = now ?? DateTime.now();
 
     await db.transaction(() async {
+      // 每一次写入都是 upsert。record 本来如此；stages、clips 和 insights 却不是，
+      // 于是在有残留行时重装会撞主键，整个事务回滚——而且是静默的，因为调用方没有
+      // 处理函数。真正的修复是让写入幂等；schema v3 补的外键只是除掉了产生残留的
+      // 其中一条路径。
       for (var i = 0; i < _nights.length; i++) {
         final night = _nights[i];
         final id = 'demo-${i + 1}';
@@ -63,12 +67,14 @@ class DemoSeed {
           );
           cursor = end;
         }
-        await db.batch((b) => b.insertAll(db.sleepStageSegments, stageRows));
+        await db.batch(
+          (b) => b.insertAllOnConflictUpdate(db.sleepStageSegments, stageRows),
+        );
 
         for (var c = 0; c < night.clips.length; c++) {
           final clip = night.clips[c];
           final startedAt = _clockWithin(window, clip.time);
-          await db.into(db.soundClips).insert(
+          await db.into(db.soundClips).insertOnConflictUpdate(
                 SoundClipsCompanion(
                   id: Value('$id-clip-$c'),
                   recordId: Value(id),
@@ -85,7 +91,7 @@ class DemoSeed {
               );
         }
 
-        await db.into(db.insights).insert(
+        await db.into(db.insights).insertOnConflictUpdate(
               InsightsCompanion(
                 id: Value('$id-insight'),
                 recordId: Value(id),
