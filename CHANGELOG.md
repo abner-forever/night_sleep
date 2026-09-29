@@ -3,6 +3,63 @@
 本文件记录「夜深」项目规格的版本变更。规格正文见
 [docs/superpowers/specs/2026-09-28-night-sleep-design.md](docs/superpowers/specs/2026-09-28-night-sleep-design.md)。
 
+## 2.6（2026-09-29）
+
+用户实机巡检上报 6 条，逐条定位根因后修复。**下面写的是「为什么坏」，不是「改了什么」**——
+其中一条暴露了数据库在 v2 就留下的静默损坏，v3 的迁移会把它一并修好。
+
+① **顶部渐变与状态栏之间有一条硬分界**。根因是 `app.dart` 的 `SafeArea(bottom: false)`
+把整个外壳（连同 `TopFade`）下移了 `safeTop`，而 `TopFade` 全文不读 `MediaQuery`、
+不知道安全区的存在；带内填充的第一个停点是满值 92% alpha，起点正好落在安全区下沿。
+于是状态栏那段 `[0, safeTop]` 既无填充也无模糊，边界处出现 `0 → 0.92` 的硬跳变。
+改为**外壳去掉顶部安全区缩进**，状态栏留白由各页滚动视图按新接口 `pageTopInset` 施加，
+渐变带原点回到屏幕物理顶端。顺带补上规格要求、此前缺失的 `saturate(125%)`
+（`ImageFilter` 没有对应物，用 `alpha 0.04` 的 accent 叠加层近似）与 320ms 时长。
+
+② **清除演示数据后点「重新安装」毫无反应**（最严重）。根因有两层。数据层：
+`Insights.recordId` **没有外键**（对照 stages/clips 都有 `ON DELETE CASCADE`），
+`deleteDemoData()` 只删记录，洞察被留下成孤儿行；重装时 insights 用普通 `insert`、
+id 是固定的 `demo-N-insight`，必然主键冲突，而异常从一个没有 handler 的事务里抛出，
+`demo_data_page` 的 `onTap` 没有 try/catch → 界面零反馈。交互层：清除后的 provider 重载窗口里，
+`demoCount` 仍读到旧值，安装行 `onTap` 仍是 `null`，而 `IosListItem` 在 `onTap == null` 时
+**根本不创建 `GestureDetector`**，点击被彻底吞掉。修补：**给 `Insights` 补外键级联，
+schema v3**；`DemoSeed.install` 四条写入路径全部改成 upsert（幂等才是根治）；
+安装/清除加 try/catch + 页内反馈 + 忙碌态。**schema v3 的迁移会先删孤儿行、再重建
+`insights`，因此自动修好用户那份已损坏的模拟器库**（`records=0 / insights=5`）——
+正是它让冷启动在 `runApp` 之前抛异常。同一轮给冷启动的播种加了兜底：失败只记日志、
+不再让应用死在 `runApp` 之前。
+
+③ **设置页「关于」卡片文字没有居中，且版本号写死**。根因不是 `textAlign`：
+`GlassSurface` 内部是个 `Stack`（默认 `StackFit.loose`），非 `Positioned` 的子项拿到宽松约束，
+`Column` 于是收缩到最宽的「睡眠记录与分析」（约 98px），再被 `Stack` 的 `topStart` 贴到左边
+——`crossAxisAlignment: center` 只在那个窄列内部起作用。这是 CLAUDE.md 记的
+「`Stack`(loose) 按最大非 position 子项定尺寸」坑的又一实例。另发现版本号硬编码
+`'v2.0.0'`，与 `pubspec.yaml` 的 `0.1.0+1` 对不上，改为读 `package_info_plus` 的真实构建值。
+
+④ **导入页按钮上方一根白线 + 点击毫无反应**。白线**不在按钮上方的空隙里，而是按钮自身
+1px 的顶边内高光**（像素级采样定位）——它是给启用态走的镜面高光，而全项目 3 处
+`PrimaryAction` 只有这一处是禁用的。点击无反应的根因是 `onTap: null`，
+`Pressable` 会把 `onTapDown/Cancel/Up/Tap` 四个回调**全部置 null**。改为可选地把
+禁用外观与可点击拆开：高光/投影/触觉收进启用态，禁用态仍接住手势并在**页内**给出说明
+（不能用全局 toast——二级页 push 在外壳之上，会被盖住）。
+
+⑤ **删除图标与确认弹窗**（改动请求，**推翻规格偏差 #12**）。应用自身已经自相矛盾：
+「删除记录」严格遵守 #12（纯文字、无图标），「删除全部数据」却借了播放控制的
+**「停止」方块**凑数，语义完全对不上——用户看到的「风格不搭」正是这个矛盾。改为两处都用
+**自绘的垃圾桶**。同时把应用内**三处**危险操作统一到**按令牌自绘的 iOS 风格确认弹窗**
+（不引入 `flutter/cupertino.dart`，它自带系统配色、会绕过 `AppTokens`）；
+第三处「清除演示数据」此前**根本没有二次确认，点一下就删**。偏差 #12 随之修订，新增偏差 #20。
+
+⑥ **深色模式下记录页的事件图标看不见**。根因是四个调用点漏传 `color:`，
+`AppIcons.glyph` 退回硬编码的黑色，而该值被**文本替换进 SVG 的 `stroke`** 再交给
+`SvgPicture.string`——颜色在构造那一刻就烤进去了，外面那圈 `IconTheme.merge` **从未起作用**
+（`SvgPicture` 不读 `IconTheme`），选中/未选中两态都是黑的。改为把颜色真正传下去，
+并把兜底的黑改成**断言**，让同类疏漏不再静默。
+
+改动同步进规格（§2.2、§2.3、§5.1、§8 偏差 #12/#20、§9 测试矩阵）、`README.md`
+（实现范围 / 验证记录）与 `CLAUDE.md`（schema v3）。**未验证项**（含本轮新增的
+`package_info_plus` 真机取值、以及本轮多数界面改动未经目视）记在 README「验证记录」。
+
 ## 2.5（2026-09-28）
 
 M2 剩下的两块落地——**数据导出**与**就寝/起床提醒**，只剩小米导入仍被外部资料阻塞。

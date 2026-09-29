@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 界面按 Figma Make 原型的**最终生效层**实现。
 
 **动手前先读 `docs/superpowers/specs/2026-09-28-night-sleep-design.md` 第 8 章「与原型的有意偏差」。**
-里面 19 条都是刻意为之的，
+里面 20 条都是刻意为之的，
 每条附了理由和回归方法。其中「不伪造睡眠阶段 / 不画没有真实音频的波形 / 不显示读不到的余额 /
 不猜小米导入字段」这几条是产品红线，不是待办：原型里这些是演示数据，规格书明令不得当真实能力实现。
 `README.md` 的「未实现」表同样不要当成已完成。
@@ -73,8 +73,15 @@ shell profile 里写环境变量——需要时用命令行前置的临时变量
 
 ### 数据库
 
-Drift + SQLite，schema v2（`schemaVersion => 2`，`onUpgrade` 在 `app_database.dart`）。
+Drift + SQLite，schema v3（`schemaVersion => 3`，`onUpgrade` 在 `app_database.dart`）。
 外键级联删除；`source ∈ {manual, import, demo}` 隔离演示数据。
+
+- **v3 的关键改动**：`Insights.recordId` 补上了 `ON DELETE CASCADE` 外键（v2 里没有）。
+  v2 时 `deleteDemoData()` 会留下孤儿洞察行（记录删了、洞察还在），重装演示数据时固定 id
+  `demo-N-insight` 必然主键冲突，异常从没有 handler 的事务里抛出——轻则「点了没反应」，
+  重则让冷启动在 `runApp` 之前抛异常。v3 的迁移**先删孤儿、再 `alterTable` 重建表**
+  （顺序不可颠倒：迁移期间 `PRAGMA foreign_keys` 是关的，先重建会把孤儿拷进新表），
+  因此这次升级会**自动修复已在现场损坏的库**。
 
 - 入睡/醒来存 **UTC 瞬时值 + 录入时区**，墙上时间读取时派生 → 改系统时区不毁数据。
 - 记录按**醒来所在本地日期**归档；跨午夜算一天。

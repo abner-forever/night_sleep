@@ -1,6 +1,6 @@
 # 夜深：Flutter 睡眠记录 App 项目规格说明书
 
-> 版本：2.5（2026-09-28）
+> 版本：2.6（2026-09-29）
 > 用途：本项目的实现与验收基准。
 > 设计原型：[Figma Make：睡眠记录 APP 设计](https://www.figma.com/make/hKbqp1qjtcNQmmiDtVvXpk/%E7%9D%A1%E7%9C%A0%E8%AE%B0%E5%BD%95APP%E8%AE%BE%E8%AE%A1)
 > 变更史见 [CHANGELOG.md](../../../CHANGELOG.md)
@@ -53,21 +53,37 @@
 - **悬浮标签条**：左右下各 12px 外边距（或安全区）；圆角 34px；`blur(28px) saturate(160%)`；滑动胶囊 `accent 14%`，420ms `cubic-bezier(.22,1,.36,1)`。
 - **主按钮**：高 58px、圆角 16px、`linear-gradient(135deg,#0A84FF,#5856D6)`。
 - **动效曲线**：标准 `cubic-bezier(.22,1,.36,1)`；回弹 `cubic-bezier(.34,1.56,.64,1)`；按压缩放 `.972`。
-- **顶部渐变**（`.ios-top-fade`）：高 144px、`blur(14px) saturate(125%)`，填充四段 `bg-base`
+- **顶部渐变**（`.ios-top-fade`）：高 144px、`blur(14px)` + `saturate(125%)`，填充四段 `bg-base`
   （92% / 72% / 32% / 透明），并用 `mask-image` 收边；滚动超过 12px 后 320ms 淡入上移；
   ≥768px 与弹层打开时停用。**遮罩必须套在 `BackdropFilter` 外面**：模糊作用于「身后的画面」，
   在它子树里的遮罩管不到它，只会让填充淡出而模糊留一条硬边。
+  **本版已落实**（`top_fade.dart`）：`saturate` 在 `ImageFilter` 里没有对应物，用一层极淡的
+  accent 叠加（`alpha 0.04`）**近似**——与 `glass_surface.dart` 承认同一限制后的手法一致；
+  淡入时长另立 `_fadeDuration = 320ms`（`AppDurations.standard` 是 340ms 且被多处共用，
+  改它会波及无关动效，故不动）。渐变的原点必须顶到**屏幕物理顶端**：外壳不再套顶部
+  `SafeArea`，状态栏留白改由各页滚动视图施加（见本节「页面的横向留白与底部留白」）。
 - **标签条尺寸**：内层 `min-height: 56px`（含自身 3px/2px 内边距），外层内边距 4px 6px，
   合计约 64px，加上 `max(12px, 安全区底部)` 的浮起量。页面底部留白必须由**实际高度**推导，
   写死的数值一旦小于它就会让最后一行永远压在玻璃下面。
-- **页面的横向留白与底部留白都由页面自己的滚动视图提供**（`pageGutter` / `pageBottomInset`），
-  不放在滚动视图外面。放外面时视口被压缩，留白区变成一条不透明带、内容在带子上方被切断；
-  放里面时视口直达屏幕边缘，内容按设计从悬浮玻璃下穿过，最后一行仍能滚到玻璃之上。
+- **页面的横向、**顶部**与底部留白都由页面自己的滚动视图提供**（`pageGutter` / `pageTopInset`
+  / `pageBottomInset`），不放在滚动视图外面。放外面时视口被压缩，留白区变成一条不透明带、
+  内容在带子上方被切断；放里面时视口直达屏幕边缘，内容按设计从悬浮玻璃下穿过，最后一行
+  仍能滚到玻璃之上。**顶部安全区尤其不能由外壳的 `SafeArea` 兜**：那会把整条 `.ios-top-fade`
+  连同内容一起推下状态栏，渐变在状态栏那段完全缺失、却在安全区下沿以满值 alpha 起始，
+  留下一条硬分界。改由 `pageTopInset` 施加后，视口顶到物理顶端，渐变才有整段 144px 可模糊。
 - **字体**：系统字体（Apple 平台即 SF Pro / 苹方）；数字使用 tabular figures（对应 `.num`）。
 
 ### 2.3 图标
 
-24 个自定义 24×24 描边 SVG（`stroke-width` 默认 1.6、圆角端点）。首页/记录/统计三个标签在选中时切换为实心变体，设置无实心变体，改用加粗描边（2.1）。
+24×24 描边 SVG（`stroke-width` 默认 1.6、圆角端点），首页/记录/统计三个标签在选中时切换为
+实心变体，设置无实心变体，改用加粗描边（2.1）。
+
+> **数量口径（本版订正）**：旧稿写「24 个图标」，是把两个不同的数字混为一谈。
+> **我们从未核实过原型图标集里到底有几个图标**——那个 24 是转述，没有出处，不要当成事实。
+> 实现侧可核实的是 `lib/core/widgets/app_icons.dart` 里的**具名图标访问器**：
+> 加本轮新增的 `trash` 之前是 28 个，现在是 **29 个**（另有渲染核心 `glyph` 与标签用的
+> `filledTabGlyph`，二者不是独立的图标）。两者不是同一件事：实现里包含原型没有的
+> （导出、垃圾桶等），不代表原型也这么多。
 
 ### 2.4 页面与组件
 
@@ -170,15 +186,22 @@
 
 ## 5. 数据模型与计算口径
 
-### 5.1 表结构（schema v2）
+### 5.1 表结构（schema v3）
 
 | 表 | 核心字段 | 约束 |
 | --- | --- | --- |
 | `SleepRecords` | `id`、`startAtUtc`、`endAtUtc`、`timeZoneId`、`quality`、`notes`、`tagsJson`、`source`、`flaggedSnore`/`flaggedTalk`/`flaggedRestless`/`flaggedNightmare`、`createdAt`、`updatedAt` | 时长派生不存储；质量 1–5；`source ∈ {manual, import, demo}` |
 | `SleepStageSegments` | `id`、`recordId`、`stage`、`startAtUtc`、`endAtUtc`、`source` | 外键级联删除；阶段不被反推 |
 | `SoundClips` | `id`、`recordId`、`kind`、`startedAtUtc`、`durationMs`、`localUri`、`transcript`、`analysis`、`analysisStatus`、`source` | 转录/分析可空；状态区分 pending / analysed / failed |
-| `Insights` | `id`、`recordId`、`kind`、`content`、`provider`、`model`、`score`、`generatedAtUtc`、`status` | 仅保存真实生成结果；失败状态不作有效结论 |
+| `Insights` | `id`、`recordId`、`kind`、`content`、`provider`、`model`、`score`、`generatedAtUtc`、`status` | `recordId` 外键级联删除（schema v3 起）；仅保存真实生成结果；失败状态不作有效结论 |
 | `AppSettings` | `themeMode`、`sleepGoalMinutes`、提醒开关与时间、`soundRecordingEnabled`、`onboarded`、`insightProvider`、`insightModel` | **不存 API Key** |
+
+**v2 → v3 迁移**：`Insights.recordId` 在 v2 里没有外键，`deleteDemoData()` 因此会留下
+`record_id` 指向已删记录的孤儿洞察行；重装演示数据时固定 id（`demo-N-insight`）与这些孤儿
+主键冲突，异常从没有 handler 的事务里抛出（曾经连冷启动都被它打断）。v3 的迁移**先删孤儿、
+再用 `alterTable` 重建 `insights` 补上 `ON DELETE CASCADE`**（顺序不可颠倒：迁移期间
+`PRAGMA foreign_keys` 是关的，先重建会把孤儿原样拷进新表，让新表宣称一条自己并不满足的约束）。
+因此这次升级**会自动修好已在现场损坏的库**。
 
 ### 5.2 计算口径
 
@@ -197,7 +220,7 @@
 
 - **客户端：** Flutter / Dart；基线 `Flutter 3.47.5`（stable，Dart 3.13.4）。
 - **状态与路由：** Riverpod 管理状态（`sleepEntriesProvider` 是 UI 唯一数据源）；`go_router` 管理四个主入口与设置子页。
-- **本地存储：** Drift + SQLite，schema v2 带迁移，外键级联；演示数据与真实数据以 `source` 隔离。
+- **本地存储：** Drift + SQLite，schema v3 带迁移，外键级联；演示数据与真实数据以 `source` 隔离。
 - **分层：** `features/<feature>/presentation|domain|data`；主题、路由、数据库、平台服务在 `core/`。Widget 不直接读写数据库——`SleepRepository` 一次性组装 `SleepEntry` 聚合（3 条批量查询，非 N+1）。
 - **自适应：** 按可用宽度决定布局（断点 768px），非硬编码设备类型。
 - **图标：** `flutter_svg` 渲染原型原始 SVG path，不替换为近似系统图标。
@@ -234,7 +257,7 @@
 | 9 | 原型后期覆盖中关闭了动态光晕（`.liquid-orb{opacity:0}`），仅保留静态渐变背景 | 实现静态渐变，不做光晕动画 | 与原型最终生效层一致；早期液态玻璃为该文件被覆盖的历史层。 |
 | 10 | 首页「昨夜睡眠」卡恒有深睡/浅睡/REM 圆环与阶段块（原型数据全部带阶段） | 圆环与阶段块**仅在该记录确有阶段数据时出现**：手动记录的卡片只有时长弧和「全程安静」等真实内容 | 手动记录没有任何阶段测量来源。若补齐阶段环，等于把用户填的时长伪造成深睡/浅睡分布。想看完整形态需要真实/导入的阶段数据，或保留演示数据。 |
 | 11 | 原型没有编辑/删除入口 | 睡眠详情底部提供「编辑记录」「删除记录」，但**演示数据不提供**，改为说明可在设置中整体清除 | 演示行是唯一带真实测量的样例。改动其时长会让阶段与窗口互相矛盾，且 `source` 一旦不再是 `demo`，「清除演示数据」就再也匹配不到它——用户会得到一条既非演示、又谈不上真实的记录。 |
-| 12 | 原型图标集无垃圾桶 | 删除按钮为纯文字，不画图标补齐 | 设计的 24 个图标是固定集合；自绘一个垃圾桶等于引入一套应用其余部分没有的图标语言。 |
+| 12 | 原型图标集无垃圾桶 | **本版推翻旧结论**：新画一个垃圾桶（`AppIcons.trash`，与其余访问器同形），「删除记录」与「删除全部数据」两处都用它；后者另补 `tokens.danger` 语义色的图标底板 | 旧实现**自相矛盾**：同一应用里「删除记录」严格遵守旧 #12（纯文字、无图标，`detail_sheet.dart` 还专门写了注释解释「不为此发明图标」），「删除全部数据」却借了播放控制的**「停止」方块**（`AppIcons.stop`，一个 `<rect rx="2">`）凑数——语义完全对不上，用户报的「风格不搭」正是这个矛盾。原型图标集确实**没有**垃圾桶（已核实，28 个具名访问器里不含垃圾桶/叉号/减号/清扫类），所以是**新画**，不是「启用已有」。回归方法：`test/pages_widget_test.dart` 的危险操作行用例与 `test/record_edit_delete_test.dart` 的图标身份断言——把任一调用点换回 `AppIcons.stop` 都会变红（已变异验证）。 |
 | 13 | 原型为每个声音片段硬编码同一条 38 柱波形 | 演示片段有确定性包络（打鼾为缓慢起伏、梦话为断续爆发），**真实记录一律没有包络**，画等高轨道 | 演示之夜整体是合成的（阶段、转写同样是示例），且界面标注为演示、可一键清除。真实片段若要波形，只能来自解码后的文件——[SoundClip.waveformEnvelope] 为 null 时不许画形状。 |
 | 14 | 原型 `data.ts` 里写死三家服务商的模型名与余额 | 不写死未经核实的模型名；DeepSeek 与 Anthropic 用**对照官方文档核实过**的 ID 并注明核实日期，OpenAI 文档不可访问故留空，改由「获取可用模型」调 `GET /models` 实时拉取 | 模型 ID 变动快于发版。一个看着合理但不存在的名字比空列表更糟：用户选中它、请求 404、还会以为是应用的问题。余额仍然不显示（偏差 #3）。 |
 | 15 | 原型的时间选择器有 `wheel-selection-rail`（选中行上下各一条 1px 强调色线） | 不绘制 | 按使用方要求去掉。原型的版本是 30% accent 混入 `--border-strong` 的灰蓝色，比先前实现的纯 accent 淡得多——若要恢复，改的是颜色而不是这个元素。 |
@@ -242,6 +265,7 @@
 | 17 | 原型的音效时长无限循环 | 每条循环 20 秒，接缝做了等功率交叉淡化 | 循环必须无缝，否则每次重播都会「咔」一声。生成器按种类固定种子，因此同一条循环每次渲染结果一致。 |
 | 18 | 原型没有导出功能（纯前端演示，数据不落地） | 新增导出（`/settings/export`）：CSV 两张表（记录 + 阶段）+ JSON 完整存档，经系统分享面板交付 | 规格 M2 要求本地导出，而原型的记录只活在内存里、无导出可言。回归方法：确认设置页有「睡眠数据导出」区块（`lib/features/settings/presentation/settings_page.dart` 的 `SectionHeader('睡眠数据导出')`），且导出的 CSV 首字节是 BOM（`test/sleep_export_test.dart` 的 BOM 用例）。 |
 | 19 | 原型的提醒开关是纯装饰——开关状态不驱动任何调度 | 接真实本地通知：权限被拒时**不写入偏好**、开关回弹；权限为 `denied` 时给出「去系统设置」入口；启动时回收被撤销的授权（把偏好写回 `false`） | 一个写着「开」却不会响的开关，正是规格书说的「设置状态与实际能力不一致」。回归方法：拒绝通知权限后确认 `bedtimeReminderEnabled` 仍为 `false`（`test/reminder_settings_test.dart`）；把启动回收条件改回 `!= granted` 会让 `test/reminder_sync_test.dart` 的 `unsupported` 用例变红。 |
+| 20 | 原型的二次确认走 Material 默认外观（Android 观感） | 按项目令牌**自绘** iOS 风格确认弹窗（`lib/core/widgets/confirm_dialog.dart` 的 `showConfirmDialog`），**不引入 `flutter/cupertino.dart`**；应用内三处危险操作统一走它 | 整个应用是 iOS/令牌体系，唯独确认弹窗走了 Material 默认的配色与圆角。`CupertinoAlertDialog` 自带系统色与圆角，会**绕过 `AppTokens`**，与「设计令牌只有一份」的硬约定冲突，所以自绘。三处统一为：删除单条记录、删除全部本地数据、**清除演示数据**——第三处此前**根本没有二次确认**（点一下就删）。自绘走 `showGeneralDialog`，必须自己补 `Material` 祖先，否则所有 `Text` 落到黄色双下划线错误样式（`confirm_dialog.dart` 已显式补上）。回归方法：`test/confirm_dialog_test.dart`（`Material` 祖先、取消返回 `false`、破坏性取 `danger`、内容区与按钮区两条分隔线）；把任一处改回 `showDialog`/`AlertDialog`，或在 `demo_data_page` 摘掉确认块，都会让对应用例变红（已变异验证）。 |
 
 ## 9. 测试与验收矩阵
 
@@ -257,7 +281,9 @@
 | 单元测试 | `buildSleepWindow` 跨午夜与同日、时钟/日期格式化往返 | ✅ `test/sleep_window_test.dart` |
 | 单元测试 | `SleepStatistics` 平均值分母、图表上下界、柱高钳制、计数口径 | ✅ `test/sleep_statistics_test.dart` |
 | 数据测试 | 演示数据安装与来源标记、清除演示数据、CRUD 往返、醒来日归档、级联删除、全部删除 | ✅ `test/sleep_data_test.dart` |
-| 数据测试 | schema v1→v2 迁移：用真实 v1 库文件升级，校验旧数据保留、`source` 不重置、新列默认值、新表可读写、重复打开不重跑 | ✅ `test/schema_migration_test.dart`（含防止夹具空跑的自检） |
+| 数据测试 | schema v1→v2→v3 迁移：用**真实的旧版库文件**升级。v1 段校验旧数据保留、`source` 不重置、新列默认值、新表可读写、重复打开不重跑；v2 段校验**孤儿洞察行被清除**、仍有关联的洞察保留、迁移后外键真的存在且级联生效、已损坏的库（`records=0 / insights=5`）能被修好 | ✅ `test/schema_migration_test.dart`（含防止夹具空跑的自检：夹具必须停在 v2，且 `insights` 确实不带外键） |
+| 数据测试 | 演示数据**重装与幂等**：清除后重装条数一致、不留孤儿洞察、连装两次结果不变（所有写入路径 upsert） | ✅ `test/sleep_data_test.dart` |
+| 数据测试 | 冷启动播种失败**不中断启动**：`installDemoSeedIfNeeded` 在写入失败时只记日志不外抛，开关关闭时连库都不查，判据是「有没有 demo 行」而非「表是否为空」 | ✅ `test/demo_seed_startup_test.dart`（含变异验证：拆掉 try/catch、把判据改成 `isEmpty` 都会变红） |
 | Widget 测试 | 四页空状态与数据态、表单保存、设置写回、二次确认、二级页内边距、下拉不受裁剪 | ✅ `test/pages_widget_test.dart` |
 | Widget 测试 | 分段控件胶囊与分段同宽、位移成整数倍 | ✅ `test/segmented_control_test.dart` |
 | Widget 测试 | 编辑/删除：入口有无、演示数据不可编辑、表单预填、写回同一 id、不改 `createdAt`、不清空阶段、删除二次确认 | ✅ `test/record_edit_delete_test.dart` |
@@ -267,8 +293,14 @@
 | 单元测试 | 导出内容：BOM 与 CRLF、RFC 4180 转义可无损还原、记录/阶段两张表、按入睡时刻升序、演示记录排除并计数、JSON 用 schema 字段名且不写 `localUri` / `AppSettings` | ✅ `test/sleep_export_test.dart` |
 | Widget 测试 | 导出页：条数只数真实记录、无记录时禁用并说明、CSV/JSON 两个动作、失败如实报错、取消分享不报错 | ✅ `test/export_page_test.dart` |
 | 单元/Widget 测试 | 提醒：幂等全量重排契约与固定 id、`nextOccurrence` 的夏令时口径、权限被拒时不写偏好且开关回弹、`denied` 时的「去系统设置」入口、启动回收被撤销授权、`unsupported` 时不动偏好 | ✅ `test/reminder_scheduler_test.dart`、`test/reminder_settings_test.dart`、`test/reminder_sync_test.dart` |
+| 单元/Widget 测试 | 图标取色：`AppIcons.svgFor` 逐字节断言颜色写进 `stroke`、不出现黑色、不留 `currentColor`；漏传 `color` 触发断言；记录页四类事件图标在**深色下**未选中取 `textMuted`、选中取语义色 | ✅ `test/pages_widget_test.dart`（纯函数 + 记录页渲染护栏） |
+| Widget 测试 | 关于卡片：文字在卡片内**水平居中**（防 `Stack` 静缩后被左锚定）、版本号取自 `PackageInfo` 而非写死常量 | ✅ `test/pages_widget_test.dart` |
+| Widget 测试 | 自绘确认弹窗：有 `Material` 祖先、文字不带错误下划线、取消与点蒙层返回 `false`、破坏性操作取 `danger`、内容区与按钮区各一条分隔线、三处入口文案不变 | ✅ `test/confirm_dialog_test.dart`、`test/pages_widget_test.dart` |
+| Widget 测试 | 顶部渐变带贴在**屏幕物理顶端**（不被顶部安全区推下去）；四个一级页的 `error`/`loading` 分支仍给状态栏留白 | ✅ `test/pages_widget_test.dart` |
+| Widget 测试 | `PrimaryAction` 禁用态：不画顶边高光与蓝色投影、不触发触觉，但接住点击并给出**页内**提示（不走会被二级页盖住的全局 toast）；启用态观感与手感逐项不变 | ✅ `test/primary_action_test.dart` |
+| Widget 测试 | 删除入口用**垃圾桶**图标（非借用的停止方块）且带 `danger` 底板——身份断言经变异验证（换回 `stop` 必红） | ✅ `test/pages_widget_test.dart`、`test/record_edit_delete_test.dart` |
 | 集成/真机 | iOS/Android/macOS 核心流程；通知权限；锁屏录音与中断 | macOS 构建、iOS 模拟器构建已验证；**真机、通知投递与分享面板未验证** |
-| 视觉检查 | 对照 Figma Make 四页在手机/宽屏、浅色/深色核对层级、间距、字体与安全区 | **待补**（自动化测试覆盖几何与结构，人工视觉核对未做） |
+| 视觉检查 | 对照 Figma Make 四页在手机/宽屏、浅色/深色核对层级、间距、字体与安全区 | **部分**：v2.5 的巡检覆盖了四个一级页与详情/音效面板；本版（v2.6）追加确认了顶部渐变顶到物理顶端后硬分界消失（iPhone 16 Pro 模拟器，浅色/深色各一遍）。**本版其余新增/改动的界面（自绘确认弹窗、垃圾桶图标、禁用按钮的页内提示、关于卡片）没有做目视核对**，只有几何/结构断言 |
 
 通过构建不等于录音后台能力、小米数据接入或 AI 服务已完成。
 
