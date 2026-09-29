@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../app/app_toast.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_icons.dart';
 import '../../../core/widgets/glass_surface.dart';
@@ -27,6 +26,11 @@ class _ExportPageState extends ConsumerState<ExportPage> {
   /// 防止一次导出未完成时重复触发。
   bool _busy = false;
 
+  /// 最近一次导出失败的原因，显示在页内。全局 toast 挂在 `AppScaffold`，而这一页
+  /// push 在它之上，提示条会被整个盖住；失败反馈必须留在本页，否则界面只会表现
+  /// 为「点了没反应」。取消分享是正常操作，不算失败，不设置它。
+  String? _error;
+
   /// [all] 是**未过滤**的全部记录。
   ///
   /// 过滤交给 `SleepExporter` 自己做：JSON 里的 `excludedDemoCount` 要靠
@@ -36,7 +40,10 @@ class _ExportPageState extends ConsumerState<ExportPage> {
     required List<SleepEntry> all,
   }) async {
     if (_busy) return;
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
 
     final files = asJson
         ? SleepExporter.json(all, now: DateTime.now())
@@ -48,12 +55,11 @@ class _ExportPageState extends ConsumerState<ExportPage> {
         );
 
     if (!mounted) return;
-    setState(() => _busy = false);
-
-    if (outcome == ShareOutcome.failed) {
-      ref.read(toastProvider.notifier).show('导出失败，文件没有交出去。');
-    }
-    // dismissed 是正常操作，不报。
+    setState(() {
+      _busy = false;
+      // 失败必须看得见；dismissed（用户取消分享）是正常操作，不报。
+      _error = outcome == ShareOutcome.failed ? '导出失败，文件没有交出去。' : null;
+    });
   }
 
   @override
@@ -125,6 +131,13 @@ class _ExportPageState extends ConsumerState<ExportPage> {
             ],
           ),
         ),
+        if (_error != null) ...[
+          const SizedBox(height: 12),
+          Text(
+            _error!,
+            style: TextStyle(fontSize: 12, height: 1.5, color: tokens.danger),
+          ),
+        ],
         const SizedBox(height: 22),
         IosListGroup(
           children: [
@@ -191,8 +204,8 @@ class _Count extends StatelessWidget {
 
 /// 一个导出动作行。
 ///
-/// 没有图标：设计的 24 个图标里没有表达「导出」的那一个，自绘一个就是引入一套
-/// 应用其余部分没有的图标语言——与「不补垃圾桶图标」同源。
+/// 没有图标：现有图标集里没有表达「导出」的那一个，自绘一个就是引入一套应用其余
+/// 部分没有的图标语言。
 class _Action extends StatelessWidget {
   const _Action({
     required this.enabled,

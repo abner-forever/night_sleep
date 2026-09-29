@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/app.dart';
-import '../../../app/app_toast.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_basics.dart';
@@ -40,6 +39,17 @@ class _InsightConfigPageState extends ConsumerState<InsightConfigPage> {
   List<String>? _fetchedModels;
   bool _fetching = false;
 
+  /// 最近一次获取失败的原因，显示在页内。全局 toast 挂在 AppScaffold，二级页
+  /// push 在它之上，会把提示条整个盖住——失败反馈必须留在本页，否则界面只会
+  /// 表现为「点了没反应」（转圈停下之外毫无变化）。
+  String? _error;
+
+  /// 最近一次获取成功的文案，同样显示在页内（原因见 [_error]）。
+  ///
+  /// 与 [_error] 互斥：每次取模型、切换服务商都先把两者清空，且只设置其中一个，
+  /// 因此页面上最多只出现一条提示。
+  String? _success;
+
   @override
   void dispose() {
     _keyController.dispose();
@@ -63,7 +73,11 @@ class _InsightConfigPageState extends ConsumerState<InsightConfigPage> {
 
   Future<void> _fetchModels() async {
     final id = _providerId;
-    setState(() => _fetching = true);
+    setState(() {
+      _fetching = true;
+      _error = null;
+      _success = null;
+    });
     try {
       final models = await fetchProviderModels(
         provider: providerFor(id),
@@ -73,18 +87,20 @@ class _InsightConfigPageState extends ConsumerState<InsightConfigPage> {
       setState(() {
         _fetchedModels = models;
         _fetching = false;
+        _success = '已获取 ${models.length} 个可用模型。';
       });
       // Keep the current choice only while the provider still serves it.
       final stored = ref.read(settingsProvider).valueOrNull?.insightModel;
       if (stored == null || !models.contains(stored)) {
         await _update(AppSettingsCompanion(insightModel: Value(models.first)));
       }
-      if (!mounted) return;
-      ref.read(toastProvider.notifier).show('已获取 ${models.length} 个可用模型。');
     } on ModelFetchFailure catch (failure) {
+      // 失败必须看得见。此前异常只往被盖住的全局 toast 里写，首页以外看不到。
       if (!mounted) return;
-      setState(() => _fetching = false);
-      ref.read(toastProvider.notifier).show(failure.message);
+      setState(() {
+        _fetching = false;
+        _error = failure.message;
+      });
     }
   }
 
@@ -156,7 +172,11 @@ class _InsightConfigPageState extends ConsumerState<InsightConfigPage> {
                       selected: provider.label,
                       onPick: (index) {
                         final picked = kInsightProviders[index];
-                        setState(() => _fetchedModels = null);
+                        setState(() {
+                          _fetchedModels = null;
+                          _error = null;
+                          _success = null;
+                        });
                         _update(
                           AppSettingsCompanion(
                             insightProvider: Value(picked.id.id),
@@ -379,6 +399,20 @@ class _InsightConfigPageState extends ConsumerState<InsightConfigPage> {
             ],
           ),
         ),
+        if (_error != null) ...[
+          const SizedBox(height: 12),
+          Text(
+            _error!,
+            style: TextStyle(fontSize: 12, height: 1.5, color: tokens.danger),
+          ),
+        ],
+        if (_success != null) ...[
+          const SizedBox(height: 12),
+          Text(
+            _success!,
+            style: TextStyle(fontSize: 12, height: 1.5, color: tokens.accent),
+          ),
+        ],
       ],
     );
   }

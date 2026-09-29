@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:night_sleep/app/app_toast.dart';
 import 'package:night_sleep/core/theme/app_theme.dart';
 import 'package:night_sleep/core/theme/app_tokens.dart';
 import 'package:night_sleep/features/settings/data/export_sharer.dart';
@@ -150,20 +149,24 @@ void main() {
     expect(sharer.subject, '夜深睡眠数据导出');
   });
 
-  testWidgets('分享失败如实报错', (tester) async {
+  testWidgets('分享失败如实报错，且提示留在页内', (tester) async {
     final sharer = _FakeSharer(outcome: ShareOutcome.failed);
     await pumpRoute(tester, sharer: sharer, entries: [entry(id: 'a')]);
 
     await tester.tap(find.text('导出 JSON'));
     await tester.pumpAndSettle();
 
-    final container = ProviderScope.containerOf(
-      tester.element(find.byType(ExportPage)),
+    // 反馈必须是页内文案：全局 toast 挂在 AppScaffold，会被二级页整个盖住。
+    final error = find.text('导出失败，文件没有交出去。');
+    expect(error, findsOneWidget, reason: '失败必须有页内可见的反馈');
+    expect(
+      tester.widget<Text>(error).style?.color,
+      AppTokens.of(tester.element(error)).danger,
+      reason: '失败文案取 tokens.danger',
     );
-    expect(container.read(toastProvider), isNotNull, reason: '失败必须有反馈');
   });
 
-  testWidgets('用户取消分享面板不算失败，不弹提示', (tester) async {
+  testWidgets('用户取消分享面板不算失败，不报错', (tester) async {
     final sharer = _FakeSharer(outcome: ShareOutcome.dismissed);
     await pumpRoute(tester, sharer: sharer, entries: [entry(id: 'a')]);
 
@@ -173,10 +176,6 @@ void main() {
     // 正向锚点：先证明这一次点击真的走到了分享层。否则「没有提示」可以因为
     // 点击根本没落到按钮上而空转通过。
     expect(sharer.received, isNotNull);
-
-    final container = ProviderScope.containerOf(
-      tester.element(find.byType(ExportPage)),
-    );
-    expect(container.read(toastProvider), isNull);
+    expect(find.text('导出失败，文件没有交出去。'), findsNothing);
   });
 }
