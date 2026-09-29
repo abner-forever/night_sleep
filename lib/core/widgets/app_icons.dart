@@ -80,6 +80,24 @@ class AppIcons {
     return '#${rgb.toRadixString(16).padLeft(6, '0')}';
   }
 
+  /// `glyph` 交给 `flutter_svg` 的那份 SVG 文档，以纯字符串形式返回。
+  ///
+  /// 单独抽出来，是为了能直接断言颜色替换的结果。从 widget 树上读回来是做不到的：
+  /// `SvgStringLoader` 把字符串留作私有字段，公开的 `provideSvg` 又标了 `@protected`。
+  static String svgFor(
+    String body, {
+    required Color color,
+    double strokeWidth = 1.6,
+  }) {
+    final paint = _hex(color);
+    // `currentColor` is substituted textually: flutter_svg leaves the literal
+    // token unresolved, which would paint these fills black in dark mode.
+    final resolved = body.replaceAll('currentColor', paint);
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" '
+        'fill="none" stroke="$paint" stroke-width="$strokeWidth" '
+        'stroke-linecap="round" stroke-linejoin="round">$resolved</svg>';
+  }
+
   /// Renders [body] inside the prototype's stroked 24×24 frame.
   static Widget glyph(
     String body, {
@@ -88,14 +106,15 @@ class AppIcons {
     double strokeWidth = 1.6,
     String? semanticLabel,
   }) {
-    final paint = _hex(color ?? const Color(0xFF000000));
-    // `currentColor` is substituted textually: flutter_svg leaves the literal
-    // token unresolved, which would paint these fills black in dark mode.
-    final resolved = body.replaceAll('currentColor', paint);
-    final svg =
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
-        'stroke="$paint" stroke-width="$strokeWidth" stroke-linecap="round" '
-        'stroke-linejoin="round">$resolved</svg>';
+    // 不静默兜底：漏传 color 过去会画成 #000000，深色背景上看不见，
+    // 记录页事件图标变黑就是这个原因。现有调用点都显式传了色，
+    // 下一次遗漏要立刻炸出来。
+    assert(color != null, 'AppIcons 必须显式传 color：漏传会画成黑色');
+    final svg = svgFor(
+      body,
+      color: color ?? const Color(0xFF000000),
+      strokeWidth: strokeWidth,
+    );
 
     final picture = SvgPicture.string(
       svg,

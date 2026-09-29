@@ -318,7 +318,8 @@ class _LogPageState extends ConsumerState<LogPage> {
           Expanded(
             child: _EventTile(
               label: '打鼾',
-              icon: AppIcons.snore(size: 18, strokeWidth: 1.5),
+              icon: (color) =>
+                  AppIcons.snore(size: 18, color: color, strokeWidth: 1.5),
               color: tokens.accentBlue,
               selected: _events.snore,
               onTap: () => setState(
@@ -330,7 +331,8 @@ class _LogPageState extends ConsumerState<LogPage> {
           Expanded(
             child: _EventTile(
               label: '说梦话',
-              icon: AppIcons.bubble(size: 18, strokeWidth: 1.5),
+              icon: (color) =>
+                  AppIcons.bubble(size: 18, color: color, strokeWidth: 1.5),
               color: tokens.accentViolet,
               selected: _events.talk,
               onTap: () => setState(
@@ -346,7 +348,8 @@ class _LogPageState extends ConsumerState<LogPage> {
           Expanded(
             child: _EventTile(
               label: '辗转难眠',
-              icon: AppIcons.sparkle(size: 18, strokeWidth: 1.5),
+              icon: (color) =>
+                  AppIcons.sparkle(size: 18, color: color, strokeWidth: 1.5),
               color: tokens.caution,
               selected: _events.restless,
               onTap: () => setState(
@@ -358,7 +361,8 @@ class _LogPageState extends ConsumerState<LogPage> {
           Expanded(
             child: _EventTile(
               label: '噩梦',
-              icon: AppIcons.moon(size: 18, strokeWidth: 1.5),
+              icon: (color) =>
+                  AppIcons.moon(size: 18, color: color, strokeWidth: 1.5),
               color: tokens.danger,
               selected: _events.nightmare,
               onTap: () => setState(
@@ -567,7 +571,11 @@ class _EventTile extends StatelessWidget {
   });
 
   final String label;
-  final Widget icon;
+
+  /// 在这里现场构建，而不是外面造好再传进来。颜色是在构造 `SvgPicture.string`
+  /// 的那一刻就被烤进 SVG 文本的，事后再套一层 `IconTheme` 改不动它——这就是
+  /// 原先那次尝试毫无作用、每个 tile 在深色模式下都是黑色的原因。
+  final Widget Function(Color color) icon;
   final Color color;
   final bool selected;
   final VoidCallback onTap;
@@ -576,8 +584,6 @@ class _EventTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
 
-    // The icon arrives uncoloured; recolour it by rebuilding through the same
-    // builder so the active state can tint it.
     return GlassSurface(
       borderRadius: BorderRadius.circular(AppRadii.panel),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -591,10 +597,7 @@ class _EventTile extends StatelessWidget {
       },
       child: Row(
         children: [
-          IconTheme.merge(
-            data: IconThemeData(color: selected ? color : tokens.textMuted),
-            child: icon,
-          ),
+          icon(selected ? color : tokens.textMuted),
           const SizedBox(width: 10),
           Flexible(
             child: Text(

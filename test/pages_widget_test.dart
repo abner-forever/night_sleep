@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sleep/app/app.dart';
 import 'package:night_sleep/core/database/app_database.dart';
 import 'package:night_sleep/core/theme/app_theme.dart';
+import 'package:night_sleep/core/widgets/app_icons.dart';
 import 'package:night_sleep/features/home/presentation/home_page.dart';
 import 'package:night_sleep/features/log/presentation/log_page.dart';
 import 'package:night_sleep/features/settings/presentation/demo_data_page.dart';
@@ -254,6 +255,41 @@ void main() {
       expect(saved.single.hasStages, isFalse);
       expect(saved.single.hasSoundEvents, isFalse);
       expect(saved.single.score, isNotNull);
+    });
+  });
+
+  group('图标颜色', () {
+    test('SVG 用调用方给的颜色，不会退化成黑色', () {
+      final svg = AppIcons.svgFor('<path d="M4 7h16"/>',
+          color: const Color(0xFF5AC8FA), strokeWidth: 1.5);
+
+      expect(svg, contains('#5ac8fa'), reason: '颜色没写进 stroke');
+      expect(svg, isNot(contains('#000000')),
+          reason: '出现了黑色——这正是深色模式下图标看不见的原因');
+    });
+
+    test('currentColor 会被文本替换掉，不留字面量', () {
+      // flutter_svg 不解析 currentColor，留着它这些图形会被画成黑色。
+      final svg = AppIcons.svgFor('<path fill="currentColor" d="M1 1"/>',
+          color: const Color(0xFFFFFFFF));
+      expect(svg, isNot(contains('currentColor')));
+    });
+
+    test('漏传颜色直接断言失败，而不是静默画成黑色', () {
+      expect(
+        () => AppIcons.glyph('<path d="M4 7h16"/>'),
+        throwsA(isA<AssertionError>()),
+        reason: '兜底必须是「炸」，不能是「画黑」',
+      );
+    });
+
+    testWidgets('记录页的事件图标在渲染时不会触发漏传颜色的断言', (tester) async {
+      // 这个用例的护栏作用来自上一条断言：任何一处调用点忘了传 color，
+      // 构建这一页就会抛 AssertionError，而不是安静地渲染成黑图标。
+      await pumpPage(tester, const LogPage());
+      for (final label in ['打鼾', '说梦话', '辗转难眠', '噩梦']) {
+        expect(find.text(label), findsOneWidget, reason: '找不到事件「$label」');
+      }
     });
   });
 
