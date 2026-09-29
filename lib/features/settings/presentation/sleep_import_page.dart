@@ -14,15 +14,26 @@ import '../../../core/widgets/subpage.dart';
 /// been supplied yet, so there is no adapter to run. The screen therefore
 /// explains what it will import and what is still missing instead of showing a
 /// file picker that ends in a fabricated success message.
-class SleepImportPage extends StatelessWidget {
+class SleepImportPage extends StatefulWidget {
   const SleepImportPage({super.key});
 
+  @override
+  State<SleepImportPage> createState() => _SleepImportPageState();
+}
+
+class _SleepImportPageState extends State<SleepImportPage> {
   static const _willImport = [
     ('睡眠时长', '总睡眠与入睡/起床时间'),
     ('深睡眠', '深睡时长与占比'),
     ('浅睡眠', '浅睡时长与占比'),
     ('快速眼动', 'REM 时长与占比'),
   ];
+
+  /// 按钮是禁用的，但点得动：点过之后在**本页**给一句解释。
+  ///
+  /// 之所以不走 `toastProvider`：它挂在 `AppScaffold` 里，而这一页 push 在外壳
+  /// 之上，提示条会被整个盖住，等于没提示。
+  bool _blockedNotice = false;
 
   @override
   Widget build(BuildContext context) {
@@ -201,12 +212,26 @@ class SleepImportPage extends StatelessWidget {
                 label: '导入睡眠记录',
                 // Disabled rather than wired to a fake adapter.
                 onTap: null,
+                // 仍然禁用——拿到小米的导出样本或官方字段说明之前没有适配器可跑。
+                // 区别只是：这一按现在会**在按钮下面**说明原因，而不是毫无反应。
+                onBlockedTap: () => setState(() => _blockedNotice = true),
                 trailing: AppIcons.chevronRight(
                   size: 18,
                   color: Colors.white,
                   strokeWidth: 2.2,
                 ),
               ),
+              if (_blockedNotice) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '还没有接入导入：需要小米的导出样本或官方字段说明。',
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.5,
+                    color: tokens.caution,
+                  ),
+                ),
+              ],
               const SizedBox(height: 8),
               Text(
                 '需要你提供小米的导出样本后，这里才会启用。',
