@@ -94,16 +94,17 @@ void main() {
     expect(find.byType(ShaderMask), findsOneWidget);
     expect(BottomFade.maskColors.first.a, 0);
     expect(BottomFade.maskColors.last.a, 1);
-    // 非递减而非严格递增：末两档是两根同样不透明的黑（`#000 66%, #000 100%`），
-    // 与顶部带同款平台段——这条平台是设计的一部分，不是抄漏了。
-    // 「上透明、下不透明」这个方向由上面的首尾两条断言钉死，平台不影响。
+    // 非递减即可：末两档是 `#000 66% → #000 100%` 的**平段**（顶部带平台段的镜像），
+    // 要求严格递增会恒假。方向由上面两个端点钉死。
     for (var i = 1; i < BottomFade.maskColors.length; i++) {
       expect(
         BottomFade.maskColors[i].a,
         greaterThanOrEqualTo(BottomFade.maskColors[i - 1].a),
       );
     }
-    expect(BottomFade.maskStops.length, BottomFade.maskColors.length);
+    // 停点必须逐个精确：只对长度的话，「照抄顶部带的 0.34 / 0.68、忘了镜像成
+    // 0.32 / 0.66」这种错会整条溜过去。
+    expect(BottomFade.maskStops, [0.0, 0.32, 0.66, 1.0]);
   });
 
   testWidgets('高度由调用方决定，带子自己撑满宽度', (tester) async {
