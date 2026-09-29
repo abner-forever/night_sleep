@@ -398,11 +398,10 @@ class _DetailSheetState extends ConsumerState<DetailSheet> {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    // No glyph: the design's 24-icon set has no bin, and drawing
-                    // one to fill the slot would be inventing iconography that
-                    // the rest of the app does not share.
                     child: _SheetAction(
                       label: '删除记录',
+                      icon: AppIcons.trash(
+                          size: 16, color: tokens.danger, strokeWidth: 2),
                       foreground: tokens.danger,
                       background: tokens.danger.withValues(alpha: 0.12),
                       onTap: _delete,

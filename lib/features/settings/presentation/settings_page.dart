@@ -749,8 +749,12 @@ class SettingsPage extends ConsumerWidget {
               onTap: () => _confirmDeleteAll(context, ref),
               child: Row(
                 children: [
-                  AppIcons.stop(
-                      size: 16, color: tokens.danger, strokeWidth: 1.8),
+                  ListIconBadge(
+                    // 令牌里只有 danger、没有 dangerSoft，低透明度底色按既有做法现算。
+                    background: tokens.danger.withValues(alpha: 0.12),
+                    child: AppIcons.trash(
+                        size: 16, color: tokens.danger, strokeWidth: 1.8),
+                  ),
                   const SizedBox(width: 12),
                   Text(
                     '删除全部本地数据',

@@ -1,8 +1,10 @@
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sleep/app/app.dart';
+import 'package:night_sleep/core/widgets/app_basics.dart';
 import 'package:night_sleep/core/database/app_database.dart'
     show AppDatabase, AppSetting, databaseProvider;
 import 'package:night_sleep/core/theme/app_theme.dart';
@@ -123,6 +125,27 @@ void main() {
       expect(find.text('睡眠详情'), findsOneWidget);
       expect(find.text('编辑记录'), findsOneWidget);
       expect(find.text('删除记录'), findsOneWidget);
+    });
+
+    testWidgets('删除记录按钮与编辑记录一样带图标', (tester) async {
+      final entry = await seedManual();
+      await pump(tester, home(), entries: [entry]);
+
+      await tester.tap(find.byType(RecordCard).first);
+      await tester.pumpAndSettle();
+
+      final deleteAction = find.ancestor(
+        of: find.text('删除记录'),
+        matching: find.byType(Pressable),
+      );
+      expect(deleteAction, findsOneWidget, reason: '找不到「删除记录」按钮');
+      // 只钉得住「这个按钮有图标」——图标的身份断不到：`AppIcons.trash` 是返回 Widget
+      // 的静态方法而非类型，SVG 文本又藏在 `SvgStringLoader` 的私有字段里。
+      expect(
+        find.descendant(of: deleteAction, matching: find.byType(SvgPicture)),
+        findsOneWidget,
+        reason: '「删除记录」又变回纯文字了',
+      );
     });
 
     testWidgets('演示记录不给编辑删除入口，并说明原因', (tester) async {

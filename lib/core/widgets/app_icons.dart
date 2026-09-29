@@ -65,6 +65,16 @@ class AppIcons {
   static const _fan =
       '<path d="M12 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M12 6V2"/><path d="M16.24 7.76l2.83-2.83"/><path d="M18 12h4"/><path d="M16.24 16.24l2.83 2.83"/><path d="M12 18v4"/><path d="M7.76 16.24l-2.83 2.83"/><path d="M6 12H2"/><path d="M7.76 7.76 4.93 4.93"/>';
 
+  // 垃圾桶：桶盖（M4 7h16）、盖上的提手、上宽下窄的桶身、桶内两道竖纹。
+  //
+  // 原型那 24 个图标里没有垃圾桶——删除入口原先借的是播放控制里的「停止」方块，
+  // 语义对不上。这条是按同一套几何新画的：24×24 描边、不填充、圆头圆角端点，
+  // 并且照旧走 `glyph()`，所以描边宽度、端点样式、取色方式与其余图标自动一致。
+  static const _trash =
+      '<path d="M4 7h16"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>'
+      '<path d="M6.5 7l.8 12.1a1 1 0 0 0 1 .9h7.4a1 1 0 0 0 1-.9L17.5 7"/>'
+      '<path d="M10 11v6"/><path d="M14 11v6"/>';
+
   // Filled glyphs the prototype swaps in for the active tab. Only three tabs
   // have a filled counterpart; Settings falls back to the stroked icon.
   static const _moonFilled =
@@ -241,6 +251,12 @@ class AppIcons {
   static Widget fan(
           {double size = 24, Color? color, double strokeWidth = 1.6}) =>
       glyph(_fan, size: size, color: color, strokeWidth: strokeWidth);
+
+  static Widget trash(
+          {double size = 24,
+          required Color? color,
+          double strokeWidth = 1.6}) =>
+      glyph(_trash, size: size, color: color, strokeWidth: strokeWidth);
 
   /// Filled tab glyph for [id]; returns null when the design has no filled
   /// variant, and the caller falls back to the stroked icon.
