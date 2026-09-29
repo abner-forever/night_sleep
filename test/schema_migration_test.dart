@@ -1,10 +1,9 @@
 import 'dart:io';
 
-// The whole library with two names held back, rather than a `show` list: the
-// fixtures below drive `customStatement`, `TableMigration`-free migrations and
-// the real [AppDatabase] at once, so naming every symbol they reach would be a
-// running battle. `isNull` / `isNotNull` are the only collisions with
-// `flutter_test`'s matchers, and both are still used as matchers below.
+// 整库导入、只挡掉两个名字，而不是列一份 `show` 清单：下面的夹具与真实的
+// [AppDatabase] 都要用 `customStatement`，把每个用到的符号都列出来是一场没什么
+// 意义的持久战。`isNull` / `isNotNull` 是唯一与 `flutter_test` 的匹配器重名的
+// 两个，而它们在本文件里仍然当匹配器用着。
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,18 +11,15 @@ import 'package:night_sleep/core/database/app_database.dart';
 import 'package:night_sleep/features/sleep/data/sleep_repository.dart';
 import 'package:path/path.dart' as p;
 
-/// Upgrading a **real** database file — one written by v1, one written by v2 —
-/// to the current schema.
+/// 把**真实的**库文件——一份 v1 写下的、一份 v2 写下的——升级到当前 schema。
 ///
-/// The other data tests all start from `NativeDatabase.memory()`, which drift
-/// creates at the current schema version — so none of them ever execute the
-/// `onUpgrade` branch. These fixtures build an older file first and then open
-/// the real [AppDatabase] on top of it, which is the only way the migration
-/// runs the way it does on a user's device.
+/// 其余数据测试都从 `NativeDatabase.memory()` 起步，drift 会按当前 schema 版本
+/// 直接建好，所以它们一条 `onUpgrade` 分支都跑不到。这里的夹具先把一份旧版本的
+/// 文件写出来，再把真实的 [AppDatabase] 打开在它上面——这是让迁移跑得跟用户设备
+/// 上一样的唯一办法。
 ///
-/// A migration bug here is not a cosmetic one: `onUpgrade` runs while the user
-/// is opening the app, so a wrong column name or a missing table makes the app
-/// fail to start and the existing records unreachable.
+/// 这里冒出来的迁移 bug 不是观感问题：`onUpgrade` 是在用户打开应用时跑的，一个
+/// 写错的列名或一张漏掉的表，就能让应用起不来、让已有的记录取不回来。
 void main() {
   late Directory tempDir;
   late File file;
@@ -78,11 +74,11 @@ void main() {
     }
   }
 
-  /// Opens the **current** schema on top of whatever `file` already holds.
+  /// 在 `file` 现有的内容之上，打开**当前**的 schema。
   ///
-  /// The name says current rather than v2 on purpose: this helper predates the
-  /// v2→v3 work, and hard-coding a version here would go stale — and read as a
-  /// lie — the moment `schemaVersion` moves again.
+  /// 名字里写 current 而不是 v2 是故意的：这个辅助函数早于 v2→v3 这一轮，
+  /// 在这里写死版本号，等 `schemaVersion` 下次再动时它就会过期——并且变成
+  /// 一句假话。
   AppDatabase openCurrent() => AppDatabase(NativeDatabase(file));
 
   Future<int> userVersion(GeneratedDatabase db) async {
@@ -90,13 +86,12 @@ void main() {
     return row.read<int>('user_version');
   }
 
-  /// Writes a v2 database in the shape the shipped app left behind after
-  /// 「清除演示数据」: one surviving night with its insight, plus an insight whose
-  /// record is already gone (`demo-9` — the demo rows were deleted, the insight
-  /// was not, because v2's `insights.record_id` had no foreign key).
+  /// 写出一份 v2 的库，形态就是线上应用在「清除演示数据」之后留下的样子：
+  /// 一条幸存下来的夜晚记录和它的洞察，外加一条记录已经不在了的洞察
+  /// （`demo-9`——演示行被删掉了，洞察没被删，因为 v2 的 `insights.record_id`
+  /// 没有外键）。
   ///
-  /// It closes the file afterwards so the upgrade runs against exactly the bytes
-  /// a user's device would hand it.
+  /// 写完就把文件关掉，好让升级跑的正是用户设备会交给它的那串字节。
   Future<void> writeV2DatabaseWithOrphans() async {
     final v2 = _V2Database(NativeDatabase(file));
     try {
@@ -392,8 +387,7 @@ void main() {
       final db = openCurrent();
       addTearDown(db.close);
 
-      // alterTable copies rows into a brand-new table, so a mapping slip would
-      // lose the payload while still leaving a row behind.
+      // alterTable 是把行拷进一张全新的表，列映射写错就会留下行、却丢了内容。
       final insight = await (db.select(db.insights)
             ..where((t) => t.id.equals('v1-night-insight')))
           .getSingle();
@@ -460,20 +454,18 @@ class _V1Database extends AppDatabase {
       );
 }
 
-/// The schema as it shipped in v2.
+/// v2 出厂时的 schema。
 ///
-/// Raw DDL rather than Dart table classes, for the same two reasons as
-/// [_V1Database] above. The first is that it costs no code generation: the whole
-/// file stays a plain test with no build step of its own. The second matters
-/// more — raw DDL **freezes the shape**. A fixture built from table classes
-/// keeps tracking `app_database.dart` as it evolves, so a later edit to those
-/// classes would silently stop describing v2 and every assertion below would
-/// pass with no migration code running. These statements are frozen: do not
-/// "fix" them to match the current schema.
+/// 用裸 DDL 而不是 Dart 表类，理由与上面的 [_V1Database] 一样，共两条。第一条是
+/// 它不引入代码生成：整个文件保持为一份普通测试，没有自己的构建步骤。第二条更
+/// 要紧——裸 DDL 把这个形态**冻住了**。用表类写的夹具会跟着 `app_database.dart`
+/// 一起演进，日后有人改了那些类，夹具就会悄悄不再代表 v2，下面每条断言都会在
+/// 迁移代码一行没跑的情况下通过。这些语句是冻住的：不要为了对齐当前 schema 去
+/// 「修」它们。
 ///
-/// `insights` is the table under test. Its `record_id` is a plain nullable text
-/// column with **no** `REFERENCES` — the shape that let orphan rows survive
-/// `deleteDemoData`. That is the bug, and it is exactly what v3 rebuilds.
+/// `insights` 正是被测的那张表。它的 `record_id` 是一个普通的、可为空的文本列，
+/// **没有** `REFERENCES`——正是这个形态让孤儿行活过了 `deleteDemoData`。这就是
+/// 那个 bug，也正是 v3 要重建掉的东西。
 class _V2Database extends AppDatabase {
   _V2Database(super.executor);
 

@@ -81,12 +81,11 @@ class SoundClips extends Table {
 class Insights extends Table {
   TextColumn get id => text()();
 
-  // Cascade, like stages and clips. Without it `deleteDemoData` left orphan
-  // rows behind, and re-installing the demo seed then hit a primary-key clash
-  // on `demo-N-insight` — which threw inside a transaction with no handler and
-  // read to the user as "the button does nothing".
+  // 与 stages、clips 一样级联删除。少了它，`deleteDemoData` 会留下孤儿行，
+  // 重装演示数据时再撞上 `demo-N-insight` 的主键冲突——异常从一个没有任何
+  // handler 的事务里抛出去，用户看到的就是「点了这个按钮没反应」。
   //
-  // `.nullable()` before `.references(...)`: that is the order drift documents.
+  // 先 `.nullable()` 再 `.references(...)`：这是 drift 文档规定的顺序。
   TextColumn get recordId => text()
       .nullable()
       .references(SleepRecords, #id, onDelete: KeyAction.cascade)();
@@ -173,17 +172,16 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(appSettings, appSettings.insightModel);
           }
           if (from < 3) {
-            // Rebuild `insights` with the foreign key it should always have had.
-            // The orphan sweep has to come first: `alterTable` copies existing
-            // rows into the new table, and the pragma that would reject them is
-            // off during migration (`beforeOpen` turns it on afterwards, and
-            // SQLite never re-validates rows that already exist). Without this
-            // the rebuilt table would claim a constraint its contents violate.
+            // 重建 `insights`，补上它本来就该有的那条外键。
             //
-            // It also repairs databases already damaged in the field: an app
-            // that had demo data cleared carries `demo-N-insight` rows whose
-            // records are gone, and re-seeding them is a primary-key clash that
-            // throws out of `main()` before `runApp`.
+            // 清孤儿必须排在重建之前：`alterTable` 会把现有行拷进新表，而迁移
+            // 期间 `PRAGMA foreign_keys` 是关着的（`beforeOpen` 要等迁移跑完才
+            // 把它打开，而 SQLite 从不会回头校验已经存在的行）。少了这一步，
+            // 重建出来的表会宣称一条它自己的内容并不满足的约束。
+            //
+            // 它同时修好已经在现场损坏的库：清除过演示数据的应用里躺着
+            // `demo-N-insight` 这些记录已经不在了的行，而重装它们就是一次主键
+            // 冲突，会从 `main()` 里抛出来、抛在 `runApp` 之前。
             await customStatement(
               'DELETE FROM insights WHERE record_id IS NOT NULL '
               'AND record_id NOT IN (SELECT id FROM sleep_records)',
@@ -316,17 +314,15 @@ class AppDatabase extends _$AppDatabase {
         .write(values);
   }
 
-  /// Removes every user-owned row: records (cascading to stages and clips, and —
-  /// as of schema v3 — insights) plus any insight that was never attached to a
-  /// record. The settings row is left intact so preferences survive a data wipe.
-  /// Used by "delete all local data".
+  /// 删掉全部属于用户的行：记录（级联带走 stages、clips，以及 schema v3 起的
+  /// insights），外加任何从未挂到记录上的洞察。settings 行原样保留，好让偏好
+  /// 设置熬过一次数据清空。供「删除全部本地数据」使用。
   Future<void> deleteAllUserData() async {
     await transaction(() async {
       await delete(sleepRecords).go();
-      // Still needed, and not redundant with the cascade: the foreign key only
-      // covers rows whose `record_id` points at a record that exists. An insight
-      // with a null `record_id` — or one whose record was already gone — is
-      // reached by no cascade at all.
+      // 仍然必要，而且不与级联重复：外键只覆盖 `record_id` 指向一条真实存在
+      // 的记录的洞察。`record_id` 为空的、或记录早已不在的那类行，任何级联
+      // 都够不着。
       await delete(insights).go();
     });
   }
