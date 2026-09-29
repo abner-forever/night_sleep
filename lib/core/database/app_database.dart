@@ -80,7 +80,16 @@ class SoundClips extends Table {
 /// valid conclusions.
 class Insights extends Table {
   TextColumn get id => text()();
-  TextColumn get recordId => text().nullable()();
+
+  // Cascade, like stages and clips. Without it `deleteDemoData` left orphan
+  // rows behind, and re-installing the demo seed then hit a primary-key clash
+  // on `demo-N-insight` — which threw inside a transaction with no handler and
+  // read to the user as "the button does nothing".
+  //
+  // `.nullable()` before `.references(...)`: that is the order drift documents.
+  TextColumn get recordId => text()
+      .nullable()
+      .references(SleepRecords, #id, onDelete: KeyAction.cascade)();
   TextColumn get kind => text().withDefault(const Constant('record_summary'))();
   TextColumn get content => text().nullable()();
   TextColumn get provider => text().nullable()();
@@ -141,7 +150,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -162,6 +171,24 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(appSettings, appSettings.onboarded);
             await m.addColumn(appSettings, appSettings.insightProvider);
             await m.addColumn(appSettings, appSettings.insightModel);
+          }
+          if (from < 3) {
+            // Rebuild `insights` with the foreign key it should always have had.
+            // The orphan sweep has to come first: `alterTable` copies existing
+            // rows into the new table, and the pragma that would reject them is
+            // off during migration (`beforeOpen` turns it on afterwards, and
+            // SQLite never re-validates rows that already exist). Without this
+            // the rebuilt table would claim a constraint its contents violate.
+            //
+            // It also repairs databases already damaged in the field: an app
+            // that had demo data cleared carries `demo-N-insight` rows whose
+            // records are gone, and re-seeding them is a primary-key clash that
+            // throws out of `main()` before `runApp`.
+            await customStatement(
+              'DELETE FROM insights WHERE record_id IS NOT NULL '
+              'AND record_id NOT IN (SELECT id FROM sleep_records)',
+            );
+            await m.alterTable(TableMigration(insights));
           }
         },
         beforeOpen: (details) async {
@@ -289,12 +316,17 @@ class AppDatabase extends _$AppDatabase {
         .write(values);
   }
 
-  /// Removes every user-owned row: records (cascading to stages, clips and
-  /// insights) and the settings row's data is left intact so preferences
-  /// survive a data wipe. Used by "delete all local data".
+  /// Removes every user-owned row: records (cascading to stages and clips, and —
+  /// as of schema v3 — insights) plus any insight that was never attached to a
+  /// record. The settings row is left intact so preferences survive a data wipe.
+  /// Used by "delete all local data".
   Future<void> deleteAllUserData() async {
     await transaction(() async {
       await delete(sleepRecords).go();
+      // Still needed, and not redundant with the cascade: the foreign key only
+      // covers rows whose `record_id` points at a record that exists. An insight
+      // with a null `record_id` — or one whose record was already gone — is
+      // reached by no cascade at all.
       await delete(insights).go();
     });
   }

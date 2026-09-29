@@ -1,22 +1,25 @@
 import 'dart:io';
 
-// `show` rather than the whole library: drift's query builder also exports
-// `isNull` / `isNotNull`, which collide with the matchers of the same name.
-import 'package:drift/drift.dart' show MigrationStrategy, Value;
+// The whole library with two names held back, rather than a `show` list: the
+// fixtures below drive `customStatement`, `TableMigration`-free migrations and
+// the real [AppDatabase] at once, so naming every symbol they reach would be a
+// running battle. `isNull` / `isNotNull` are the only collisions with
+// `flutter_test`'s matchers, and both are still used as matchers below.
+import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sleep/core/database/app_database.dart';
 import 'package:night_sleep/features/sleep/data/sleep_repository.dart';
 import 'package:path/path.dart' as p;
 
-/// Upgrading a **real** v1 database file to v2.
+/// Upgrading a **real** database file — one written by v1, one written by v2 —
+/// to the current schema.
 ///
 /// The other data tests all start from `NativeDatabase.memory()`, which drift
 /// creates at the current schema version — so none of them ever execute the
-/// `onUpgrade` branch. That branch shipped with the v2 work and, until now, had
-/// never been run against a database that actually contains a user's night.
-/// This file closes that gap by building a v1 file first and then opening the
-/// real [AppDatabase] on top of it.
+/// `onUpgrade` branch. These fixtures build an older file first and then open
+/// the real [AppDatabase] on top of it, which is the only way the migration
+/// runs the way it does on a user's device.
 ///
 /// A migration bug here is not a cosmetic one: `onUpgrade` runs while the user
 /// is opening the app, so a wrong column name or a missing table makes the app
@@ -75,32 +78,109 @@ void main() {
     }
   }
 
-  AppDatabase openV2() => AppDatabase(NativeDatabase(file));
+  /// Opens the **current** schema on top of whatever `file` already holds.
+  ///
+  /// The name says current rather than v2 on purpose: this helper predates the
+  /// v2→v3 work, and hard-coding a version here would go stale — and read as a
+  /// lie — the moment `schemaVersion` moves again.
+  AppDatabase openCurrent() => AppDatabase(NativeDatabase(file));
 
-  Future<int> userVersion(AppDatabase db) async {
+  Future<int> userVersion(GeneratedDatabase db) async {
     final row = await db.customSelect('PRAGMA user_version').getSingle();
     return row.read<int>('user_version');
   }
 
-  test('夹具确实是 v1，而升级后确实是 v2', () async {
+  /// Writes a v2 database in the shape the shipped app left behind after
+  /// 「清除演示数据」: one surviving night with its insight, plus an insight whose
+  /// record is already gone (`demo-9` — the demo rows were deleted, the insight
+  /// was not, because v2's `insights.record_id` had no foreign key).
+  ///
+  /// It closes the file afterwards so the upgrade runs against exactly the bytes
+  /// a user's device would hand it.
+  Future<void> writeV2DatabaseWithOrphans() async {
+    final v2 = _V2Database(NativeDatabase(file));
+    try {
+      await v2.customStatement(
+        'INSERT INTO sleep_records '
+        '(id, start_at_utc, end_at_utc, time_zone_id, quality, notes, '
+        ' tags_json, source, flagged_snore, flagged_talk, flagged_restless, '
+        ' flagged_nightmare, created_at, updated_at) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          'v1-night',
+          _epoch(_bedtime),
+          _epoch(_wakeTime),
+          'Asia/Shanghai',
+          4,
+          'v2 时期写的备注',
+          '[]',
+          'manual',
+          0,
+          0,
+          0,
+          0,
+          _epoch(_bedtime),
+          _epoch(_bedtime),
+        ],
+      );
+      await v2.customStatement(
+        'INSERT INTO insights '
+        '(id, record_id, kind, content, provider, model, score, '
+        ' generated_at_utc, status) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          'v1-night-insight',
+          'v1-night',
+          'record_summary',
+          '这条洞察的记录还在，迁移必须留下它。',
+          'demo',
+          'demo',
+          82,
+          _epoch(_bedtime),
+          'ok',
+        ],
+      );
+      await v2.customStatement(
+        'INSERT INTO insights '
+        '(id, record_id, kind, content, provider, model, score, '
+        ' generated_at_utc, status) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          'demo-9-insight',
+          'demo-9',
+          'record_summary',
+          '这条洞察的记录已经被清掉了。',
+          'demo',
+          'demo',
+          71,
+          _epoch(_bedtime),
+          'ok',
+        ],
+      );
+    } finally {
+      await v2.close();
+    }
+  }
+
+  test('夹具确实是 v1，而升级后确实是 v3', () async {
     // Without this the whole file could pass vacuously: if the fixture failed to
     // stamp `user_version = 1`, drift would run `onCreate` instead of
-    // `onUpgrade` and create every v2 table anyway, so the assertions below
+    // `onUpgrade` and create every current table anyway, so the assertions below
     // would hold while the migration code never executed.
     final v1 = _V1Database(NativeDatabase(file));
     await v1.customStatement('SELECT 1');
     expect(await userVersion(v1), 1, reason: '夹具必须停在 v1');
     await v1.close();
 
-    final v2 = openV2();
+    final v2 = openCurrent();
     addTearDown(v2.close);
     await v2.allRecords();
-    expect(await userVersion(v2), 2, reason: '打开后必须由 onUpgrade 推到 v2');
+    expect(await userVersion(v2), 3, reason: '打开后必须由 onUpgrade 一路推到 v3');
   });
 
   test('v1 记录升级后仍然存在，字段原样保留', () async {
     await writeV1Database();
-    final db = openV2();
+    final db = openCurrent();
     addTearDown(db.close);
 
     final records = await db.allRecords();
@@ -123,7 +203,7 @@ void main() {
 
   test('v1 的 source 不会被重置成 manual', () async {
     await writeV1Database(source: 'import');
-    final db = openV2();
+    final db = openCurrent();
     addTearDown(db.close);
 
     // `source` decides whether 一键清除演示数据 touches a row, so a migration
@@ -133,7 +213,7 @@ void main() {
 
   test('新增的事件标记列按默认值补齐为未勾选', () async {
     await writeV1Database();
-    final db = openV2();
+    final db = openCurrent();
     addTearDown(db.close);
 
     final record = (await db.allRecords()).single;
@@ -145,7 +225,7 @@ void main() {
 
   test('v2 新增的三张表在迁移后可用', () async {
     await writeV1Database();
-    final db = openV2();
+    final db = openCurrent();
     addTearDown(db.close);
 
     // Reading each table is the assertion: a migration that skipped
@@ -171,7 +251,7 @@ void main() {
 
   test('v1 的设置行保留原值，并补齐新增列', () async {
     await writeV1Database();
-    final db = openV2();
+    final db = openCurrent();
     addTearDown(db.close);
 
     final settings = await db.getSettings();
@@ -191,7 +271,7 @@ void main() {
 
   test('没有设置行时迁移后仍能读出一行默认设置', () async {
     await writeV1Database(includeSettings: false);
-    final db = openV2();
+    final db = openCurrent();
     addTearDown(db.close);
 
     // getSettings() inserts the row on demand; it must not trip over the
@@ -201,16 +281,16 @@ void main() {
     expect(settings.themeMode, 'system');
   });
 
-  test('迁移后的库记录为 v2，再次打开不会重跑迁移', () async {
+  test('迁移后的库记录为 v3，再次打开不会重跑迁移', () async {
     await writeV1Database();
-    final first = openV2();
+    final first = openCurrent();
     await first.allRecords();
     await first.close();
 
-    final second = openV2();
+    final second = openCurrent();
     addTearDown(second.close);
 
-    // Re-running v1→v2 would throw "duplicate column name" on addColumn, which
+    // Re-running v1→v3 would throw "duplicate column name" on addColumn, which
     // is exactly how a botched upgrade leaves the app unable to open at all.
     expect(await second.getSettings(), isNotNull);
     expect((await second.allRecords()).single.id, 'v1-night');
@@ -218,7 +298,7 @@ void main() {
 
   test('升级后的记录能被仓库读成完整聚合', () async {
     await writeV1Database();
-    final db = openV2();
+    final db = openCurrent();
     addTearDown(db.close);
 
     // The repository is what every page reads through, so a migration that
@@ -227,6 +307,100 @@ void main() {
     expect(entries, hasLength(1));
     expect(entries.single.durationHours, closeTo(7.5, 0.001));
     expect(entries.single.hasStages, isFalse);
+  });
+
+  group('v2 → v3', () {
+    test('夹具确实是 v2，而升级后确实是 v3', () async {
+      // 防止空跑：夹具若没把 user_version 戳成 2，drift 会走 onCreate 建全部新表，
+      // 下面的断言会全绿而迁移代码一行没跑。
+      final v2 = _V2Database(NativeDatabase(file));
+      await v2.customStatement('SELECT 1');
+      expect(await userVersion(v2), 2, reason: '夹具必须停在 v2');
+
+      // 同一个「防止空跑」的理由，换个维度：夹具要是自己带上了外键，
+      // 「外键在迁移后的表上确实存在」就成了一句废话——它测的正是这条约束
+      // 从无到有。夹具的 insights 必须真的没有它。
+      final fixtureDdl = await v2
+          .customSelect("SELECT sql FROM sqlite_master WHERE name = 'insights'")
+          .getSingle();
+      expect(fixtureDdl.read<String>('sql'), isNot(contains('REFERENCES')),
+          reason: '夹具必须重现「insights 没有外键」这个旧形态');
+      await v2.close();
+
+      final v3 = openCurrent();
+      addTearDown(v3.close);
+      await v3.allRecords();
+      expect(await userVersion(v3), 3, reason: '打开后必须由 onUpgrade 推到 v3');
+    });
+
+    test('迁移清掉指向已删记录的孤儿洞察行', () async {
+      await writeV2DatabaseWithOrphans();
+      final db = openCurrent();
+      addTearDown(db.close);
+
+      // 这就是用户模拟器库的形状：记录被 deleteDemoData 删了，洞察留了下来。
+      final orphans = await db
+          .customSelect(
+            'SELECT count(*) AS c FROM insights WHERE record_id IS NOT NULL '
+            'AND record_id NOT IN (SELECT id FROM sleep_records)',
+          )
+          .getSingle();
+      expect(orphans.read<int>('c'), 0, reason: '迁移必须清掉孤儿行，否则重装必然主键冲突');
+
+      // 而属于存活记录的那条必须留下——迁移不是「清空 insights」。
+      final kept = await db.customSelect(
+        'SELECT count(*) AS c FROM insights WHERE record_id = ?',
+        variables: const [Variable<String>('v1-night')],
+      ).getSingle();
+      expect(kept.read<int>('c'), 1, reason: '迁移误删了仍有关联的洞察');
+    });
+
+    test('迁移后删除记录会级联带走它的洞察', () async {
+      await writeV2DatabaseWithOrphans();
+      final db = openCurrent();
+      addTearDown(db.close);
+      await db.allRecords(); // 触发迁移
+
+      await (db.delete(db.sleepRecords)..where((t) => t.id.equals('v1-night')))
+          .go();
+
+      final left = await db
+          .customSelect(
+            'SELECT count(*) AS c FROM insights',
+          )
+          .getSingle();
+      expect(left.read<int>('c'), 0, reason: '外键级联没生效——这正是本 bug 的根因');
+    });
+
+    test('外键在迁移后的表上确实存在', () async {
+      await writeV2DatabaseWithOrphans();
+      final db = openCurrent();
+      addTearDown(db.close);
+      await db.allRecords();
+
+      final sql = await db
+          .customSelect(
+            "SELECT sql FROM sqlite_master WHERE name = 'insights'",
+          )
+          .getSingle();
+      expect(sql.read<String>('sql'), contains('REFERENCES'),
+          reason: '重建后的 insights 表必须带上外键');
+    });
+
+    test('迁移保留没有被删除的洞察内容', () async {
+      await writeV2DatabaseWithOrphans();
+      final db = openCurrent();
+      addTearDown(db.close);
+
+      // alterTable copies rows into a brand-new table, so a mapping slip would
+      // lose the payload while still leaving a row behind.
+      final insight = await (db.select(db.insights)
+            ..where((t) => t.id.equals('v1-night-insight')))
+          .getSingle();
+      expect(insight.recordId, 'v1-night');
+      expect(insight.content, contains('迁移必须留下它'));
+      expect(insight.score, 82);
+    });
   });
 }
 
@@ -243,9 +417,9 @@ int _epoch(DateTime value) => value.millisecondsSinceEpoch ~/ 1000;
 /// event flags, the onboarding/recording switches or the insight provider.
 ///
 /// It is written as raw DDL rather than reused from `app_database.dart` because
-/// the current table classes describe v2 — creating them would produce a v2 file
-/// and the upgrade would never run. These statements are frozen: do not "fix"
-/// them to match the current schema.
+/// the current table classes describe v3 — creating them would produce a
+/// current-version file and the upgrade would never run. These statements are
+/// frozen: do not "fix" them to match the current schema.
 class _V1Database extends AppDatabase {
   _V1Database(super.executor);
 
@@ -279,6 +453,110 @@ class _V1Database extends AppDatabase {
               bedtime_reminder_minutes INTEGER,
               wake_reminder_enabled INTEGER NOT NULL DEFAULT 0,
               wake_reminder_minutes INTEGER,
+              PRIMARY KEY (id)
+            )
+          ''');
+        },
+      );
+}
+
+/// The schema as it shipped in v2.
+///
+/// Raw DDL rather than Dart table classes, for the same two reasons as
+/// [_V1Database] above. The first is that it costs no code generation: the whole
+/// file stays a plain test with no build step of its own. The second matters
+/// more — raw DDL **freezes the shape**. A fixture built from table classes
+/// keeps tracking `app_database.dart` as it evolves, so a later edit to those
+/// classes would silently stop describing v2 and every assertion below would
+/// pass with no migration code running. These statements are frozen: do not
+/// "fix" them to match the current schema.
+///
+/// `insights` is the table under test. Its `record_id` is a plain nullable text
+/// column with **no** `REFERENCES` — the shape that let orphan rows survive
+/// `deleteDemoData`. That is the bug, and it is exactly what v3 rebuilds.
+class _V2Database extends AppDatabase {
+  _V2Database(super.executor);
+
+  @override
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) async {
+          await customStatement('''
+            CREATE TABLE sleep_records (
+              id TEXT NOT NULL,
+              start_at_utc INTEGER NOT NULL,
+              end_at_utc INTEGER NOT NULL,
+              time_zone_id TEXT NOT NULL DEFAULT 'UTC',
+              quality INTEGER NOT NULL,
+              notes TEXT NOT NULL DEFAULT '',
+              tags_json TEXT NOT NULL DEFAULT '[]',
+              source TEXT NOT NULL DEFAULT 'manual',
+              flagged_snore INTEGER NOT NULL DEFAULT 0,
+              flagged_talk INTEGER NOT NULL DEFAULT 0,
+              flagged_restless INTEGER NOT NULL DEFAULT 0,
+              flagged_nightmare INTEGER NOT NULL DEFAULT 0,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL,
+              PRIMARY KEY (id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE sleep_stage_segments (
+              id TEXT NOT NULL,
+              record_id TEXT NOT NULL
+                REFERENCES sleep_records (id) ON DELETE CASCADE,
+              stage TEXT NOT NULL,
+              start_at_utc INTEGER NOT NULL,
+              end_at_utc INTEGER NOT NULL,
+              source TEXT NOT NULL DEFAULT 'import',
+              PRIMARY KEY (id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE sound_clips (
+              id TEXT NOT NULL,
+              record_id TEXT NOT NULL
+                REFERENCES sleep_records (id) ON DELETE CASCADE,
+              kind TEXT NOT NULL,
+              started_at_utc INTEGER NOT NULL,
+              duration_ms INTEGER NOT NULL,
+              local_uri TEXT,
+              transcript TEXT,
+              analysis TEXT,
+              analysis_status TEXT NOT NULL DEFAULT 'pending',
+              source TEXT NOT NULL DEFAULT 'recording',
+              PRIMARY KEY (id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE insights (
+              id TEXT NOT NULL,
+              record_id TEXT,
+              kind TEXT NOT NULL DEFAULT 'record_summary',
+              content TEXT,
+              provider TEXT,
+              model TEXT,
+              score INTEGER,
+              generated_at_utc INTEGER NOT NULL,
+              status TEXT NOT NULL DEFAULT 'unavailable',
+              PRIMARY KEY (id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE app_settings (
+              id TEXT NOT NULL,
+              theme_mode TEXT NOT NULL DEFAULT 'system',
+              sleep_goal_minutes INTEGER NOT NULL DEFAULT 480,
+              bedtime_reminder_enabled INTEGER NOT NULL DEFAULT 0,
+              bedtime_reminder_minutes INTEGER,
+              wake_reminder_enabled INTEGER NOT NULL DEFAULT 0,
+              wake_reminder_minutes INTEGER,
+              sound_recording_enabled INTEGER NOT NULL DEFAULT 0,
+              onboarded INTEGER NOT NULL DEFAULT 0,
+              insight_provider TEXT,
+              insight_model TEXT,
               PRIMARY KEY (id)
             )
           ''');
