@@ -106,9 +106,11 @@ class AppIcons {
     double strokeWidth = 1.6,
     String? semanticLabel,
   }) {
-    // 不静默兜底：漏传 color 过去会画成 #000000，深色背景上看不见，
-    // 记录页事件图标变黑就是这个原因。现有调用点都显式传了色，
-    // 下一次遗漏要立刻炸出来。
+    // 漏传 color 会在深色背景上画成黑色——记录页事件图标变黑就是这个原因，
+    // 所以这里显式炸出来。下一行的 `??` 并非多余的兜底：`assert` 不参与空类型提升
+    // （release 下还会被整体剥掉），把 `Color?` 交给 `Color` 形参本就编译不过，两种构建里
+    // 都必须留着它。取舍是 release 下仍退回黑色、与本轮修复前行为一致，不让一条新断言把
+    // 线上应用打崩；真正的护栏是这条 assert 与测试，不是这个兜底。
     assert(color != null, 'AppIcons 必须显式传 color：漏传会画成黑色');
     final svg = svgFor(
       body,
