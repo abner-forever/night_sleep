@@ -1,9 +1,10 @@
 import 'dart:io';
 
-// 整库导入、只挡掉两个名字，而不是列一份 `show` 清单：下面的夹具与真实的
-// [AppDatabase] 都要用 `customStatement`，把每个用到的符号都列出来是一场没什么
-// 意义的持久战。`isNull` / `isNotNull` 是唯一与 `flutter_test` 的匹配器重名的
-// 两个，而它们在本文件里仍然当匹配器用着。
+// 只挡掉这两个与 `flutter_test` 匹配器重名的名字（它们在这里仍当匹配器用），而不是
+// 列一份 `show` 清单：本文件用到的 drift 符号只有 `GeneratedDatabase`、
+// `MigrationStrategy`、`Value`、`Variable` 四个，但夹具要用 `customStatement` 写裸
+// DDL、各自定义一段迁移，最后还要把真实的 [AppDatabase] 打开在同一份文件上——
+// 清单迟早要补，不如让其余名字照常进来。
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
