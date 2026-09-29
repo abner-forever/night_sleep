@@ -90,6 +90,9 @@ test/                  领域计算测试
   时胶囊底边离屏幕底 **20pt**（原型照搬安全区，是 34pt，实机看着悬空），macOS / Web 仍是 12px。
   浮起量与页面底部留白现在**同源**（`app_shell.dart` 的 `tabBarFloat`，`tabBarReserve` 复用），
   顺带修正常量 `_tabBarHeight` 比实测多算的 0.5px（胶囊实测 65px）。
+- **底部模糊带**（v2.8，原型无此元素）：屏幕底部常驻一条渐变模糊带（`core/widgets/bottom_fade.dart`），
+  让滚到浮动标签条附近的内容糊掉、淡出。高度由标签条预留量推导（`tabBarReserve + 20`，iPhone 上 121pt），
+  填充 0→78%、`blur(14)`，方向与顶部渐变带相反。宽屏不渲染；弹层打开时照常显示。
 - **弹层手势**：底部弹层支持点击蒙层关闭、点击把手关闭、把手跟手下拉超过阈值关闭；蒙层是独立
   的淡入层，不随面板从底部滑入。
 - **编辑与删除**：睡眠详情的底部提供「编辑记录」「删除记录」。编辑复用记录表单并预填原值，
@@ -231,14 +234,17 @@ Bundle ID、Android application ID、签名和发布账号保持 Flutter 默认�
 
 本机环境：macOS 14.8.9（23J631，Intel），Flutter 3.47.5 stable。最近一次复跑：**2026-09-29**。
 
-- `dart format --set-exit-if-changed .` → 无改动（81 文件，0 changed）
+- `dart format --set-exit-if-changed .` → 无改动（83 文件，0 changed）
 - `flutter analyze` → **No issues found**
-- `flutter test` → **221/221 通过**（本轮从 176 起，逐步增至 216，终审修复波再补 1 至 217：
+- `flutter test` → **232/232 通过**（本轮从 176 起，逐步增至 216，终审修复波再补 1 至 217：
   schema v3 迁移 6（含 `record_id` 为空的洞察存活分支）、
   演示数据重装与幂等 2、冷启动播种兜底 4、图标取色 4、顶部渐变与安全区/错误分支留白 3、
   关于卡片居中与版本号 2、自绘确认弹窗 7（另有演示数据页的确认 1，落在 `pages_widget_test`）、
   删除图标 2、`PrimaryAction` 禁用态 10；
   v2.7 再补 4：标签条浮起量与页面底部留白同源、胶囊实测高度 65px（`test/tab_bar_inset_test.dart`）；
+  v2.8 再补 11：底部模糊带的遮罩层级（套在 `BackdropFilter` 外面）与遮罩方向、模糊半径 14、
+  填充 0→78% 且单调递增、高度 = 底部预留 + 20（含无安全区的 113）、宽屏不渲染、整条带不拦手势
+  （`test/bottom_fade_test.dart`）；
   各测试文件覆盖的场景见
   [规格第 9 章](docs/superpowers/specs/2026-09-28-night-sleep-design.md)）。
   本轮多处断言做了**变异验证**（拆掉实现会真的变红），不是「不可能失败的断言」
@@ -259,6 +265,10 @@ Bundle ID、Android application ID、签名和发布账号保持 Flutter 默认�
     此后本轮禁止后续任务碰模拟器，目视集中留待下一轮。
   - v2.7（标签条浮起量 34pt → 20pt）**同样只有几何断言**：只截了一张模拟器截图用于确认
     改动前的现状，改完后没有再看一眼，实际观感需人工确认。
+  - v2.8（底部模糊带）**只有几何/结构断言，本轮没有跑模拟器截图核对**：
+    `test/bottom_fade_test.dart` 断的是结构（遮罩套在 `BackdropFilter` 外面）、色标顺序与
+    几何（高度 = 底部预留 + 20）；带子合成出来的观感——反向遮罩是否真的呈「下重上轻」、
+    胶囊 backdrop 被洗过一遍之后会不会发闷——**都没有看过**。
 - **未验证（不得视为已完成）**：
   - **通知投递**：没有真机 / 模拟器人工确认过「到点了真的会响」。Dart 侧的调度契约
     被测试钉住，但通知是否真的投递、前台是否展示、时区是否选对，都仍需人工确认
@@ -270,7 +280,7 @@ Bundle ID、Android application ID、签名和发布账号保持 Flutter 默认�
     降级分支；`version` / `buildNumber` 在**真机 macOS / iOS 上映射到 `CFBundleShortVersionString`
     / `CFBundleVersion` 的对应关系没有实测**（测试用 mock 注入）
   - **本轮 UI 的目视观感**：见上「界面巡检」——确认弹窗、垃圾桶、禁用按钮提示、关于卡片、
-    标签条浮起量（v2.7）都未经眼
+    标签条浮起量（v2.7）、底部模糊带（v2.8）都未经眼
   - 真机交互、窄屏宽屏溢出检查：**尚未执行**
     （宽屏侧边栏布局只在 macOS 桌面构建里跑过，未逐屏核对）
   - Android / Web 构建：**尚未执行**（Android 平台目录也不存在，见「未实现」表）

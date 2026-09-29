@@ -69,6 +69,15 @@
   页面底部留白必须由**实际高度**推导，写死的数值一旦小于它就会让最后一行永远压在玻璃下面。
   浮起量由 `tabBarFloat` 一处出、`tabBarReserve` 与 `_TabBar` 共用：两处各算一遍时，
   单改一侧就会让留白与胶囊脱节。
+- **底部模糊带**（v2.8，原型无此元素）：屏幕底部常驻一条渐变带，把滚到浮动标签条附近的内容
+  模糊并淡出。高度由标签条的预留量推导——`BottomFade(height: tabBarReserve(context) + 20)`，
+  iPhone 16 Pro 上 121px（胶囊顶边之上因此有 36px 的过渡段），无安全区处 113px。
+  `BackdropFilter` 用与顶部带相同的 `blur(14)`，填充是 `bgBase` 从顶边 0 升到底边 **0.78**
+  （比顶部带的 0.92 弱一档）。**方向与顶部带完全相反**：遮罩上透明下黑、填充上 0 下重，
+  两重衰减都朝上；照抄顶部带的参数会画出「上重下轻」的逆向带且不报错。
+  它在 `Stack` 里排在 `_TabBar` **之前**——`BackdropFilter` 模糊的是它之前画好的画面，
+  排在后面会把玻璃胶囊本身糊掉。宽屏（≥768px）不渲染，与 `.ios-top-fade` 同规则；
+  底部弹层打开时**不收起**（蒙层本来就盖住整屏）。
 - **页面的横向、**顶部**与底部留白都由页面自己的滚动视图提供**（`pageGutter` / `pageTopInset`
   / `pageBottomInset`），不放在滚动视图外面。放外面时视口被压缩，留白区变成一条不透明带、
   内容在带子上方被切断；放里面时视口直达屏幕边缘，内容按设计从悬浮玻璃下穿过，最后一行
@@ -271,6 +280,7 @@
 | 19 | 原型的提醒开关是纯装饰——开关状态不驱动任何调度 | 接真实本地通知：权限被拒时**不写入偏好**、开关回弹；权限为 `denied` 时给出「去系统设置」入口；启动时回收被撤销的授权（把偏好写回 `false`） | 一个写着「开」却不会响的开关，正是规格书说的「设置状态与实际能力不一致」。回归方法：拒绝通知权限后确认 `bedtimeReminderEnabled` 仍为 `false`（`test/reminder_settings_test.dart`）；把启动回收条件改回 `!= granted` 会让 `test/reminder_sync_test.dart` 的 `unsupported` 用例变红。 |
 | 20 | 原型的二次确认走 Material 默认外观（Android 观感） | 按项目令牌**自绘** iOS 风格确认弹窗（`lib/core/widgets/confirm_dialog.dart` 的 `showConfirmDialog`），**不引入 `flutter/cupertino.dart`**；应用内三处危险操作统一走它 | 整个应用是 iOS/令牌体系，唯独确认弹窗走了 Material 默认的配色与圆角。`CupertinoAlertDialog` 自带系统色与圆角，会**绕过 `AppTokens`**，与「设计令牌只有一份」的硬约定冲突，所以自绘。三处统一为：删除单条记录、删除全部本地数据、**清除演示数据**——第三处此前**根本没有二次确认**（点一下就删）。自绘走 `showGeneralDialog`，必须自己补 `Material` 祖先，否则所有 `Text` 落到黄色双下划线错误样式（`confirm_dialog.dart` 已显式补上）。回归方法：`test/confirm_dialog_test.dart`（`Material` 祖先、取消返回 `false`、破坏性取 `danger`、内容区与按钮区两条 0.5 发丝线——与全仓其余分隔线同口径）；把任一处改回 `showDialog`/`AlertDialog`，或在 `demo_data_page` 摘掉确认块，都会让对应用例变红（已变异验证）。 |
 | 21 | 悬浮标签条的浮起量是 `bottom: max(12px, env(safe-area-inset-bottom))` | 改为 `max(12px, 安全区底部 − 14px)`（`app_shell.dart` 的 `tabBarFloat`）：iPhone 带 home indicator 时浮起量从 34px 收到 20px，macOS / Web 等无安全区的平台仍是 12px | 安全区底部那 34px 是留给系统手势的**整块**空间，而 home indicator 本身只画在底部 8–13px；照搬安全区会让玻璃胶囊离屏幕底边悬空一大截（用户实机上报「间距偏大」）。回收 14px 后胶囊底边高于指示条约 7px，既贴着屏幕又不压到系统部件。**浮起量与页面底部留白必须同源**（`tabBarFloat` 一处出、`tabBarReserve` 复用），否则最后一行会压进玻璃。回归方法：`test/tab_bar_inset_test.dart` 量渲染出来的胶囊矩形——把 `_tabBarFloatRelief` 改回 0，两条用例立刻变红（已变异验证）。 |
+| 22 | 原型底部没有任何遮挡过渡，内容滚到标签条下方时完全清晰 | 新增一条常驻的底部模糊带（`core/widgets/bottom_fade.dart`），高度 = 标签条预留量 + 20、`blur(14)`、`bgBase` 0→78% | 原型的标签条是**悬空**在内容之上的：内容从它下面和两侧穿过去，没有任何「这里到底了」的提示，实机上读起来像内容被硬切断（用户在实机使用后提出）。原型源文件未入库，本条为**新增**而非「原型有而未实现」。**它同时是唯一一处无法靠断言判断的取舍**：带子画在胶囊之下，胶囊的 backdrop 因此会看到被洗过一遍的内容（有效 alpha 从胶囊顶边约 0.13 升到底边约 0.71），观感需人工核对。回归方法：`test/bottom_fade_test.dart`——把遮罩方向反过来、把带子排到 `_TabBar` 之后、或把高度写死，对应用例必须变红（已变异验证）。 |
 
 ## 9. 测试与验收矩阵
 
@@ -305,6 +315,7 @@
 | Widget 测试 | `PrimaryAction` 禁用态：不画顶边高光与蓝色投影、不触发触觉，但接住点击并给出**页内**提示（不走会被二级页盖住的全局 toast）；启用态观感与手感逐项不变 | ✅ `test/primary_action_test.dart` |
 | Widget 测试 | 删除入口用**垃圾桶**图标（非借用的停止方块）且带 `danger` 底板——身份断言经变异验证（换回 `stop` 必红） | ✅ `test/pages_widget_test.dart`、`test/record_edit_delete_test.dart` |
 | Widget 测试 | 标签条浮起量：带 home indicator 的设备上胶囊底边离屏幕底 **20pt**、无安全区 12pt、小安全区不被回收量削到下限以下；页面底部留白始终等于「浮起量 + 胶囊**实测**高度 + 16」（量渲染出的矩形，不量函数返回值） | ✅ `test/tab_bar_inset_test.dart`（含变异验证：`_tabBarFloatRelief` 归零，两条用例变红） |
+| Widget 测试 | 底部模糊带：遮罩套在 `BackdropFilter` 外面（结构断言，防硬边）、模糊半径 14、填充上透明下 78% 且单调递增、遮罩方向相反、高度 = 底部预留 + 20（含无安全区的 113）、宽屏不渲染、整条带不拦手势 | ✅ `test/bottom_fade_test.dart`（含变异验证：遮罩方向反转、带子排到标签条之后、高度写死，均变红） |
 | 集成/真机 | iOS/Android/macOS 核心流程；通知权限；锁屏录音与中断 | macOS 构建、iOS 模拟器构建已验证；**真机、通知投递与分享面板未验证** |
 | 视觉检查 | 对照 Figma Make 四页在手机/宽屏、浅色/深色核对层级、间距、字体与安全区 | **部分**：v2.5 的巡检覆盖了四个一级页与详情/音效面板；本版（v2.6）追加确认了顶部渐变顶到物理顶端后硬分界消失（iPhone 16 Pro 模拟器，浅色/深色各一遍）。**本版其余新增/改动的界面（自绘确认弹窗、垃圾桶图标、禁用按钮的页内提示、关于卡片）没有做目视核对**，只有几何/结构断言。v2.7 的标签条浮起量同样**只有几何断言**（`test/tab_bar_inset_test.dart`），没有截图核对 |
 
