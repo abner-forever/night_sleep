@@ -2,6 +2,7 @@ import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../app/app_shell.dart';
 import '../../../app/app.dart';
@@ -782,32 +783,80 @@ class SettingsPage extends ConsumerWidget {
         GlassSurface(
           borderRadius: BorderRadius.circular(AppRadii.panel),
           padding: const EdgeInsets.all(20),
-          child: Column(
-            children: [
-              AppIcons.moon(size: 36, color: tokens.accent, strokeWidth: 1.4),
-              const SizedBox(height: 8),
-              Text(
-                '夜深',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: tokens.textPrimary,
+          // `GlassSurface` 把子项画在一个 `Stack` 里，非 position 子项拿到的是
+          // 宽松约束。`Column` 于是缩到最宽子项的宽度——这里是「睡眠记录与分析」，
+          // 约 98px——再被 `Stack` 默认的 `topStart` 贴到左边；
+          // `crossAxisAlignment: center` 只在那 98px 内部居中，整块看着就是左对齐。
+          // 撑满横轴即可恢复居中，不必去动 `GlassSurface` 本身。
+          child: SizedBox(
+            width: double.infinity,
+            child: Column(
+              children: [
+                AppIcons.moon(size: 36, color: tokens.accent, strokeWidth: 1.4),
+                const SizedBox(height: 8),
+                Text(
+                  '夜深',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: tokens.textPrimary,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                '睡眠记录与分析',
-                style: TextStyle(fontSize: 14, color: tokens.textMuted),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'v2.0.0',
-                style: AppTheme.num(context, size: 12, color: tokens.textMuted),
-              ),
-            ],
+                const SizedBox(height: 2),
+                Text(
+                  '睡眠记录与分析',
+                  style: TextStyle(fontSize: 14, color: tokens.textMuted),
+                ),
+                const SizedBox(height: 8),
+                const _VersionLabel(),
+              ],
+            ),
           ),
         ),
       ],
+    );
+  }
+}
+
+/// 「关于」卡片里的版本号。
+///
+/// 版本号来自构建信息，而 `PackageInfo.fromPlatform()` **只在 `initState` 取一次**：
+///
+/// - 直接把它写在 `build` 里当 `FutureBuilder(future: ...)` 的实参，设置页每次
+///   重建（切主题、调目标都会）就会拿到一个新 future，`FutureBuilder` 在
+///   `didUpdateWidget` 里比的正是 future 实例，于是退回等待态，版本号闪掉一格。
+/// - 反过来把它缓存成进程级变量也不行：`dart:async` 对**已经完成**的 future
+///   补挂监听时，是用那个 future **创建时**的 zone 去 `scheduleMicrotask`
+///   （`_Future._addListener`）。跨 zone 复用会让回调永远不执行——测试里一个
+///   `testWidgets` 取的 future 到下一个用例就再也不回调，正是这个原因。
+///
+/// 跟着 State 走则两条都避开：实例随页面挂载建一次，重建复用，卸载即弃。
+class _VersionLabel extends StatefulWidget {
+  const _VersionLabel();
+
+  @override
+  State<_VersionLabel> createState() => _VersionLabelState();
+}
+
+class _VersionLabelState extends State<_VersionLabel> {
+  late final Future<PackageInfo> _info = PackageInfo.fromPlatform();
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppTokens.of(context);
+    return FutureBuilder<PackageInfo>(
+      future: _info,
+      builder: (context, snapshot) {
+        final info = snapshot.data;
+        // 拿不到构建信息就不编一个版本号——留空比显示错的强。平台通道不可用时
+        // `fromPlatform()` 要么抛 `MissingPluginException`，要么那个 future
+        // 干脆不完成，两条路都落在这里。
+        if (info == null) return const SizedBox.shrink();
+        return Text(
+          'v${info.version} (${info.buildNumber})',
+          style: AppTheme.num(context, size: 12, color: tokens.textMuted),
+        );
+      },
     );
   }
 }

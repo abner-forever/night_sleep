@@ -22,6 +22,7 @@ import 'package:night_sleep/features/sleep/domain/sleep_quality.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_score.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_stage.dart';
 import 'package:night_sleep/features/stats/presentation/stats_page.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 /// Widget tests for the four primary pages.
 ///
@@ -36,6 +37,19 @@ void main() {
 
   setUp(() => database = AppDatabase(NativeDatabase.memory()));
   tearDown(() => database.close());
+
+  // 版本号由 `package_info_plus` 提供，而测试环境没有那条平台通道——静态缓存
+  // 空着时 `PackageInfo.fromPlatform()` 的 future 永不完成。这里直接填上缓存，
+  // 关于卡片才会走「拿到构建信息」那一支。
+  setUpAll(
+    () => PackageInfo.setMockInitialValues(
+      appName: '夜深',
+      packageName: 'com.example.night_sleep',
+      version: '0.1.0',
+      buildNumber: '1',
+      buildSignature: '',
+    ),
+  );
 
   /// Seeds the demo nights and returns them as domain objects.
   Future<List<SleepEntry>> demoEntries() async {
@@ -344,6 +358,34 @@ void main() {
       // Capability gaps must be stated rather than implied as working.
       expect(find.textContaining('尚未接入录音'), findsOneWidget);
       expect(find.textContaining('鼾声、梦话仍由手机夜间录音检测'), findsOneWidget);
+    });
+
+    testWidgets('关于卡片的文字在卡片内水平居中', (tester) async {
+      await pumpPage(tester, const SettingsPage());
+
+      final card = find.ancestor(
+        of: find.text('睡眠记录与分析'),
+        matching: find.byType(GlassSurface),
+      );
+      expect(card, findsWidgets, reason: '找不到关于卡片');
+
+      final centre = tester.getCenter(card.first).dx;
+      for (final label in ['夜深', '睡眠记录与分析']) {
+        expect(
+          tester.getCenter(find.text(label)).dx,
+          moreOrLessEquals(centre, epsilon: 1),
+          reason: '「$label」没有在卡片内居中——Column 在 Stack 的宽松约束下静缩并被左锚定了',
+        );
+      }
+    });
+
+    testWidgets('版本号取自构建信息而不是写死的常量', (tester) async {
+      await pumpPage(tester, const SettingsPage());
+
+      // `setMockInitialValues` 直接填 `PackageInfo` 的静态缓存，测试不必
+      // 走平台通道（测试环境里那条通道没有实现）。
+      expect(find.text('v0.1.0 (1)'), findsOneWidget);
+      expect(find.text('v2.0.0'), findsNothing, reason: '版本号又退回写死的常量了');
     });
 
     testWidgets('外观模式切换写回数据库', (tester) async {
