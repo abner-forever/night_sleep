@@ -4,10 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sleep/app/app.dart';
-import 'package:night_sleep/core/widgets/app_basics.dart';
 import 'package:night_sleep/core/database/app_database.dart'
     show AppDatabase, AppSetting, databaseProvider;
 import 'package:night_sleep/core/theme/app_theme.dart';
+import 'package:night_sleep/core/theme/app_tokens.dart';
+import 'package:night_sleep/core/widgets/app_basics.dart';
+import 'package:night_sleep/core/widgets/app_icons.dart';
 import 'package:night_sleep/features/home/presentation/home_page.dart';
 import 'package:night_sleep/features/log/presentation/log_page.dart';
 import 'package:night_sleep/features/sleep/data/demo_seed.dart';
@@ -139,12 +141,21 @@ void main() {
         matching: find.byType(Pressable),
       );
       expect(deleteAction, findsOneWidget, reason: '找不到「删除记录」按钮');
-      // 只钉得住「这个按钮有图标」——图标的身份断不到：`AppIcons.trash` 是返回 Widget
-      // 的静态方法而非类型，SVG 文本又藏在 `SvgStringLoader` 的私有字段里。
-      expect(
+      // 图标身份断得到：`SvgPicture.bytesLoader` 是公开字段，`SvgStringLoader`
+      // 又实现了值相等（逐字符比 SVG 文本、比 theme 与 colorMapper）。
+      final tokens = AppTokens.of(tester.element(find.text('删除记录')));
+      final rendered = tester.widget<SvgPicture>(
         find.descendant(of: deleteAction, matching: find.byType(SvgPicture)),
-        findsOneWidget,
-        reason: '「删除记录」又变回纯文字了',
+      );
+      final expected = AppIcons.trash(
+        size: 16,
+        color: tokens.danger,
+        strokeWidth: 2,
+      );
+      expect(
+        rendered.bytesLoader,
+        (expected as SvgPicture).bytesLoader,
+        reason: '「删除记录」画的不是垃圾桶图标（或又变回纯文字了）',
       );
     });
 

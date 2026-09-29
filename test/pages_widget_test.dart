@@ -1,10 +1,12 @@
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sleep/app/app.dart';
 import 'package:night_sleep/core/database/app_database.dart';
 import 'package:night_sleep/core/theme/app_theme.dart';
+import 'package:night_sleep/core/theme/app_tokens.dart';
 import 'package:night_sleep/core/widgets/app_icons.dart';
 import 'package:night_sleep/core/widgets/glass_surface.dart';
 import 'package:night_sleep/core/widgets/ios_controls.dart';
@@ -420,7 +422,7 @@ void main() {
       expect(find.text('删除全部本地数据'), findsOneWidget);
     });
 
-    testWidgets('危险操作行有图标底板', (tester) async {
+    testWidgets('危险操作行用垃圾桶图标并套了 danger 底板', (tester) async {
       await pumpPage(tester, const SettingsPage());
 
       final row = find.ancestor(
@@ -429,12 +431,28 @@ void main() {
       );
       expect(row, findsOneWidget, reason: '找不到「删除全部本地数据」那一行');
       // 这一行此前是**裸图标**，而同页其它行都有底板——补底板是本任务的一部分。
-      // 图标本身的身份断不到：`AppIcons.trash` 是返回 Widget 的静态方法，不是类型，
-      // `find.byType` 收不了；SVG 文本又藏在 `SvgStringLoader` 的私有字段里。
       expect(
         find.descendant(of: row, matching: find.byType(ListIconBadge)),
         findsOneWidget,
         reason: '删除行仍然没有图标底板',
+      );
+
+      // 图标身份断得到：`SvgPicture.bytesLoader` 是公开字段，`SvgStringLoader`
+      // 又实现了值相等（逐字符比 SVG 文本、比 theme 与 colorMapper）。
+      // 这一条钉的正是本任务要钉的行为——换回借来的「停止」方块就会红。
+      final tokens = AppTokens.of(tester.element(find.byType(SettingsPage)));
+      final rendered = tester.widget<SvgPicture>(
+        find.descendant(of: row, matching: find.byType(SvgPicture)),
+      );
+      final expected = AppIcons.trash(
+        size: 16,
+        color: tokens.danger,
+        strokeWidth: 1.8,
+      );
+      expect(
+        rendered.bytesLoader,
+        (expected as SvgPicture).bytesLoader,
+        reason: '这一行画的不是垃圾桶图标',
       );
     });
   });
