@@ -503,8 +503,12 @@ Run: `dart format . && flutter analyze && flutter test`
 - [ ] **Step 2: 跑测试，确认它失败**
 
 Run: `flutter test test/bottom_fade_test.dart`
-Expected: 前 6 条（Task 1 的）通过；新加的「接入外壳」全红，报 `Expected: exactly one matching
-candidate of type BottomFade` 之类的找不到。
+Expected: 前 6 条（Task 1 的）通过；新加的「接入外壳」是 **3 红 2 先绿**，不是全红——
+红的是三条**正向**断言（两条量高度、一条要把 `BottomFade` 从树上找出来），报
+`Expected: exactly one matching candidate of type BottomFade` 之类的找不到；
+先绿的两条是**否定式**断言（「宽屏不渲染带子」「带子盖住的位置仍能点到内容」），
+带子尚未接入时它们天然成立。这两条要等 Step 3 接进去、再由 Step 5 的变异验证确认
+它们确实会随实现变红，才算数。
 
 - [ ] **Step 3: 接入外壳**
 

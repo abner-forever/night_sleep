@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sleep/app/app_shell.dart';
 import 'package:night_sleep/core/theme/app_theme.dart';
+import 'package:night_sleep/core/widgets/app_sheet.dart';
 import 'package:night_sleep/core/widgets/bottom_fade.dart';
+import 'package:night_sleep/core/widgets/top_fade.dart';
 
 /// 底部模糊带：`TopFade` 的镜像，但常驻。
 ///
@@ -30,22 +32,26 @@ void main() {
     return tester.widget<BottomFade>(find.byType(BottomFade));
   }
 
-  /// 带子内那条填充渐变的色标（上→下）。带子里只有一个带 `LinearGradient`
-  /// 的 `DecoratedBox`；`Positioned.fill` 的空 `DecoratedBox` 不在此列。
-  List<Color> fillColors(WidgetTester tester) {
+  /// 带子内那条填充渐变（上→下），**连停点一起**返回。带子里只有一个带
+  /// `LinearGradient` 的 `DecoratedBox`；`Positioned.fill` 的空 `DecoratedBox`
+  /// 不在此列。
+  ///
+  /// 返回整个 `LinearGradient` 而不是 `colors`：只断颜色的话，「照抄顶部带的
+  /// 0.38 / 0.70、忘了镜像成 0.30 / 0.62」这种错会保持全绿——遮罩侧正为同一个
+  /// 失败模式收紧成了精确断言。
+  LinearGradient fillGradient(WidgetTester tester) {
     final boxes = tester.widgetList<DecoratedBox>(
       find.descendant(
         of: find.byType(BottomFade),
         matching: find.byType(DecoratedBox),
       ),
     );
-    final gradient = boxes
+    return boxes
         .map((box) => box.decoration)
         .whereType<BoxDecoration>()
         .map((decoration) => decoration.gradient)
         .whereType<LinearGradient>()
         .single;
-    return gradient.colors;
   }
 
   testWidgets('遮罩套在 BackdropFilter 外面', (tester) async {
@@ -76,7 +82,8 @@ void main() {
   testWidgets('填充渐变上透明、下最重，最重一档是 78%', (tester) async {
     await pumpBand(tester);
 
-    final colors = fillColors(tester);
+    final gradient = fillGradient(tester);
+    final colors = gradient.colors;
     expect(colors.length, 4);
     expect(colors.first.a, 0, reason: '带子顶边必须完全透明，否则会切出一条横线');
     expect(colors.last.a, closeTo(0.78, 0.01));
@@ -84,6 +91,9 @@ void main() {
     for (var i = 1; i < colors.length; i++) {
       expect(colors[i].a, greaterThan(colors[i - 1].a));
     }
+    // 停点同样逐个精确：底部带是顶部带的**镜像**，只断颜色的话，
+    // 「照抄顶部带的 0.38 / 0.70、忘了镜像成 0.30 / 0.62」会整条溜过去。
+    expect(gradient.stops, [0.0, 0.30, 0.62, 1.0]);
   });
 
   testWidgets('遮罩方向与填充相反：上透明、下不透明', (tester) async {
@@ -220,6 +230,33 @@ void main() {
     await pumpShell(tester, size: const Size(1024, 900));
 
     expect(find.byType(BottomFade), findsNothing);
+  });
+
+  testWidgets('弹层打开时带子不收起', (tester) async {
+    await pumpShell(tester);
+
+    // 先把页面滚起来，让顶部带处于「该显示」的状态。否则拿 `TopFade` 当对照组时
+    // 它本来就是收起的，证明不了 `openSheetCount` 真的接进了外壳。
+    await tester.drag(find.byType(ListView), const Offset(0, -200));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TopFade>(find.byType(TopFade)).visible, isTrue);
+
+    // 设计规格「边界情况」表：与 `TopFade` 不同，底部带在弹层打开时**有意**
+    // 不收起——弹层的蒙层本来就盖住整屏，专门收起反而会在开弹层那一瞬闪一下。
+    addTearDown(() => openSheetCount.value = 0);
+    openSheetCount.value = 1;
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<TopFade>(find.byType(TopFade)).visible,
+      isFalse,
+      reason: '对照组：顶部带确实响应了 openSheetCount',
+    );
+    expect(
+      find.byType(BottomFade),
+      findsOneWidget,
+      reason: '底部带不随弹层收起——这条就是本轮要守的行为',
+    );
   });
 
   testWidgets('带子盖住的位置仍能点到内容', (tester) async {
