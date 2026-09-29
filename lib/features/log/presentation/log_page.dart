@@ -436,8 +436,8 @@ class _LogPageState extends ConsumerState<LogPage> {
       ),
     ];
 
-    // The edit form is pushed over the tab shell, so it renders its own chrome
-    // and padding. The new-record form is a tab, and the shell already pads it.
+    // 编辑表单是压在标签外壳之上的推入页，自带一套外框与留白；
+    // 新建表单是个 tab，顶部与底部留白由下面的 ListView 自己补（见 pageTopInset）。
     if (_isEditing) {
       return Subpage(title: '编辑记录', children: items);
     }

@@ -8,12 +8,10 @@ import '../theme/app_tokens.dart';
 /// 改它会波及无关动效，所以这里另立常量。
 const Duration _fadeDuration = Duration(milliseconds: 320);
 
-/// `.ios-top-fade` — the translucent band that fades page content out as it
-/// scrolls under the status bar.
+/// `.ios-top-fade` —— 页面内容滚进状态栏时把它淡出的半透明带。
 ///
-/// It appears only once the page has actually scrolled past [revealAfter]
-/// pixels, animating in over the design's 320ms ([_fadeDuration]). It is a
-/// fixed overlay rather than part of the scroll view, so it must not take hits.
+/// 只有当页面滚动超过 [revealAfter] 像素后才出现，用时为设计规定的 320ms
+/// （[_fadeDuration]）。它是固定覆盖层而非滚动视图的一部分，所以不能接收点击。
 class TopFade extends StatelessWidget {
   const TopFade({
     super.key,

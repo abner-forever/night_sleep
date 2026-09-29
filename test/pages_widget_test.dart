@@ -6,6 +6,7 @@ import 'package:night_sleep/app/app.dart';
 import 'package:night_sleep/core/database/app_database.dart';
 import 'package:night_sleep/core/theme/app_theme.dart';
 import 'package:night_sleep/core/widgets/app_icons.dart';
+import 'package:night_sleep/core/widgets/glass_surface.dart';
 import 'package:night_sleep/core/widgets/top_fade.dart';
 import 'package:night_sleep/features/home/presentation/home_page.dart';
 import 'package:night_sleep/features/log/presentation/log_page.dart';
@@ -501,6 +502,58 @@ void main() {
             '而带内第一个停点是满值 alpha，两者形成一条硬分界',
       );
       expect(tester.getSize(fade).height, 144);
+    });
+  });
+
+  group('读取失败的兜底留白', () {
+    /// 顶部安全区非零，这样「留白有没有补上」才看得见。数据库读取失败时，
+    /// 首页 / 统计页会落到 `EmptyState`（`GlassSurface`）这一支。
+    Future<void> pumpError(WidgetTester tester, Widget page) async {
+      tester.view.physicalSize = const Size(430, 900);
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.padding = const FakeViewPadding(top: 47);
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            databaseProvider.overrideWithValue(database),
+            sleepEntriesProvider.overrideWith(
+              (ref) => Future<List<SleepEntry>>.error(StateError('数据库打不开')),
+            ),
+            settingsProvider.overrideWith((ref) => Stream.value(settings())),
+          ],
+          child:
+              MaterialApp(theme: AppTheme.light(), home: Scaffold(body: page)),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    void expectInset(WidgetTester tester) {
+      final card = find.ancestor(
+        of: find.text('无法读取记录'),
+        matching: find.byType(GlassSurface),
+      );
+      expect(card, findsOneWidget, reason: '错误态没有渲染成 GlassSurface 卡片');
+      final rect = tester.getRect(card.first);
+      // pageTopInset(47 + 24) 与 pageGutter(16) —— 卡片必须落在同一套留白内。
+      expect(rect.top, greaterThanOrEqualTo(47),
+          reason: '错误卡片顶到了状态栏，说明这一支没补 pageTopInset');
+      expect(rect.left, greaterThanOrEqualTo(16),
+          reason: '错误卡片没有左侧 pageGutter');
+      expect(rect.right, lessThanOrEqualTo(430 - 16),
+          reason: '错误卡片没有右侧 pageGutter');
+    }
+
+    testWidgets('首页错误分支仍给状态栏留白', (tester) async {
+      await pumpError(tester, home());
+      expectInset(tester);
+    });
+
+    testWidgets('统计页错误分支仍给状态栏留白', (tester) async {
+      await pumpError(tester, const StatsPage());
+      expectInset(tester);
     });
   });
 }

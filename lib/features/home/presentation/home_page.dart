@@ -35,13 +35,27 @@ class HomePage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final entries = ref.watch(sleepEntriesProvider);
 
+    // 外壳不再兜底留白，状态栏留白由页面自己补（见 [pageTopInset]），
+    // 所以加载与错误分支也要和数据分支的 ListView 用同一套顶部与横向留白。
+    final inset = EdgeInsets.only(
+      top: pageTopInset(context),
+      left: pageGutter(context),
+      right: pageGutter(context),
+    );
+
     return entries.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, stack) => EmptyState(
-        icon:
-            AppIcons.moon(size: 30, color: Theme.of(context).colorScheme.error),
-        title: '无法读取记录',
-        body: '本地数据库打开失败：$error',
+      loading: () => Padding(
+        padding: inset,
+        child: const Center(child: CircularProgressIndicator()),
+      ),
+      error: (error, stack) => Padding(
+        padding: inset,
+        child: EmptyState(
+          icon: AppIcons.moon(
+              size: 30, color: Theme.of(context).colorScheme.error),
+          title: '无法读取记录',
+          body: '本地数据库打开失败：$error',
+        ),
       ),
       data: (records) => _HomeContent(
         records: records,
