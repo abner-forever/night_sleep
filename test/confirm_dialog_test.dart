@@ -150,6 +150,49 @@ void main() {
     expect(cancel, lessThan(confirm), reason: '按钮次序与原先两处弹窗相反了');
   });
 
+  testWidgets('内容区与按钮区之间一条横线、两个按钮之间一条竖线', (tester) async {
+    await openDialog(tester, onResult: (_) {});
+
+    // 两条线都取自同一个边框令牌，因此用颜色就能把它们一次找齐。
+    final lines = find.byWidgetPredicate(
+      (widget) =>
+          widget is ColoredBox && widget.color == AppTokens.light.border,
+    );
+    expect(lines, findsNWidgets(2), reason: 'iOS alert 的分隔线是两条：横线 + 竖线');
+
+    final rects = [for (var i = 0; i < 2; i++) tester.getRect(lines.at(i))];
+    final horizontals = rects.where((rect) => rect.width > rect.height);
+    final verticals = rects.where((rect) => rect.height > rect.width);
+    expect(
+      horizontals,
+      hasLength(1),
+      reason: '找不到横线。若它是 0 宽，说明宽度约束没撑开（Column 默认给的是宽松约束）',
+    );
+    expect(verticals, hasLength(1), reason: '找不到竖线');
+
+    final horizontal = horizontals.single;
+    final vertical = verticals.single;
+    final cancel = tester.getRect(find.text('取消'));
+
+    expect(horizontal.height, 1);
+    expect(vertical.width, 1);
+    expect(
+      horizontal.width,
+      greaterThan(cancel.width),
+      reason: '横线要左右满宽，缩成一个按钮那么宽说明宽度约束没撑开',
+    );
+    expect(
+      horizontal.bottom,
+      lessThanOrEqualTo(cancel.top),
+      reason: '横线应贴着按钮行上沿，把正文与动作分开',
+    );
+    expect(
+      vertical.height,
+      greaterThan(cancel.height),
+      reason: '竖线要撑满按钮行的高度',
+    );
+  });
+
   testWidgets('卡片圆角、底色与描边都取自设计令牌', (tester) async {
     await openDialog(tester, onResult: (_) {});
 

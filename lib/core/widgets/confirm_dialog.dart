@@ -129,6 +129,18 @@ class _ConfirmDialog extends StatelessWidget {
                       ],
                     ),
                   ),
+                  // 内容区与按钮区之间一条 1px 横线，左右满宽、贴着按钮行上沿。它与
+                  // 下面那条竖线一起构成 iOS alert 的分隔线：横线把「正文」和「动作」
+                  // 分开，竖线把两个按钮分开。少一条就不像 iOS 的弹窗了。
+                  //
+                  // `width: double.infinity` 不能省：外层的 `Column` 默认居中，给非
+                  // flex 子项的是**宽松**宽度约束，没有它 `ColoredBox` 会按最小尺寸
+                  // 收缩成 0 宽——线在布局里，只是看不见。
+                  SizedBox(
+                    height: 1,
+                    width: double.infinity,
+                    child: ColoredBox(color: tokens.border),
+                  ),
                   // 动作区分左右两半，取消在左、确认在右，与它替换掉的那两处弹窗一致。
                   // `IntrinsicHeight` 让中间那条 1px 分隔线跟着最高的按钮走，而不是
                   // 写死一个高度——写死的值会在字号或行高一变时露出破绽。
