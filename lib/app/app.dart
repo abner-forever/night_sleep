@@ -158,7 +158,7 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
   }
 }
 
-/// Swaps the visible page and applies the shared content padding.
+/// 切换当前页面，并按设计把内容列居中限宽在 720px。
 class _TabContent extends StatelessWidget {
   const _TabContent({
     required this.tab,

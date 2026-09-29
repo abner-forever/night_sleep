@@ -486,7 +486,6 @@ void main() {
     testWidgets('顶部渐变带贴在屏幕物理顶端，不被顶部安全区推下去', (tester) async {
       // 分界线来自「整条带被 SafeArea 一起下移」。把顶部安全区设成非零，
       // 这条断言才看得见东西——pad 为 0 时推不推下去都一样。
-      tester.view.physicalSize = const Size(430, 900);
       tester.view.devicePixelRatio = 1.0;
       tester.view.padding = const FakeViewPadding(top: 47);
       addTearDown(tester.view.reset);
