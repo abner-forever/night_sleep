@@ -38,6 +38,26 @@ void main() {
     expect(img.padTop, 100);
     expect(img.padRight, 100);
     expect(img.padBottom, 100);
+
+    // 实体**自身**的四个角必须透明。上面那些（包括 `cornerAlpha`）都钉不住圆角：
+    // 实体被内缩到 824×824 之后，画布角 (0,0) 量到的是留白，而包围盒由最宽的那一
+    // 行决定，圆角削掉的是四角、不改变包围盒。下面四点才是「有圆角 / 无圆角」的
+    // 分水岭——摘掉 `clipRRect` 后它们由 0 变成实心（实测 (100,100) 为 227），
+    // 而其余数字一个都不动。
+    expect(img.alphaAt(img.left, img.top), lessThan(8),
+        reason: '实体左上角应当透明——圆角没烘焙进去时这一点是实心的');
+    expect(img.alphaAt(img.right, img.top), lessThan(8),
+        reason: '实体右上角应当透明——圆角没烘焙进去时这一点是实心的');
+    expect(img.alphaAt(img.left, img.bottom), lessThan(8),
+        reason: '实体左下角应当透明——圆角没烘焙进去时这一点是实心的');
+    expect(img.alphaAt(img.right, img.bottom), lessThan(8),
+        reason: '实体右下角应当透明——圆角没烘焙进去时这一点是实心的');
+
+    // 反向护栏：否则「把图标整个画没了」的实现也能让上面四条通过。实体左边缘的
+    // 竖直中点是一条直边，必须实心。取 `left + 1` 而非 `left`：正好压在边界上的
+    // 那一列带抗锯齿（1024 上实测 alpha 244），往里一像素才是 255。
+    expect(img.alphaAt(img.left + 1, img.size ~/ 2), 255,
+        reason: '实体左边缘中点是直边，必须不透明');
   });
 
   test('macOS 256 图标：同一套比例缩下来', () async {
@@ -49,6 +69,16 @@ void main() {
     expect(img.padLeft, closeTo(25, 1));
     expect(img.padTop, closeTo(25, 1));
     expect(img.cornerAlpha, lessThan(8));
+
+    // 缩小之后角上依然是透明的（实测四点均为 0）：圆角不会被重采样糊回来。
+    expect(img.alphaAt(img.left, img.top), lessThan(8),
+        reason: '实体左上角应当透明——圆角没烘焙进去时这一点是实心的');
+    expect(img.alphaAt(img.right, img.top), lessThan(8),
+        reason: '实体右上角应当透明——圆角没烘焙进去时这一点是实心的');
+    expect(img.alphaAt(img.left, img.bottom), lessThan(8),
+        reason: '实体左下角应当透明——圆角没烘焙进去时这一点是实心的');
+    expect(img.alphaAt(img.right, img.bottom), lessThan(8),
+        reason: '实体右下角应当透明——圆角没烘焙进去时这一点是实心的');
   });
 
   test('macOS 图标必须带 alpha 通道（色型 6）', () {
@@ -83,13 +113,18 @@ Future<Uint8List> _decode(Uint8List bytes, String path) async {
 }
 
 /// 按 `alpha > 128` 量实体（与量系统图标时同一口径，投影的软边因此不参与）。
+///
+/// 它同时持有解码后的 RGBA，因为上面那组包围盒数字**钉不住圆角**：实体是被
+/// `translate`/`scale` 内缩到 824×824 的，画布角 `(0,0)` 量到的其实是留白；而
+/// 包围盒由最宽的那一行决定，圆角削掉的是四角、不改变包围盒。要区分「有圆角 /
+/// 无圆角」必须能点到实体**自己**的角，所以这里给出按坐标取的 `alphaAt`。
 class _Geometry {
-  const _Geometry(this.cornerAlpha, this.centreAlpha, this.left, this.top,
-      this.right, this.bottom, this.size);
+  const _Geometry(
+      this._rgba, this.size, this.left, this.top, this.right, this.bottom);
 
-  final int cornerAlpha;
-  final int centreAlpha;
-  final int left, top, right, bottom, size;
+  final Uint8List _rgba;
+  final int size;
+  final int left, top, right, bottom;
 
   int get bodyWidth => right - left + 1;
   int get bodyHeight => bottom - top + 1;
@@ -98,13 +133,21 @@ class _Geometry {
   int get padRight => size - 1 - right;
   int get padBottom => size - 1 - bottom;
 
-  static _Geometry of(Uint8List rgba, int size) {
-    int alphaAt(int x, int y) => rgba[(y * size + x) * 4 + 3];
+  /// 画布左上角、画布正中的 alpha。
+  int get cornerAlpha => alphaAt(0, 0);
+  int get centreAlpha => alphaAt(size ~/ 2, size ~/ 2);
 
+  /// (x, y) 处的 alpha。与量包围盒走同一份 RGBA、同一套坐标，口径一致。
+  int alphaAt(int x, int y) => _alphaAt(_rgba, size, x, y);
+
+  static int _alphaAt(Uint8List rgba, int size, int x, int y) =>
+      rgba[(y * size + x) * 4 + 3];
+
+  static _Geometry of(Uint8List rgba, int size) {
     var left = size, right = -1, top = size, bottom = -1;
     for (var y = 0; y < size; y++) {
       for (var x = 0; x < size; x++) {
-        if (alphaAt(x, y) > 128) {
+        if (_alphaAt(rgba, size, x, y) > 128) {
           if (x < left) left = x;
           if (x > right) right = x;
           if (y < top) top = y;
@@ -112,7 +155,6 @@ class _Geometry {
         }
       }
     }
-    return _Geometry(alphaAt(0, 0), alphaAt(size ~/ 2, size ~/ 2), left, top,
-        right, bottom, size);
+    return _Geometry(rgba, size, left, top, right, bottom);
   }
 }
