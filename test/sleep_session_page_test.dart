@@ -1,10 +1,12 @@
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:night_sleep/app/app.dart';
+import 'package:night_sleep/app/app_shell.dart';
 import 'package:night_sleep/app/app_toast.dart';
 import 'package:night_sleep/app/noise_session.dart';
 import 'package:night_sleep/core/database/app_database.dart';
@@ -17,8 +19,8 @@ import 'package:night_sleep/features/sleep/data/noise_synth.dart';
 import 'package:night_sleep/features/sleep/data/session_repository.dart';
 import 'package:night_sleep/features/sleep/data/sleep_repository.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_entry.dart';
+import 'package:night_sleep/features/sleep/domain/sleep_quality.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_session.dart';
-import 'package:night_sleep/features/sleep/presentation/widgets/quality_rating.dart';
 
 /// 记下每一次播放器调用的假实现。
 ///
@@ -44,6 +46,42 @@ class _FakeNoisePlayer extends NoisePlayer {
   Future<void> dispose() async => calls.add('dispose');
 }
 
+/// 记下调度器被要求做什么的假实现。
+///
+/// 测试里排不了真通知，但「有没有要求它重排」是看得见的，而闹钟重排恰恰是这个
+/// 功能最容易悄悄退化的地方：`syncAlarm` 能让日常起床提醒 9002 让位，却不会把它
+/// 排回来，所以两条路径都必须走 [syncAllReminders]——两笔都要记下来。
+class _RecordingReminderScheduler extends NoopReminderScheduler {
+  final List<String> calls = [];
+
+  @override
+  Future<void> sync(ReminderPlan plan) async => calls.add('syncDaily');
+
+  @override
+  Future<void> syncAlarm(ReminderRequest? request) async =>
+      calls.add('syncAlarm:${request?.id}');
+}
+
+/// 停不掉声音的播放器。平台音频通道同样会抛，而收尾不允许被它挡住。
+class _ThrowingNoisePlayer extends _FakeNoisePlayer {
+  @override
+  Future<void> stop() async => throw PlatformException(code: 'boom');
+}
+
+/// 排什么都会炸的调度器。
+///
+/// `LocalReminderScheduler` 调平台插件时没有护栏，`PlatformException` 是真会抛的
+/// 那一种失败。记录早已落库，用户可见的收尾一条都不该被它吃掉。
+class _ThrowingReminderScheduler extends NoopReminderScheduler {
+  @override
+  Future<void> sync(ReminderPlan plan) async =>
+      throw PlatformException(code: 'boom');
+
+  @override
+  Future<void> syncAlarm(ReminderRequest? request) async =>
+      throw PlatformException(code: 'boom');
+}
+
 void main() {
   late AppDatabase database;
 
@@ -61,6 +99,7 @@ void main() {
     required DateTime now,
     bool wide = false,
     NoisePlayer? player,
+    ReminderScheduler? scheduler,
   }) async {
     tester.view.physicalSize =
         wide ? const Size(1200, 2000) : const Size(430, 2000);
@@ -113,7 +152,8 @@ void main() {
           activeSessionProvider.overrideWith((ref) => session),
           // 真的调度器在测试里没有平台通道，`initialize` 也从没跑过；换成空实现，
           // 免得测试依赖「它恰好会静默降级」这个实现细节。
-          reminderSchedulerProvider.overrideWithValue(NoopReminderScheduler()),
+          reminderSchedulerProvider
+              .overrideWithValue(scheduler ?? NoopReminderScheduler()),
           // 真播放器会碰平台通道；白噪音的播放接缝挂在 app 级 provider 上。
           noisePlayerProvider.overrideWithValue(player ?? _FakeNoisePlayer()),
         ],
@@ -144,6 +184,18 @@ void main() {
         alarmEnabled: alarmEnabled,
         createdAtUtc: start.toUtc(),
       );
+
+  /// 把当前弹层推到底。
+  ///
+  /// 守门生效时弹层是**说明层**，里面没有「跳过」，此调用是空操作；守门被删掉时
+  /// 这里是**评星弹层**，点「跳过」会真的走完整条落库链路——正是这样，守门用例
+  /// 里那些库断言才不是「因为流程还没走完所以当然为空」。
+  Future<void> completeSheet(WidgetTester tester) async {
+    final skip = find.text('跳过');
+    if (skip.evaluate().isEmpty) return;
+    await tester.tap(skip);
+    await tester.pumpAndSettle();
+  }
 
   testWidgets('显示已睡时长与设定的起床时间', (tester) async {
     final start = DateTime(2026, 8, 30, 23, 14);
@@ -621,11 +673,18 @@ void main() {
   });
 
   testWidgets('跳过评星：记录落库但质量为 null 且没有评分', (tester) async {
+    final player = _FakeNoisePlayer();
     final start = DateTime(2026, 8, 30, 23, 14);
     await pumpSession(
       tester,
       session: sessionAt(start),
       now: start.add(const Duration(hours: 7, minutes: 48)),
+      player: player,
+    );
+
+    // 先抓住容器：切走之后 `find.byType(SleepSessionPage)` 就找不到了。
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(SleepSessionPage)),
     );
 
     await tester.tap(find.text('结束睡眠'));
@@ -637,9 +696,16 @@ void main() {
     expect(row.quality, isNull);
     expect(row.source, 'session');
     expect(await database.activeSession(), isNull);
+    // 会话结束了声音还在响说不通。
+    expect(player.calls, contains('stop'), reason: '结束后必须停掉白噪音');
+    // 收尾必须真的走完，而不是停在半路。
+    expect(container.read(activeTabProvider), AppTab.log, reason: '应切到「回顾」');
+    expect(find.text('结束睡眠'), findsNothing, reason: '会话页应已离开');
   });
 
   testWidgets('评了分：质量写进记录', (tester) async {
+    // `ensureSemantics` 必须在用例体内释放：绑定会在 tearDown 里检查。
+    final semantics = tester.ensureSemantics();
     final start = DateTime(2026, 8, 30, 23, 14);
     await pumpSession(
       tester,
@@ -649,13 +715,20 @@ void main() {
 
     await tester.tap(find.text('结束睡眠'));
     await tester.pumpAndSettle();
-    // 点第 5 颗星。
-    await tester.tap(find.byType(QualityStars).first);
+    // 点第 5 颗星，**按语义标签点**。原先用 `find.byType(QualityStars)` 点的是
+    // 组件包围盒的**中心**，落的是第 3 颗「一般」；而 `isNotNull` 分辨不出
+    // 「用户点的那一档」与「任意一档」。
+    await tester.tap(find.bySemanticsLabel('睡眠质量 极好'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
 
-    expect((await database.allRecords()).single.quality, isNotNull);
+    expect(
+      (await database.allRecords()).single.quality,
+      SleepQuality.excellent.value,
+      reason: '用户点的是「极好」，落库的就该是「极好」',
+    );
+    semantics.dispose();
   });
 
   /// 时长守门：点了开始就立刻结束，**不许**静默写出一条零时长记录。
@@ -670,9 +743,18 @@ void main() {
     await tester.tap(find.text('结束睡眠'));
     await tester.pumpAndSettle();
 
+    // 守门最要紧的那条：**没有**走到评星——过了评星这一步就是落库。
+    expect(find.text('昨晚睡得怎么样？'), findsNothing, reason: '时长越界时不该走到评星弹层');
     expect(find.textContaining('太短'), findsOneWidget);
     expect(find.text('手动补录某一晚'), findsOneWidget);
     expect(find.text('丢弃这次会话'), findsOneWidget);
+
+    // 把弹层推到底再断言库。注意时长守门**有两道**（页面这道 +
+    // `SessionRepository.finish` 里那道），所以「库里没有记录」只删页面这道是打不
+    // 红的——真正打红的是上面那条「没走到评星」。这两条库断言守的是另一类回归：
+    // 有人绕过 `finish()` 直接写库。
+    await completeSheet(tester);
+
     expect(await database.allRecords(), isEmpty);
     expect(await database.activeSession(), isNotNull, reason: '会话仍在，等用户决定');
   });
@@ -688,16 +770,57 @@ void main() {
     await tester.tap(find.text('结束睡眠'));
     await tester.pumpAndSettle();
 
+    expect(find.text('昨晚睡得怎么样？'), findsNothing, reason: '时长越界时不该走到评星弹层');
     expect(find.textContaining('超过 24 小时'), findsOneWidget);
+
+    await completeSheet(tester);
+
     expect(await database.allRecords(), isEmpty);
+    expect(await database.activeSession(), isNotNull, reason: '会话仍在，等用户决定');
   });
 
-  testWidgets('丢弃这次会话：不写记录，会话消失', (tester) async {
+  /// 「尽力而为」必须是**事实**，不是注释里的一句话。
+  ///
+  /// 收尾的两步（停声音、撤闹钟）**同时**真抛——两者都走平台插件，都没有护栏。
+  /// 记录已经落库，用户可见的收尾一条都不能少：把用户撂在一个没有会话、也没有
+  /// 任何反馈的页面上，是这条路径最坏的失败形态。这条用例与夹具默认注入的
+  /// `NoopReminderScheduler` 无关：它注入的就是两个会炸的实现。
+  testWidgets('收尾失败不影响记录、反馈与跳转', (tester) async {
+    final start = DateTime(2026, 8, 30, 23, 14);
+    await pumpSession(
+      tester,
+      session: sessionAt(start),
+      now: start.add(const Duration(hours: 7, minutes: 48)),
+      player: _ThrowingNoisePlayer(),
+      scheduler: _ThrowingReminderScheduler(),
+    );
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(SleepSessionPage)),
+    );
+
+    await tester.tap(find.text('结束睡眠'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('跳过'));
+    await tester.pumpAndSettle();
+
+    expect(await database.allRecords(), hasLength(1), reason: '记录必须落库');
+    expect(container.read(activeTabProvider), AppTab.log,
+        reason: '收尾失败也要切到「回顾」');
+    expect(container.read(toastProvider), isNotNull, reason: '收尾失败也要给出反馈');
+    expect(find.text('结束睡眠'), findsNothing, reason: '收尾失败也要离开会话页');
+  });
+
+  testWidgets('丢弃这次会话：不写记录、会话消失、闹钟一并重排', (tester) async {
+    final player = _FakeNoisePlayer();
+    final scheduler = _RecordingReminderScheduler();
     final start = DateTime(2026, 8, 30, 23, 14);
     await pumpSession(
       tester,
       session: sessionAt(start),
       now: start,
+      player: player,
+      scheduler: scheduler,
     );
 
     await tester.tap(find.text('结束睡眠'));
@@ -707,5 +830,17 @@ void main() {
 
     expect(await database.allRecords(), isEmpty);
     expect(await database.activeSession(), isNull);
+    // 丢弃删的是同一行会话，而 9003 是抽屉里那个开关排的、那次调用同时让 9002
+    // 让了位。不重排的话，一个已经不存在的会话会留着起床闹钟，日常起床提醒还
+    // 继续被压着——正是 `reminder_sync.dart` 里那条规则要防的失败类。
+    expect(scheduler.calls, contains('syncDaily'),
+        reason: '日常提醒没有重新推导，9002 会继续被压着');
+    expect(scheduler.calls, contains('syncAlarm:null'),
+        reason: '会话没了，9003 该撤掉');
+    // 会话没了，白噪音不该还在响。
+    expect(player.calls, contains('stop'), reason: '丢弃后必须停掉白噪音');
+    // UI 结果：说明层关掉、离开会话页（回到 `/`）。
+    expect(find.text('丢弃这次会话'), findsNothing, reason: '说明层应已关闭');
+    expect(find.text('结束睡眠'), findsNothing, reason: '会话页应已离开');
   });
 }

@@ -138,19 +138,9 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage> {
       return;
     }
 
-    // 会话结束了声音还在响说不通；两条出口（落库 / 丢弃）都要停。
-    await ref.read(noiseSessionControllerProvider).stop();
-
-    // 取消通知排在事务**之后**，且是尽力而为。顺序不能反：先撤通知再写库，
-    // 一旦写库失败，用户就得到「闹钟没了、记录也没有」的最坏组合；反过来的
-    // 失败最多多响一次，而 9003 是一次性通知，响过就没了。
-    //
-    // 走 [syncAllReminders] 而不是只调 `syncSessionAlarm`：后者不对称——能让
-    // 日常起床提醒 9002 让位，却永远不会把 9002 排回来。
-    await syncAllReminders(
-      ref.read(databaseProvider),
-      ref.read(reminderSchedulerProvider),
-    );
+    // 记录已经落库，下面全是收尾。收尾一步都不许抛出去——一旦抛了，用户就被
+    // 撂在一个没有会话、也没有任何反馈的页面上。见 [_cleanupAfterSession]。
+    await _cleanupAfterSession();
 
     if (!mounted) return;
     unawaited(AppHaptics.success());
@@ -162,13 +152,49 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage> {
   /// 「丢弃这次会话」：不写记录，只删会话行。
   Future<void> _discard(BuildContext sheetContext) async {
     await ref.read(sessionRepositoryProvider).discard();
-    // 会话没了，白噪音也不该继续。
-    await ref.read(noiseSessionControllerProvider).stop();
+    // 与结束路径**同一套收尾**。丢弃删的是同一行会话，而 9003 是抽屉里那个
+    // 闹钟开关排的、那次调用同时让 9002 让了位：这里若不重排，一个已经不存在的
+    // 会话会留着起床闹钟，日常起床提醒还继续被压着——正是 `reminder_sync.dart`
+    // 里那条规则要防的失败类。
+    await _cleanupAfterSession();
     // 关掉的是**说明层**（它自己的 context），回首页走页面自己的 context——
     // 两个 context 各有各的 mounted 守卫，混着用会在弹层已拆的情况下解引用它。
     if (!mounted || !sheetContext.mounted) return;
     Navigator.of(sheetContext).pop();
     context.go('/');
+  }
+
+  /// 会话结束/丢弃之后的收尾：停白噪音 + 撤闹钟。
+  ///
+  /// **两条出口（落库、丢弃）走同一份。** 各写一遍时，凡是只想到一条路径的
+  /// 改动都会让另一条悄悄退化——丢弃路径先前就漏了闹钟重排。
+  ///
+  /// 每一步都是**尽力而为**，而且各自独立 try：这两个动作都不该有能力挡住用户
+  /// 可见的收尾（toast / 切 Tab / 回首页）。`LocalReminderScheduler` 调平台插件
+  /// 时没有护栏，`PlatformException` 是真会抛的；记录早就落库了，为它把用户卡在
+  /// 一个已经没有会话的页面上，是用一个装饰性的失败换掉了整个反馈。
+  /// 分开 try 是因为失败模式互不相关：停不掉声音最坏多响一会儿，撤不掉通知最坏
+  /// 多响一次（9003 是一次性通知，响过就没了）。
+  Future<void> _cleanupAfterSession() async {
+    try {
+      await ref.read(noiseSessionControllerProvider).stop();
+    } catch (_) {
+      // 声音停不掉不影响记录，也不影响下面的闹钟与跳转。
+    }
+
+    // **取消通知排在事务之后。** 顺序不能反：先撤通知再写库，一旦写库失败，
+    // 用户就得到「闹钟没了、记录也没有」的最坏组合。
+    //
+    // 走 [syncAllReminders] 而不是只调 `syncSessionAlarm`：后者不对称——能让
+    // 日常起床提醒 9002 让位，却永远不会把 9002 排回来。
+    try {
+      await syncAllReminders(
+        ref.read(databaseProvider),
+        ref.read(reminderSchedulerProvider),
+      );
+    } catch (_) {
+      // 排不上/撤不掉提醒是多响一次或少响一次，不该吃掉用户可见的收尾。
+    }
   }
 }
 
