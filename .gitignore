@@ -22,3 +22,6 @@ screenshots/
 .claude/worktrees/
 # macOS
 .DS_Store
+
+# 可视化伴侣（brainstorming）产物，不入库
+.superpowers/
