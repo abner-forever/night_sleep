@@ -1,6 +1,6 @@
 {
-    "name": "night_sleep",
-    "short_name": "night_sleep",
+    "name": "夜深",
+    "short_name": "夜深",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
