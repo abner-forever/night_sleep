@@ -29,8 +29,10 @@ class SleepSessionPage extends ConsumerStatefulWidget {
 
   /// 固定「现在」的**测试接缝**。
   ///
-  /// 非空时页面不起定时器，只按这一个时刻渲染。widget 测试因此不会留下
-  /// pending timer——那正是这条接缝存在的全部理由。
+  /// 非空时页面只按这一个时刻渲染，且不起定时器。这条接缝的意义是**让读数
+  /// 与执行时刻无关**：真起了定时器，`_now` 就会被真实时钟覆写，于是
+  /// 「3h 42m」「23:14」这类断言会随跑测试的日期时间随机变红。
+  /// （pending timer 另有人兜：拆树时 `dispose()` 会 cancel 掉它。）
   final DateTime? now;
 
   /// 实时模式下重绘的间隔。
@@ -47,8 +49,9 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage> {
   @override
   void initState() {
     super.initState();
-    // 冻住时钟时**不要**起定时器：`Timer.periodic` 在 widget 测试的 FakeAsync
-    // 里会一直挂着，拆解时留下 pending timer 让用例失败。
+    // 冻住时钟时**不要**起定时器：给定时刻就不该再被真实时钟覆写，否则界面
+    // 读数会随执行时刻漂移。定时器本身有 `dispose()` 兜底，但那不是这条接缝
+    // 的理由——它要挡的是「覆写」，不是「pending timer」。
     if (widget.now == null) {
       _timer = Timer.periodic(widget.tick, (_) {
         if (mounted) setState(() => _now = DateTime.now());
