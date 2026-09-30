@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_tokens.dart';
+import '../../domain/sleep_quality.dart';
 import '../../domain/sleep_score.dart';
 import '../../domain/sleep_stage.dart';
 import '../../domain/sound_event.dart';
@@ -35,4 +36,16 @@ Color soundEventColor(AppTokens tokens, SoundEventKind kind) => switch (kind) {
       SoundEventKind.snore => tokens.accentBlue,
       SoundEventKind.talk => tokens.accentViolet,
       SoundEventKind.noise => tokens.textMuted,
+    };
+
+/// `Q_LBL` 每一档的语义色。未评分（`null`）取中性色——那不是一个档位，
+/// 不该借用任何一档的颜色。
+Color qualityColor(AppTokens tokens, SleepQuality? quality) =>
+    switch (quality) {
+      null => tokens.textMuted,
+      SleepQuality.veryPoor => tokens.danger,
+      SleepQuality.poor => tokens.warn,
+      SleepQuality.fair => tokens.caution,
+      SleepQuality.good => tokens.accent,
+      SleepQuality.excellent => tokens.accentViolet,
     };

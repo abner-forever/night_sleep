@@ -256,8 +256,11 @@ void main() {
       expect(find.text('✓ 睡眠充足'), findsOneWidget);
     });
 
-    testWidgets('保存写入数据库并标记为本地估算', (tester) async {
+    testWidgets('未选星级保存时，记录没有评分', (tester) async {
       await pumpPage(tester, const LogPage());
+
+      // 表单初始无选中：没碰星级就保存，记录**没有**评分。
+      expect(find.text('未评分'), findsOneWidget, reason: '表单初始就该显示「未评分」');
 
       await tester.tap(find.text('保存记录'));
       // Advance past the 2s "已保存" reset so no timer is left pending.
@@ -266,14 +269,37 @@ void main() {
 
       final saved = await SleepRepository(database).loadAll();
       expect(saved, hasLength(1));
-      expect(saved.single.quality.value, 4, reason: '默认质量为「良好」');
+      expect(saved.single.quality, isNull, reason: '未选星级就不该写质量');
       expect(saved.single.durationHours, closeTo(8, 0.001));
-      // A hand-logged night has no measurements, so it must be scored locally
-      // and must not claim measured stages or audio.
-      expect(saved.single.isEstimated, isTrue);
+      // 没有质量就没有分：不是喂个占位值给 estimateScore 拿半截分数冒充。
+      expect(saved.single.scoreSource, ScoreSource.none);
+      expect(saved.single.score, isNull);
+      expect(saved.single.estimatedSummary, isNull);
+      // 手写记录没有测量数据，不得声称有阶段或音频。
       expect(saved.single.hasStages, isFalse);
       expect(saved.single.hasSoundEvents, isFalse);
-      expect(saved.single.score, isNotNull);
+    });
+
+    testWidgets('点第 4 颗星再保存，质量是「良好」并按它估算', (tester) async {
+      // `ensureSemantics` 必须在用例体内释放：绑定会在 tearDown 里检查。
+      final semantics = tester.ensureSemantics();
+      await pumpPage(tester, const LogPage());
+
+      await tester.tap(find.bySemanticsLabel('睡眠质量 良好'));
+      await tester.pump();
+
+      await tester.tap(find.text('保存记录'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 3));
+
+      final saved = await SleepRepository(database).loadAll();
+      expect(saved, hasLength(1));
+      expect(saved.single.quality, SleepQuality.good);
+      // 8h + 良好 + 无事件 → 45 + 26.25 + 20 = 91.25 → 91。
+      expect(saved.single.scoreSource, ScoreSource.onDeviceEstimate);
+      expect(saved.single.isEstimated, isTrue);
+      expect(saved.single.score, 91);
+      semantics.dispose();
     });
   });
 

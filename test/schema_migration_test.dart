@@ -207,7 +207,37 @@ void main() {
     }
   }
 
-  test('夹具确实是 v1，而升级后确实是 v3', () async {
+  /// 写出一份 v3 的库：一条有质量的记录、一条阶段、一条设置。
+  ///
+  /// 形态就是线上应用在 v4 到来之前留下的样子：`sleep_records.quality` 仍是
+  /// `NOT NULL`，且还没有 `active_sessions` 表。
+  ///
+  /// 时间戳写成 **unix 秒**，与 [_epoch] 同一个口径——drift 的 `dateTime()` 在原生
+  /// 执行器上按秒存，写微秒会被 `DateTime.fromMillisecondsSinceEpoch` 判成越界。
+  Future<void> writeV3Database() async {
+    final v3 = _V3Database(NativeDatabase(file));
+    try {
+      await v3.customStatement(
+        "INSERT INTO sleep_records (id, start_at_utc, end_at_utc, time_zone_id, "
+        "quality, notes, source, created_at, updated_at) VALUES "
+        "('v3-night', 1759000000000, 1759028800000, 'UTC', 4, "
+        "'v3 时期写的备注', 'manual', 1759000000000, 1759000000000)",
+      );
+      await v3.customStatement(
+        "INSERT INTO sleep_stage_segments (id, record_id, stage, start_at_utc, "
+        "end_at_utc, source) VALUES ('v3-night-stage-0', 'v3-night', 'deep', "
+        "1759000000000, 1759003600000, 'import')",
+      );
+      await v3.customStatement(
+        "INSERT INTO app_settings (id, theme_mode, sleep_goal_minutes, "
+        "wake_reminder_minutes) VALUES ('default', 'dark', 450, 420)",
+      );
+    } finally {
+      await v3.close();
+    }
+  }
+
+  test('夹具确实是 v1，而升级后停在当前版本', () async {
     // Without this the whole file could pass vacuously: if the fixture failed to
     // stamp `user_version = 1`, drift would run `onCreate` instead of
     // `onUpgrade` and create every current table anyway, so the assertions below
@@ -220,7 +250,10 @@ void main() {
     final v2 = openCurrent();
     addTearDown(v2.close);
     await v2.allRecords();
-    expect(await userVersion(v2), 3, reason: '打开后必须由 onUpgrade 一路推到 v3');
+    // 与 `schemaVersion` 比，不写死数字：写死的那个数每升一版就会变成一句假话，
+    // 而这条断言要守的是「onUpgrade 一路推到了代码声明的版本」。
+    expect(await userVersion(v2), v2.schemaVersion,
+        reason: '打开后必须由 onUpgrade 一路推到当前版本');
   });
 
   test('v1 记录升级后仍然存在，字段原样保留', () async {
@@ -326,7 +359,7 @@ void main() {
     expect(settings.themeMode, 'system');
   });
 
-  test('迁移后的库记录为 v3，再次打开不会重跑迁移', () async {
+  test('迁移后的库再次打开不会重跑迁移', () async {
     await writeV1Database();
     final first = openCurrent();
     await first.allRecords();
@@ -355,7 +388,7 @@ void main() {
   });
 
   group('v2 → v3', () {
-    test('夹具确实是 v2，而升级后确实是 v3', () async {
+    test('夹具确实是 v2，而升级后停在当前版本', () async {
       // 防止空跑：夹具若没把 user_version 戳成 2，drift 会走 onCreate 建全部新表，
       // 下面的断言会全绿而迁移代码一行没跑。
       final v2 = _V2Database(NativeDatabase(file));
@@ -375,7 +408,9 @@ void main() {
       final v3 = openCurrent();
       addTearDown(v3.close);
       await v3.allRecords();
-      expect(await userVersion(v3), 3, reason: '打开后必须由 onUpgrade 推到 v3');
+      // 同「夹具确实是 v1」那条：与 `schemaVersion` 比，不写死版本号。
+      expect(await userVersion(v3), v3.schemaVersion,
+          reason: '打开后必须由 onUpgrade 推到当前版本');
     });
 
     test('迁移清掉指向已删记录的孤儿洞察行', () async {
@@ -474,6 +509,92 @@ void main() {
       expect(insight.recordId, 'v1-night');
       expect(insight.content, contains('迁移必须留下它'));
       expect(insight.score, 82);
+    });
+  });
+
+  group('v3 → v4', () {
+    test('夹具确实是 v3，而升级后确实是 v4', () async {
+      await writeV3Database();
+      final v3 = _V3Database(NativeDatabase(file));
+      expect(await userVersion(v3), 3);
+      await v3.customStatement('SELECT 1');
+      await v3.close();
+
+      final db = openCurrent();
+      addTearDown(db.close);
+      await db.allRecords(); // 触发迁移
+      expect(await userVersion(db), 4);
+    });
+
+    test('v3 的记录、阶段、设置一行不动', () async {
+      await writeV3Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+
+      final records = await db.allRecords();
+      expect(records, hasLength(1));
+      expect(records.single.id, 'v3-night');
+      expect(records.single.quality, 4);
+      expect(records.single.notes, 'v3 时期写的备注');
+      expect(await db.stagesFor('v3-night'), hasLength(1));
+
+      final settings = await db.getSettings();
+      expect(settings.themeMode, 'dark');
+      expect(settings.sleepGoalMinutes, 450);
+      expect(settings.wakeReminderMinutes, 420);
+    });
+
+    /// 表重建的要害：`quality` 的可空性**真的**放开了。
+    test('重建后 quality 可以写空', () async {
+      await writeV3Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+      await db.allRecords(); // 触发迁移
+
+      await db.saveRecord(
+        SleepRecordsCompanion.insert(
+          id: 'unrated',
+          startAtUtc: DateTime.utc(2026, 8, 30, 23),
+          endAtUtc: DateTime.utc(2026, 8, 31, 7),
+          quality: const Value(null),
+          createdAt: DateTime.utc(2026, 8, 31, 7),
+          updatedAt: DateTime.utc(2026, 8, 31, 7),
+        ),
+      );
+
+      final row = await db.findRecord('unrated');
+      expect(row!.quality, isNull);
+    });
+
+    /// 重建一张有子表引用它的表之后，级联还得真的生效。
+    test('重建后子表外键仍然级联', () async {
+      await writeV3Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+      await db.allRecords();
+
+      await db.deleteRecord('v3-night');
+
+      expect(await db.stagesFor('v3-night'), isEmpty);
+    });
+
+    test('会话表在迁移后可用', () async {
+      await writeV3Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+      await db.allRecords();
+
+      expect(await db.activeSession(), isNull);
+      await db.saveActiveSession(
+        ActiveSessionsCompanion.insert(
+          id: 'active',
+          startAtUtc: DateTime.utc(2026, 8, 30, 23, 14),
+          timeZoneId: const Value('Asia/Shanghai'),
+          wakeMinutes: 420,
+          createdAt: DateTime.utc(2026, 8, 30, 23, 14),
+        ),
+      );
+      expect((await db.activeSession())!.wakeMinutes, 420);
     });
   });
 }
@@ -606,6 +727,104 @@ class _V2Database extends AppDatabase {
             CREATE TABLE insights (
               id TEXT NOT NULL,
               record_id TEXT,
+              kind TEXT NOT NULL DEFAULT 'record_summary',
+              content TEXT,
+              provider TEXT,
+              model TEXT,
+              score INTEGER,
+              generated_at_utc INTEGER NOT NULL,
+              status TEXT NOT NULL DEFAULT 'unavailable',
+              PRIMARY KEY (id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE app_settings (
+              id TEXT NOT NULL,
+              theme_mode TEXT NOT NULL DEFAULT 'system',
+              sleep_goal_minutes INTEGER NOT NULL DEFAULT 480,
+              bedtime_reminder_enabled INTEGER NOT NULL DEFAULT 0,
+              bedtime_reminder_minutes INTEGER,
+              wake_reminder_enabled INTEGER NOT NULL DEFAULT 0,
+              wake_reminder_minutes INTEGER,
+              sound_recording_enabled INTEGER NOT NULL DEFAULT 0,
+              onboarded INTEGER NOT NULL DEFAULT 0,
+              insight_provider TEXT,
+              insight_model TEXT,
+              PRIMARY KEY (id)
+            )
+          ''');
+        },
+      );
+}
+
+/// v3 出厂时的 schema：`sleep_records.quality` 仍是 `NOT NULL`，
+/// 且没有 `active_sessions` 表。
+///
+/// 理由与上面的 [_V1Database]、[_V2Database] 完全一样，最要紧的一条是裸 DDL 把
+/// 这个形态**冻住了**：用表类写的夹具会跟着 `app_database.dart` 一起演进，v4 的
+/// `quality.nullable()` 一落，它就悄悄不再代表 v3，v3→v4 那几条断言会在迁移代码
+/// 一行没跑的情况下全绿。
+class _V3Database extends AppDatabase {
+  _V3Database(super.executor);
+
+  @override
+  int get schemaVersion => 3;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) async {
+          await customStatement('''
+            CREATE TABLE sleep_records (
+              id TEXT NOT NULL,
+              start_at_utc INTEGER NOT NULL,
+              end_at_utc INTEGER NOT NULL,
+              time_zone_id TEXT NOT NULL DEFAULT 'UTC',
+              quality INTEGER NOT NULL,
+              notes TEXT NOT NULL DEFAULT '',
+              tags_json TEXT NOT NULL DEFAULT '[]',
+              source TEXT NOT NULL DEFAULT 'manual',
+              flagged_snore INTEGER NOT NULL DEFAULT 0,
+              flagged_talk INTEGER NOT NULL DEFAULT 0,
+              flagged_restless INTEGER NOT NULL DEFAULT 0,
+              flagged_nightmare INTEGER NOT NULL DEFAULT 0,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL,
+              PRIMARY KEY (id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE sleep_stage_segments (
+              id TEXT NOT NULL,
+              record_id TEXT NOT NULL
+                REFERENCES sleep_records (id) ON DELETE CASCADE,
+              stage TEXT NOT NULL,
+              start_at_utc INTEGER NOT NULL,
+              end_at_utc INTEGER NOT NULL,
+              source TEXT NOT NULL DEFAULT 'import',
+              PRIMARY KEY (id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE sound_clips (
+              id TEXT NOT NULL,
+              record_id TEXT NOT NULL
+                REFERENCES sleep_records (id) ON DELETE CASCADE,
+              kind TEXT NOT NULL,
+              started_at_utc INTEGER NOT NULL,
+              duration_ms INTEGER NOT NULL,
+              local_uri TEXT,
+              transcript TEXT,
+              analysis TEXT,
+              analysis_status TEXT NOT NULL DEFAULT 'pending',
+              source TEXT NOT NULL DEFAULT 'recording',
+              PRIMARY KEY (id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE insights (
+              id TEXT NOT NULL,
+              record_id TEXT
+                REFERENCES sleep_records (id) ON DELETE CASCADE,
               kind TEXT NOT NULL DEFAULT 'record_summary',
               content TEXT,
               provider TEXT,

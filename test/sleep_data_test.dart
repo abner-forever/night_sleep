@@ -10,6 +10,7 @@ import 'package:night_sleep/features/sleep/domain/sleep_entry.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_quality.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_score.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_stage.dart';
+import 'package:night_sleep/features/sleep/domain/sleep_statistics.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_window.dart';
 
 void main() {
@@ -248,6 +249,92 @@ void main() {
       // rule-based estimate standing in for a measurement.
       expect(entry.scoreSource, ScoreSource.none);
       expect(entry.score, isNull);
+    });
+  });
+
+  group('未评分不伪造分数', () {
+    /// 一条手写的 8 小时记录，**没有评星**——会话结束跳过了评星的样子。
+    Future<void> saveUnrated() async {
+      final window = buildSleepWindow(
+        wakeDate: DateTime(2026, 9, 27),
+        bedtime: '23:00',
+        wakeTime: '07:00',
+      );
+      await repository.save(
+        id: 'unrated-1',
+        startAtUtc: window.startAtUtc,
+        endAtUtc: window.endAtUtc,
+        timeZoneId: window.timeZoneId,
+        quality: null,
+        notes: '',
+        events: LoggedEvents.none,
+      );
+    }
+
+    /// 一条同样时长、评了「良好」的记录，用来给统计的平均分当参照。
+    Future<void> saveRated() async {
+      final window = buildSleepWindow(
+        wakeDate: DateTime(2026, 9, 27),
+        bedtime: '23:00',
+        wakeTime: '07:00',
+      );
+      await repository.save(
+        id: 'rated-1',
+        startAtUtc: window.startAtUtc,
+        endAtUtc: window.endAtUtc,
+        timeZoneId: window.timeZoneId,
+        quality: SleepQuality.good,
+        notes: '',
+        events: LoggedEvents.none,
+      );
+    }
+
+    test('未评分的记录读回来仍是未评分', () async {
+      await saveUnrated();
+
+      // 空质量必须经得起一次落库再读回：`_toEntry` 少判一次空就会把它读成
+      // `SleepQuality.fair`（`fromValue` 的 orElse），凭空替用户打了 3 分。
+      expect((await repository.loadAll()).single.quality, isNull);
+    });
+
+    test('未评分不产生任何分数，也不给估算文案', () async {
+      await saveUnrated();
+      final entry = (await repository.loadAll()).single;
+
+      expect(entry.isManualEntry, isTrue, reason: '前提：这条本来走得通本地估算');
+      // 要害：不是「只剩 65 分权重的半截分」，而是干脆没有分。
+      // `estimateScore` 的质量项占 35 分权重，喂个占位值就是替用户打分。
+      expect(entry.scoreSource, ScoreSource.none);
+      expect(entry.score, isNull);
+      expect(entry.estimatedSummary, isNull);
+      expect(entry.isEstimated, isFalse);
+    });
+
+    test('统计的平均分把未评分排除在分母之外', () async {
+      await saveUnrated();
+      await saveRated();
+
+      final stats = SleepStatistics.from(
+        allEntries: await repository.loadAll(),
+        period: StatsPeriod.week,
+      );
+
+      expect(stats.count, 2, reason: '未评分的记录仍然是一条记录，不能被丢掉');
+      // 分母是「有分的条数」（1），不是全部条数（2）——按 2 算会得出 45.5，
+      // 那是一个谁都没得到过的分数。
+      expect(stats.averageScore, 91);
+    });
+
+    test('全部未评分时平均分是 null', () async {
+      await saveUnrated();
+
+      final stats = SleepStatistics.from(
+        allEntries: await repository.loadAll(),
+        period: StatsPeriod.week,
+      );
+
+      // null 而不是 0：界面显示「—」，不显示一个从未存在过的 0 分。
+      expect(stats.averageScore, isNull);
     });
   });
 

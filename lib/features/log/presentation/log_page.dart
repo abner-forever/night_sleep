@@ -45,7 +45,12 @@ class _LogPageState extends ConsumerState<LogPage> {
   late String _date;
   String _bedtime = '23:00';
   String _wakeTime = '07:00';
-  SleepQuality _quality = SleepQuality.good;
+
+  /// 未评分为 `null`，且**表单初始就是无选中**。
+  ///
+  /// 原来是 `SleepQuality.good`，那等于应用替用户说了一句他没说过的话，
+  /// 并让评分凭空带上 17.5 分的质量分。现在不选就不写。
+  SleepQuality? _quality;
   LoggedEvents _events = LoggedEvents.none;
   final _notesController = TextEditingController();
   bool _saved = false;
@@ -287,7 +292,7 @@ class _LogPageState extends ConsumerState<LogPage> {
               _QualityStar(
                 quality: quality,
                 selected: _quality == quality,
-                filledTo: _quality.value,
+                filledTo: _quality?.value ?? 0,
                 onTap: () {
                   AppHaptics.select();
                   setState(() => _quality = quality);
@@ -298,11 +303,11 @@ class _LogPageState extends ConsumerState<LogPage> {
             const SizedBox(width: 2),
             Flexible(
               child: Text(
-                _quality.label,
+                _quality?.label ?? '未评分',
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: _qualityColor(tokens, _quality),
+                  color: qualityColor(tokens, _quality),
                 ),
               ),
             ),
@@ -453,15 +458,6 @@ class _LogPageState extends ConsumerState<LogPage> {
   }
 }
 
-Color _qualityColor(AppTokens tokens, SleepQuality quality) =>
-    switch (quality) {
-      SleepQuality.veryPoor => tokens.danger,
-      SleepQuality.poor => tokens.warn,
-      SleepQuality.fair => tokens.caution,
-      SleepQuality.good => tokens.accent,
-      SleepQuality.excellent => tokens.accentViolet,
-    };
-
 class _FieldRow extends StatelessWidget {
   const _FieldRow(
       {required this.label, required this.value, required this.onTap});
@@ -521,7 +517,7 @@ class _QualityStar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
-    final color = _qualityColor(tokens, quality);
+    final color = qualityColor(tokens, quality);
     final filled = filledTo >= quality.value;
 
     return Semantics(

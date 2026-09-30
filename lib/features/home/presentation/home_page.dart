@@ -659,7 +659,8 @@ class RecordCard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        Tag(label: entry.quality.label),
+                        if (entry.quality != null)
+                          Tag(label: entry.quality!.label),
                         if (entry.hasSnore) ...[
                           const SizedBox(width: 4),
                           AppIcons.snore(

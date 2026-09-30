@@ -47,7 +47,7 @@ Future<void> _insertRecord(
           id: id,
           startAtUtc: DateTime.utc(2026, 9, 26, 23),
           endAtUtc: DateTime.utc(2026, 9, 27, 7),
-          quality: 4,
+          quality: const Value(4),
           source: Value(source),
           createdAt: DateTime.utc(2026, 9, 27, 8),
           updatedAt: DateTime.utc(2026, 9, 27, 8),

@@ -25,13 +25,16 @@ void main() {
     String timeZoneId = 'UTC',
     LoggedEvents events = LoggedEvents.none,
     List<SleepStageSegment> stages = const [],
+
+    /// 默认有质量；显式传 `null` 构造一条**未评分**的记录。
+    SleepQuality? quality = SleepQuality.good,
   }) =>
       SleepEntry(
         id: id,
         startAtUtc: DateTime.utc(2026, 9, 26, 23),
         endAtUtc: DateTime.utc(2026, 9, 27, 7),
         timeZoneId: timeZoneId,
-        quality: SleepQuality.good,
+        quality: quality,
         notes: notes,
         source: source,
         loggedEvents: events,
@@ -380,5 +383,26 @@ void main() {
     expect(insight['status'], 'ok');
     expect(insight['score'], 82);
     expect(insight['content'], '本周入睡时间比上周晚。');
+  });
+
+  test('未评分记录的 JSON 里 quality 是 null', () {
+    final doc = jsonDecode(
+      SleepExporter.json([entry(quality: null)], now: now).single.content,
+    ) as Map<String, dynamic>;
+
+    final record = (doc['records'] as List).single as Map<String, dynamic>;
+    // 未评分就写 null，**不写占位值**：回灌时 null 与「用户填了 3 分」是两件事，
+    // 塞个默认档进来等于替用户说了一句他没说过的话。
+    expect(record['quality'], isNull);
+    expect(record.containsKey('quality'), isTrue, reason: '字段要在，值为空');
+  });
+
+  test('未评分记录的 CSV 质量列是空单元格', () {
+    final file = SleepExporter.csv([entry(quality: null)], now: now).first;
+    final row = cells(rowOf(file.content, 1));
+
+    // 列序不变，第 6 列留空——不是 0、也不是某一档的编号。
+    expect(row, hasLength(16));
+    expect(row[6], isEmpty);
   });
 }

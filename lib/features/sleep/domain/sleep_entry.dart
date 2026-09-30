@@ -45,7 +45,11 @@ class SleepEntry {
   final DateTime startAtUtc;
   final DateTime endAtUtc;
   final String timeZoneId;
-  final SleepQuality quality;
+
+  /// 用户自评的主观质量。`null` 表示**还没评过**（会话结束跳过了评星，
+  /// 或用户还没到回顾页去评）。为空时这条记录不产生评分。
+  final SleepQuality? quality;
+
   final String notes;
   final List<String> tags;
 
@@ -140,6 +144,12 @@ class SleepEntry {
 
   ScoreSource get scoreSource {
     if (insight?.isUsable ?? false) return ScoreSource.modelInsight;
+    // **未评分就没有评分。**
+    //
+    // 这一条必须排在 `isManualEntry` 之前：`estimateScore` 的质量项占 35 分权重，
+    // 喂一个假值进去等于替用户打了分。为空的记录直接不给分，界面与统计里那两条
+    // 既有的 `score != null` 分支会照着走。
+    if (quality == null) return ScoreSource.none;
     if (isManualEntry) return ScoreSource.onDeviceEstimate;
     return ScoreSource.none;
   }
@@ -149,8 +159,9 @@ class SleepEntry {
   /// score at all rather than inventing one.
   int? get score => switch (scoreSource) {
         ScoreSource.modelInsight => insight!.score,
+        // `scoreSource` 已经在 quality 为空时返回 none，走到这里必然有值。
         ScoreSource.onDeviceEstimate =>
-          estimateScore(durationHours, quality, loggedEvents),
+          estimateScore(durationHours, quality!, loggedEvents),
         ScoreSource.none => null,
       };
 
@@ -164,9 +175,10 @@ class SleepEntry {
     if (scoreSource != ScoreSource.onDeviceEstimate) return null;
     return estimateSummary(
       durationHours,
-      quality,
+      // 同 `score`：走到这里 quality 必然非空。
+      quality!,
       loggedEvents,
-      estimateScore(durationHours, quality, loggedEvents),
+      estimateScore(durationHours, quality!, loggedEvents),
     );
   }
 

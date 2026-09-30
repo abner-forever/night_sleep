@@ -124,7 +124,7 @@ abstract final class SleepExporter {
         'startAtUtc': _iso(entry.startAtUtc),
         'endAtUtc': _iso(entry.endAtUtc),
         'timeZoneId': entry.timeZoneId,
-        'quality': entry.quality.value,
+        'quality': entry.quality?.value, // JSON：未评分写 null，不写占位值
         'notes': entry.notes,
         'tags': entry.tags,
         'source': entry.source,
@@ -187,7 +187,7 @@ abstract final class SleepExporter {
         entry.timeZoneId,
         (entry.durationMinutes / 60).toStringAsFixed(2),
         entry.durationMinutes.toString(),
-        entry.quality.value.toString(),
+        entry.quality?.value.toString() ?? '', // CSV：空单元格
         _yesNo(entry.loggedEvents.snore),
         _yesNo(entry.loggedEvents.talk),
         _yesNo(entry.loggedEvents.restless),

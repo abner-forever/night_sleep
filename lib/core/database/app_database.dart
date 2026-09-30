@@ -16,7 +16,12 @@ class SleepRecords extends Table {
   DateTimeColumn get startAtUtc => dateTime()();
   DateTimeColumn get endAtUtc => dateTime()();
   TextColumn get timeZoneId => text().withDefault(const Constant('UTC'))();
-  IntColumn get quality => integer()();
+
+  /// 用户自评的主观质量，1–5。**可以为空**：睡眠会话结束时会就地评一次星，
+  /// 用户跳过就是真的没有评分。为空时 `SleepEntry.scoreSource` 返回 `none`，
+  /// 界面显示「未评分」，统计的平均分把它排除在外——绝不填一个占位值冒充。
+  IntColumn get quality => integer().nullable()();
+
   TextColumn get notes => text().withDefault(const Constant(''))();
   TextColumn get tagsJson => text().withDefault(const Constant('[]'))();
 
@@ -101,6 +106,39 @@ class Insights extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// 当前正在进行的睡眠会话。
+///
+/// **单行表**：主键固定为 `'active'`，沿用 `AppSettings` 的 `id = 'default'` 约定。
+/// 于是「同时存在两个会话」在结构上不可能发生，不需要任何判重逻辑。
+///
+/// 会话结束时会在一个事务里写一条 `SleepRecords` 并删掉这一行，因此这张表
+/// 为空就等价于「当前没有会话在跑」。
+class ActiveSessions extends Table {
+  TextColumn get id => text()();
+
+  /// 点「开始睡眠」的真实时刻。
+  DateTimeColumn get startAtUtc => dateTime()();
+
+  /// 录入时区，与 `SleepRecords` 同口径。
+  TextColumn get timeZoneId => text().withDefault(const Constant('UTC'))();
+
+  /// 设定的起床时间，距本地午夜的分钟数。**起床时间就是闹钟时间**，
+  /// 一个值；[alarmEnabled] 只决定到点响不响。
+  IntColumn get wakeMinutes => integer()();
+
+  BoolColumn get alarmEnabled => boolean().withDefault(const Constant(false))();
+
+  /// 选中并正在播放的助眠音效 id，`null` 表示没选。
+  TextColumn get noiseId => text().nullable()();
+
+  RealColumn get noiseVolume => real().withDefault(const Constant(0.5))();
+
+  DateTimeColumn get createdAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 class AppSettings extends Table {
   TextColumn get id => text()();
   TextColumn get themeMode => text().withDefault(const Constant('system'))();
@@ -136,6 +174,7 @@ class AppSettings extends Table {
     SleepStageSegments,
     SoundClips,
     Insights,
+    ActiveSessions,
     AppSettings,
   ],
 )
@@ -149,7 +188,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -187,6 +226,18 @@ class AppDatabase extends _$AppDatabase {
               'AND record_id NOT IN (SELECT id FROM sleep_records)',
             );
             await m.alterTable(TableMigration(insights));
+          }
+          if (from < 4) {
+            // 两件事一起做，因为它们同属 v4。
+            //
+            // `alterTable` 是**重建**：SQLite 不能原地改一列的可空性。这是本项目
+            // 第一次重建一张有子表引用它的表（stages / clips / insights 都指向
+            // `sleep_records`）。迁移期间 `PRAGMA foreign_keys` 是关着的
+            // （`beforeOpen` 要等迁移跑完才打开），子表里存的 record_id 是文本
+            // 值、重建前后不变，所以改名之后引用仍然成立——但这条必须有测试盯着，
+            // v3 那次踩的就是同一类「顺序与开关状态」的坑。
+            await m.createTable(activeSessions);
+            await m.alterTable(TableMigration(sleepRecords));
           }
         },
         beforeOpen: (details) async {
@@ -289,6 +340,28 @@ class AppDatabase extends _$AppDatabase {
     return grouped;
   }
 
+  // ── Active session ────────────────────────────────────────────────────────
+
+  /// 当前会话，没有则为 `null`。主键固定，所以最多一行。
+  Future<ActiveSession?> activeSession() {
+    return (select(activeSessions)..where((table) => table.id.equals('active')))
+        .getSingleOrNull();
+  }
+
+  Stream<ActiveSession?> watchActiveSession() {
+    return (select(activeSessions)..where((table) => table.id.equals('active')))
+        .watchSingleOrNull();
+  }
+
+  Future<void> saveActiveSession(ActiveSessionsCompanion session) async {
+    await into(activeSessions).insertOnConflictUpdate(session);
+  }
+
+  Future<void> deleteActiveSession() async {
+    await (delete(activeSessions)..where((table) => table.id.equals('active')))
+        .go();
+  }
+
   // ── Settings ──────────────────────────────────────────────────────────────
 
   Future<AppSetting> getSettings() async {
@@ -325,6 +398,8 @@ class AppDatabase extends _$AppDatabase {
       // `DemoSeed` 恒传 `record_id`，v3 之后外键又保证没有悬空引用，所以这一行
       // 并不必需——保留只为兜住将来可能出现的无主洞察。
       await delete(insights).go();
+      // 残留的会话会在下次启动时凭空长出一条记录。
+      await delete(activeSessions).go();
     });
   }
 
