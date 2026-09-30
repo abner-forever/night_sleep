@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,6 +26,27 @@ class _FakeScheduler extends ReminderScheduler {
   int settingsOpened = 0;
   ReminderPlan? lastSynced;
 
+  /// 调度动作的先后序列，形如 `cancel:9002` / `schedule:9001`。
+  final calls = <String>[];
+
+  /// 收尾时还活着（已排且没被取消）的通知 id。
+  ///
+  /// 只记「排过什么」是不够的：让位场景里 9002 会**先被排上、再被取消**，
+  /// 真正要断言的既不是「排过」也不是「取消过」，而是**最后还活着的是谁**。
+  Set<int> get liveIds {
+    final live = <int>{};
+    for (final call in calls) {
+      final parts = call.split(':');
+      final id = int.parse(parts[1]);
+      if (parts.first == 'cancel') {
+        live.remove(id);
+      } else {
+        live.add(id);
+      }
+    }
+    return live;
+  }
+
   @override
   Future<void> initialize() async {}
 
@@ -46,16 +68,22 @@ class _FakeScheduler extends ReminderScheduler {
   Future<void> openSystemSettings() async => settingsOpened++;
 
   @override
-  Future<void> cancel(int id) async {}
+  Future<void> cancel(int id) async => calls.add('cancel:$id');
 
   @override
-  Future<void> schedule(ReminderRequest request) async {}
+  Future<void> schedule(ReminderRequest request) async =>
+      calls.add('schedule:${request.id}');
 
   @override
-  Future<void> scheduleOnce(ReminderRequest request) async {}
+  Future<void> scheduleOnce(ReminderRequest request) async =>
+      calls.add('scheduleOnce:${request.id}');
 
+  /// 记录之外**还走一遍基类**，这样 `liveIds` 反映的是真实的重排次序。
   @override
-  Future<void> sync(ReminderPlan plan) async => lastSynced = plan;
+  Future<void> sync(ReminderPlan plan) async {
+    lastSynced = plan;
+    await super.sync(plan);
+  }
 }
 
 void main() {
@@ -228,6 +256,37 @@ void main() {
     final row = await database.getSettings();
     expect(row.bedtimeReminderEnabled, isFalse);
     expect(toastOf(tester), contains('无法安排本地通知'));
+  });
+
+  testWidgets('会话闹钟开着时，在设置页开提醒不会把 9002 排回来', (tester) async {
+    // 前提：夜里会话在跑、闹钟开着，于是 9003 已排、日常起床提醒 9002 已被让位
+    // （让位由启动路径 `reconcileReminders` 完成，这里只把状态摆好）。
+    await database.saveActiveSession(
+      ActiveSessionsCompanion.insert(
+        id: 'active',
+        startAtUtc: DateTime.utc(2026, 8, 30, 15, 14),
+        wakeMinutes: SettingsPage.defaultWakeMinutes,
+        alarmEnabled: const Value(true),
+        createdAt: DateTime.utc(2026, 8, 30, 15, 14),
+      ),
+    );
+
+    final scheduler = _FakeScheduler(grants: true);
+    await pumpSettings(tester, scheduler);
+
+    // 用户在设置页把起床提醒打开——`sync` 会把它排上，这正是被让位的那一项。
+    await tester.tap(reminderToggle(1));
+    await tester.pumpAndSettle();
+
+    expect(scheduler.lastSynced?.wakeMinutes, SettingsPage.defaultWakeMinutes,
+        reason: '偏好确实写进去并按计划重排了');
+    expect(
+      scheduler.liveIds,
+      isNot(contains(ReminderScheduler.wakeId)),
+      reason: '会话闹钟占着同一个钟点，9002 必须保持让位，否则同一分钟响两条',
+    );
+    expect(scheduler.liveIds, contains(ReminderScheduler.wakeAlarmId),
+        reason: '让位之后会话闹钟本身要还在');
   });
 
   testWidgets('滚了轮再点「取消」，库里与计划都不变', (tester) async {

@@ -109,8 +109,20 @@ class SettingsPage extends ConsumerWidget {
 
   /// 把已调度的通知重排成与数据库里的偏好一致。
   Future<void> _syncReminders(WidgetRef ref) async {
-    final stored = await ref.read(databaseProvider).getSettings();
-    await ref.read(reminderSchedulerProvider).sync(reminderPlanFrom(stored));
+    final database = ref.read(databaseProvider);
+    final scheduler = ref.read(reminderSchedulerProvider);
+    final stored = await database.getSettings();
+    await scheduler.sync(reminderPlanFrom(stored));
+
+    // **上面这次重排会把 9002 排回来**，而会话闹钟开着时 9002 是让位状态
+    // （让位是设计规格 §五：两者很容易被设成同一个钟点，会响两条）。不补这一步的话，
+    // 用户在设置页碰一下提醒，就会把启动路径刚让出去的那条重新排上。
+    //
+    // 刻意**不复用** `reconcileReminders`：那条启动路径带着「权限为 `denied` 就回收
+    // 偏好」的分支，会在这里把用户刚改的开关写回 false，还会用 try/catch 吞掉异常；
+    // 设置页有自己的权限处理（开启前先申请、失败就弹回开关），不该被启动路径的回收
+    // 策略覆盖。这里只补一次闹钟推导——让位的规则仍然只有 `syncSessionAlarm` 一处。
+    await syncSessionAlarm(database, scheduler);
   }
 
   Future<void> _pickReminderTime(
