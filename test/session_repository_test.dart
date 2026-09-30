@@ -108,6 +108,35 @@ void main() {
     expect(await database.allRecords(), isEmpty);
   });
 
+  /// 仓库里那道「再挡一道」的守门：调用方漏检时也不能静默写出一条 71 小时的
+  /// 睡眠记录。会话行**保留**——用户还能自己选择丢弃还是补录。
+  test('超过 24 小时的会话 finish 被拒，不写记录、会话还在', () async {
+    await repo.start(now: start.toLocal());
+
+    await expectLater(
+      repo.finish(
+        now: start.add(const Duration(hours: 30)).toLocal(),
+        quality: null,
+      ),
+      throwsA(isA<StateError>()),
+    );
+
+    expect(await database.allRecords(), isEmpty, reason: '越界时不得落库');
+    expect(await repo.load(), isNotNull, reason: '会话要留给用户决定丢弃或补录');
+  });
+
+  /// 「点了开始就立刻点结束」：零时长同样不得变成一条记录。
+  test('零时长的会话 finish 被拒，不写记录', () async {
+    await repo.start(now: start.toLocal());
+
+    await expectLater(
+      repo.finish(now: start.toLocal(), quality: null),
+      throwsA(isA<StateError>()),
+    );
+
+    expect(await database.allRecords(), isEmpty);
+  });
+
   test('discard 只删会话行，不写记录', () async {
     await repo.start(now: start.toLocal());
     await repo.discard();
