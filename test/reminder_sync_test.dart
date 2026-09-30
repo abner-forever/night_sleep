@@ -158,10 +158,9 @@ void main() {
       final scheduler = _FakeScheduler(ReminderPermission.granted);
       await reconcileReminders(database, scheduler);
 
-      expect(scheduler.lastAlarm, isNull);
-      // `lastAlarm` 的初值本来就是 `null`，断言「是 null」抓不到「压根没调用」——
-      // 所以还要钉住「真的走了一次 syncAlarm(null)」。少了这一条，把
-      // `syncSessionAlarm` 尾部的 `syncAlarm(null)` 删掉也不会有任何用例变红。
+      // 这里**不写** `expect(lastAlarm, isNull)`：`lastAlarm` 的初值就是 `null`，
+      // 那样一条断言在任何实现下都过得去，只会让人以为「9003 被排掉了」这件事
+      // 被守住了。真正载重的是下面这条——它要求 `syncAlarm(null)` 真被调用过。
       expect(scheduler.cancelled, contains(ReminderScheduler.wakeAlarmId),
           reason: '没有会话时必须把可能残留的 9003 排掉');
       expect(scheduler.yieldedWake, isEmpty);
@@ -175,7 +174,7 @@ void main() {
       final scheduler = _FakeScheduler(ReminderPermission.granted);
       await reconcileReminders(database, scheduler);
 
-      expect(scheduler.lastAlarm, isNull);
+      // 同上：不写 `lastAlarm` 的 `isNull`，它抓不到「没调用」。
       expect(scheduler.cancelled, contains(ReminderScheduler.wakeAlarmId),
           reason: '闹钟关着时也要把 9003 排掉，理由同上一条');
       expect(scheduler.yieldedWake, isEmpty);
@@ -212,7 +211,41 @@ void main() {
 
       expect(scheduler.cancelled, contains(ReminderScheduler.wakeAlarmId),
           reason: '提前 return 前跳过 syncSessionAlarm 的话，残留的 9003 会留在系统里');
-      expect(scheduler.lastAlarm, isNull);
+      // 同上：不写 `lastAlarm` 的 `isNull`，它抓不到「没调用」。
+    });
+
+    /// **对称性的反向护栏。** [syncSessionAlarm] 是不对称的：它能让 9002 让位，
+    /// 却永远不会把 9002 排回来。所以它与 `sync` 必须成对——那一对现在收在
+    /// `syncAllReminders` 里。少了 `sync` 这一步，用户在关掉会话闹钟之后会落到
+    /// 「闹钟关了、日常起床提醒也不响」，与「开关开着却不响」是同一类缺陷。
+    test('会话闹钟关掉后再同步：9002 被排回来', () async {
+      await seedActiveSession(alarmEnabled: true);
+      await seedBothOn();
+
+      final scheduler = _FakeScheduler(ReminderPermission.granted);
+      await syncAllReminders(database, scheduler);
+      expect(scheduler.yieldedWake, contains(ReminderScheduler.wakeId),
+          reason: '前提：闹钟开着时 9002 已让位');
+      expect(scheduler.lastAlarm, isNotNull, reason: '前提：9003 已排上');
+
+      // 用户在会话页把闹钟关掉。
+      await database.updateActiveSession(
+        const ActiveSessionsCompanion(alarmEnabled: Value(false)),
+      );
+
+      // 只看第二次同步的结果，先把上一次的观测清掉。
+      // `lastSynced` 必须清：不清的话它仍留着第一次的计划，
+      // 「`sync` 这一步被删掉」就断不出来了。
+      scheduler.lastSynced = null;
+      scheduler.yieldedWake.clear();
+
+      await syncAllReminders(database, scheduler);
+
+      expect(scheduler.yieldedWake, isEmpty, reason: '闹钟关了就不该再让位');
+      expect(scheduler.lastSynced, isNotNull,
+          reason: '`syncSessionAlarm` 单独一步排不回 9002，必须先走一遍日常提醒那次 sync');
+      expect(scheduler.lastSynced!.wakeMinutes, 7 * 60,
+          reason: '9002 必须被排回来，否则用户落到「闹钟关了、起床提醒也不响」');
     });
   });
 }

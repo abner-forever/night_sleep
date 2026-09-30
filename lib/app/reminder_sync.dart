@@ -54,19 +54,37 @@ Future<void> reconcileReminders(
           wakeReminderEnabled: Value(false),
         ),
       );
-      await scheduler.sync(const ReminderPlan());
-      // 闹钟与日常提醒的生命周期无关，不跟着上面那条一起跳过。
-      await syncSessionAlarm(database, scheduler);
+      // 空计划：两个开关刚被写回 false，9001/9002 都要排掉。
+      // 这一条**不能**只调 `syncSessionAlarm`——它不会把 9002 排回来（见下）。
+      await syncAllReminders(database, scheduler, plan: const ReminderPlan());
       return;
     }
 
-    await scheduler.sync(reminderPlanFrom(stored));
-
-    // 会话闹钟**总要**推导一次：没有会话时这一步负责把可能残留的 9003 排掉。
-    await syncSessionAlarm(database, scheduler);
+    await syncAllReminders(database, scheduler);
   } catch (_) {
     // 调度是尽力而为：排不上提醒不该影响任何别的功能。
   }
+}
+
+/// 一次性把两类提醒都推到系统里：日常提醒（9001/9002）+ 会话闹钟（9003）。
+///
+/// **这两步必须成对。** [syncSessionAlarm] 是不对称的：它能让 9002 让位，
+/// 却永远不会把 9002 排回来——单独调它会让「会话闹钟关掉之后、日常起床
+/// 提醒也不响」，而那和「开关开着却不响」是同一类缺陷。
+///
+/// 收成一个函数而不是靠注释提醒调用方「记得先调 [ReminderScheduler.sync]」：
+/// 顺序与配对是结构性的事实，写成约定就一定会有一条路径漏掉它。
+///
+/// [plan] 给「偏好刚被改写、`stored` 已经过期」的调用方用（比如权限被撤销那条
+/// 分支要的是空计划）；不给则按库里当前偏好推导。
+Future<void> syncAllReminders(
+  AppDatabase database,
+  ReminderScheduler scheduler, {
+  ReminderPlan? plan,
+}) async {
+  final stored = await database.getSettings();
+  await scheduler.sync(plan ?? reminderPlanFrom(stored));
+  await syncSessionAlarm(database, scheduler);
 }
 
 /// 让**会话闹钟**与「今晚有没有会话、闹钟开着没」保持一致。
