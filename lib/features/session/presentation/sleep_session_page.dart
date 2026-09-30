@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/platform/haptics.dart';
+import '../../../core/platform/reminders.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_basics.dart';
@@ -382,7 +383,9 @@ class _AlarmChip extends StatelessWidget {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  '由系统通知投递；休眠模式下可能晚几分钟，强度不如系统闹钟。',
+                  // 与抽屉里那一行引用同一份字面量——两边各写一遍，
+                  // 迟早有一处在该说话的时候不说。
+                  ReminderScheduler.wakeAlarmDeliveryNote,
                   style: TextStyle(
                     fontSize: 11,
                     height: 1.45,

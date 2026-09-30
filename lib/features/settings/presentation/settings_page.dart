@@ -7,6 +7,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../../app/app_shell.dart';
 import '../../../app/app.dart';
 import '../../../app/app_toast.dart';
+import '../../../app/reminder_permission.dart';
 import '../../../app/reminder_sync.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/database/app_database.dart';
@@ -21,14 +22,6 @@ import '../../../core/widgets/ios_controls.dart';
 import '../../../core/widgets/wheel_picker.dart';
 import '../../sleep/data/sleep_repository.dart';
 import '../../sleep/presentation/widgets/dur_bar.dart';
-
-/// 系统通知权限的最近一次观测结果。
-///
-/// 插件分不清「从未询问」与「已被拒绝」——两者都返回 `isEnabled: false`——
-/// 所以界面也不去分。只要不是 granted，就说明提醒此刻响不了。
-final reminderPermissionProvider = FutureProvider<ReminderPermission>((ref) {
-  return ref.watch(reminderSchedulerProvider).permission();
-});
 
 /// Settings — appearance, goal, data, reminders and insight configuration.
 ///
@@ -51,32 +44,18 @@ class SettingsPage extends ConsumerWidget {
 
   /// 切换一个提醒开关。
   ///
-  /// 开启前先向系统申请权限。被拒（或平台根本不支持）时**不改动已存的偏好**，
-  /// 让开关自己弹回去：一个写着「开」却什么都不会响的偏好，正是规格书要消灭的
-  /// 那类假状态。
+  /// 开启前先走 [ensureNotificationPermission]：被拒（或平台根本安排不了）时它
+  /// **不改动已存的偏好**并返回 false，这里直接返回，让开关自己弹回去——一个写着
+  /// 「开」却什么都不会响的偏好，正是规格书要消灭的那类假状态。
   Future<void> _setReminder(
     BuildContext context,
     WidgetRef ref, {
     required bool bedtime,
     required bool value,
   }) async {
-    final scheduler = ref.read(reminderSchedulerProvider);
-
-    if (value) {
-      final permission = await scheduler.requestPermission();
-      if (permission != ReminderPermission.granted) {
-        if (!context.mounted) return;
-        // 这里不说「这个平台不支持」：走到这一步也可能是**这台设备上**取不到可用
-        // 时区导致的初始化失败，那是应用侧的问题，不是平台的限制。两种情况都成立的
-        // 实话是「当前设备无法安排本地通知」。
-        ref.read(toastProvider.notifier).show(
-              permission == ReminderPermission.unsupported
-                  ? '当前设备无法安排本地通知，提醒未开启。'
-                  : '没有获得通知权限，提醒未开启。可在系统设置中允许「夜深」发送通知。',
-            );
-        ref.invalidate(reminderPermissionProvider);
-        return;
-      }
+    if (value &&
+        !await ensureNotificationPermission(context, ref, target: '提醒')) {
+      return;
     }
 
     // **打开时把界面显示的那个时刻一并落库。**

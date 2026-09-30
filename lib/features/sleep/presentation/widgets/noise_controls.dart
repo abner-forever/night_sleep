@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/app_tokens.dart';
 import '../../../../core/widgets/app_icons.dart';
 
@@ -247,6 +248,48 @@ class VolumeSlider extends StatelessWidget {
         const SizedBox(width: 12),
         AppIcons.volume(size: 22, color: tokens.textMuted, strokeWidth: 1.5),
       ],
+    );
+  }
+}
+
+/// 一颗时长 chip（「不限」/「15m」/…）。
+///
+/// 助眠音效弹层与会话页抽屉共用同一份：两处只是给的选项不同——弹层有「不限」与
+/// 90m，会话里最长 60m 且没有「不限」——样式本身不该有第二份。
+class TimerChip extends StatelessWidget {
+  const TimerChip({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppTokens.of(context);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? tokens.accent : tokens.bgMuted,
+          borderRadius: BorderRadius.circular(AppRadii.panel),
+        ),
+        child: Text(
+          label,
+          style: AppTheme.num(
+            context,
+            size: 14,
+            weight: selected ? FontWeight.w600 : FontWeight.w400,
+            color: selected ? Colors.white : tokens.textSecondary,
+          ),
+        ),
+      ),
     );
   }
 }

@@ -5,15 +5,43 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:night_sleep/app/app.dart';
+import 'package:night_sleep/app/app_toast.dart';
+import 'package:night_sleep/app/noise_session.dart';
 import 'package:night_sleep/core/database/app_database.dart';
 import 'package:night_sleep/core/platform/reminders.dart';
 import 'package:night_sleep/core/theme/app_theme.dart';
 import 'package:night_sleep/core/widgets/ios_controls.dart';
 import 'package:night_sleep/features/session/presentation/sleep_session_page.dart';
+import 'package:night_sleep/features/sleep/data/noise_player.dart';
+import 'package:night_sleep/features/sleep/data/noise_synth.dart';
 import 'package:night_sleep/features/sleep/data/session_repository.dart';
 import 'package:night_sleep/features/sleep/data/sleep_repository.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_entry.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_session.dart';
+
+/// 记下每一次播放器调用的假实现。
+///
+/// 会话里的白噪音由 app 级控制器驱动，这条接缝与 `NoiseSheet` 的 `player` 参数同款——
+/// 没有它，选择、取消、倒计时到点这几条路径一条都测不到。
+class _FakeNoisePlayer extends NoisePlayer {
+  final List<String> calls = [];
+
+  @override
+  Future<void> play(NoiseKind kind, {required double volume}) async {
+    calls.add('play:${kind.id}:${volume.toStringAsFixed(2)}');
+  }
+
+  @override
+  Future<void> setVolume(double volume) async {
+    calls.add('volume:${volume.toStringAsFixed(2)}');
+  }
+
+  @override
+  Future<void> stop() async => calls.add('stop');
+
+  @override
+  Future<void> dispose() async => calls.add('dispose');
+}
 
 void main() {
   late AppDatabase database;
@@ -31,6 +59,7 @@ void main() {
     required SleepSession session,
     required DateTime now,
     bool wide = false,
+    NoisePlayer? player,
   }) async {
     tester.view.physicalSize =
         wide ? const Size(1200, 2000) : const Size(430, 2000);
@@ -45,6 +74,8 @@ void main() {
           // 真的调度器在测试里没有平台通道，`initialize` 也从没跑过；换成空实现，
           // 免得测试依赖「它恰好会静默降级」这个实现细节。
           reminderSchedulerProvider.overrideWithValue(NoopReminderScheduler()),
+          // 真播放器会碰平台通道；白噪音的播放接缝挂在 app 级 provider 上。
+          noisePlayerProvider.overrideWithValue(player ?? _FakeNoisePlayer()),
         ],
         child: MaterialApp(
           theme: AppTheme.dark(),
@@ -54,6 +85,12 @@ void main() {
     );
     await tester.pumpAndSettle();
   }
+
+  /// 按**语义标签**取抽屉里的开关，不靠它在树里的位置——
+  /// 位置一变（多一行、换个顺序）就会指到另一个开关上，而且不报错。
+  Finder toggleLabeled(String label) => find.byWidgetPredicate(
+        (widget) => widget is IosToggle && widget.semanticLabel == label,
+      );
 
   SleepSession sessionAt(
     DateTime start, {
@@ -312,13 +349,219 @@ void main() {
     await tester.tap(find.textContaining('白噪音'));
     await tester.pumpAndSettle();
 
-    // 抽屉里有两个开关，**鼾声/梦话是后一个**（前一个是起床闹钟，它要申请通知
-    // 权限，走的是另一条路径）。
-    await tester.tap(find.byType(IosToggle).last);
+    // 按语义标签取，不数位置：抽屉里有两个开关，顺序一变 `.last` 就指错了对象。
+    await tester.tap(toggleLabeled('鼾声/梦话记录'));
     await tester.pumpAndSettle();
 
     final stored = await database.getSettings();
     expect(stored.soundRecordingEnabled, isTrue,
         reason: '会话页与设置页必须共用 AppSettings 里同一个字段');
+  });
+
+  testWidgets('抽屉里闹钟开着时，投递强度标注就在那一行', (tester) async {
+    final start = DateTime(2026, 8, 30, 23, 14);
+    await pumpSession(
+      tester,
+      session: sessionAt(start, alarmEnabled: true),
+      now: start.add(const Duration(hours: 1)),
+    );
+    await tester.tap(find.textContaining('白噪音'));
+    await tester.pumpAndSettle();
+
+    // 收合态由胶囊承担这条标注；展开后胶囊让位，标注必须改由抽屉里的闹钟行承担
+    // ——用户正是在那一行打开闹钟，标注不能恰好在那一刻消失。
+    expect(find.text(ReminderScheduler.wakeAlarmDeliveryNote), findsOneWidget);
+  });
+
+  testWidgets('闹钟开关被拒时回弹，且不写入会话的 alarmEnabled', (tester) async {
+    final start = DateTime(2026, 8, 30, 23, 14);
+    // 会话行真的落库，才看得见「有没有写进去」。
+    await database.saveActiveSession(
+      ActiveSessionsCompanion.insert(
+        id: 'active',
+        startAtUtc: start.toUtc(),
+        wakeMinutes: 7 * 60,
+        createdAt: start.toUtc(),
+      ),
+    );
+    await pumpSession(
+      tester,
+      session: sessionAt(start),
+      now: start.add(const Duration(hours: 1)),
+    );
+    await tester.tap(find.textContaining('白噪音'));
+    await tester.pumpAndSettle();
+
+    // NoopReminderScheduler.requestPermission() 返回 unsupported——这正是「平台
+    // 安排不了」那条分支，与设置页走的是同一个闸口。
+    await tester.tap(toggleLabeled('起床闹钟'));
+    await tester.pumpAndSettle();
+
+    expect(
+      (await database.activeSession())?.alarmEnabled ?? true,
+      isFalse,
+      reason: '被拒时不得写入一个开着却不会响的开关',
+    );
+    // 测试树里没有 ToastOverlay（它活在外壳里），只能直接读 provider。
+    expect(
+      ProviderScope.containerOf(tester.element(find.byType(SleepSessionPage)))
+          .read(toastProvider),
+      contains('闹钟未开启'),
+      reason: '被拒必须给出说明，不能静默弹回',
+    );
+  });
+
+  testWidgets('选中白噪音会交给播放器，再点一次停掉', (tester) async {
+    final player = _FakeNoisePlayer();
+    final start = DateTime(2026, 8, 30, 23, 14);
+    await pumpSession(
+      tester,
+      session: sessionAt(start),
+      now: start.add(const Duration(hours: 1)),
+      player: player,
+    );
+    await tester.tap(find.textContaining('白噪音'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('雨声'));
+    // 选中即起 1 秒周期的倒计时，`pumpAndSettle` 会因它永不收敛而超时，
+    // 所以这里显式 pump（与 `test/noise_sheet_test.dart` 同一手法）。
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(player.calls.first, 'play:rain:0.50', reason: '应把雨声与当前音量交给播放器');
+
+    await tester.tap(find.text('雨声'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(player.calls, contains('stop'), reason: '再点一次就是取消选择');
+  });
+
+  testWidgets('白噪音倒计时到点会停掉，并清空会话里的选中值', (tester) async {
+    final player = _FakeNoisePlayer();
+    final start = DateTime(2026, 8, 30, 23, 14);
+    await database.saveActiveSession(
+      ActiveSessionsCompanion.insert(
+        id: 'active',
+        startAtUtc: start.toUtc(),
+        wakeMinutes: 7 * 60,
+        createdAt: start.toUtc(),
+      ),
+    );
+    await pumpSession(
+      tester,
+      session: sessionAt(start),
+      now: start.add(const Duration(hours: 1)),
+      player: player,
+    );
+    await tester.tap(find.textContaining('白噪音'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('雨声'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect((await database.activeSession())?.noiseId, 'rain',
+        reason: '这一列的定义是「选中并正在播放」');
+
+    // 默认定时 30 分钟；把假时钟推过它就是「到点」。
+    await tester.pump(const Duration(minutes: 30));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(player.calls, contains('stop'));
+    expect((await database.activeSession())?.noiseId, isNull,
+        reason: '到点之后不能留下一个「在播」的假值');
+  });
+
+  testWidgets('收起抽屉不会停掉正在播放的白噪音', (tester) async {
+    final player = _FakeNoisePlayer();
+    final start = DateTime(2026, 8, 30, 23, 14);
+    await database.saveActiveSession(
+      ActiveSessionsCompanion.insert(
+        id: 'active',
+        startAtUtc: start.toUtc(),
+        wakeMinutes: 7 * 60,
+        createdAt: start.toUtc(),
+      ),
+    );
+    await pumpSession(
+      tester,
+      session: sessionAt(start),
+      now: start.add(const Duration(hours: 1)),
+      player: player,
+    );
+
+    await tester.tap(find.textContaining('白噪音'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('雨声'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    player.calls.clear();
+
+    // 再点摘要条收起。用带「音量」的那条文案定位——展开时「白噪音」三个字同时
+    // 出现在摘要条和八宫格的那一格上，`textContaining('白噪音')` 会数到两个。
+    await tester.tap(find.textContaining('白噪音 · 音量'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(player.calls, isNot(contains('stop')),
+        reason: '收起抽屉只是藏起面板，声音要继续响（使用方裁定）');
+    expect(
+      (await database.activeSession())?.noiseId,
+      'rain',
+      reason: '库里写着「在播」而实际没声，正是这次要消掉的假值',
+    );
+  });
+
+  /// 播放器挂在 app 级 provider 上，所以离开会话页也只是藏起面板。
+  testWidgets('pop 掉会话页后白噪音继续响', (tester) async {
+    final player = _FakeNoisePlayer();
+    final start = DateTime(2026, 8, 30, 23, 14);
+    final navigator = GlobalKey<NavigatorState>();
+
+    tester.view.physicalSize = const Size(430, 2000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(database),
+          activeSessionProvider.overrideWith((ref) => sessionAt(start)),
+          reminderSchedulerProvider.overrideWithValue(NoopReminderScheduler()),
+          noisePlayerProvider.overrideWithValue(player),
+        ],
+        child: MaterialApp(
+          navigatorKey: navigator,
+          theme: AppTheme.dark(),
+          // 会话页是**推入**的：外壳留在下面，pop 只是回到它。
+          home: const Scaffold(body: SizedBox.shrink()),
+        ),
+      ),
+    );
+    navigator.currentState!.push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            SleepSessionPage(now: start.add(const Duration(hours: 1))),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.textContaining('白噪音'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('雨声'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    player.calls.clear();
+
+    navigator.currentState!.pop();
+    // 倒计时在跑，不能用 `pumpAndSettle`；显式推两帧让路由转场走完。
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.text('雨声'), findsNothing, reason: '会话页已经离开');
+    expect(player.calls, isNot(contains('stop')), reason: '收起的是页面，不是声音');
   });
 }

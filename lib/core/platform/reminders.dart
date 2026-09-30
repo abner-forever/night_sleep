@@ -70,6 +70,13 @@ abstract class ReminderScheduler {
   static const wakeAlarmTitle = '该起床了';
   static const wakeAlarmBody = '结束睡眠，记录一下昨晚睡得怎么样。';
 
+  /// 界面上关于**投递强度**的如实标注（规格 §五）。
+  ///
+  /// 只留这一份字面量：会话页收合态的胶囊与会话页抽屉里的闹钟行各引用它一次。
+  /// 抄成两份的话，改一处忘一处，总有一处会在该说的时候不说——那正是这个功能
+  /// 最不能有的失败形态。
+  static const wakeAlarmDeliveryNote = '由系统通知投递；休眠模式下可能晚几分钟，强度不如系统闹钟。';
+
   static const bedtimeTitle = '到就寝时间了';
   static const bedtimeBody = '该休息了，晚安。';
   static const wakeTitle = '早上好';

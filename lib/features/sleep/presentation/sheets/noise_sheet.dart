@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../../../core/platform/haptics.dart';
-import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/app_tokens.dart';
 import '../../../../core/widgets/app_icons.dart';
 import '../../../../core/widgets/app_sheet.dart';
@@ -258,7 +257,7 @@ class _NoiseSheetState extends State<NoiseSheet>
                     runSpacing: 8,
                     children: [
                       for (final minutes in _timerChoices)
-                        _TimerChip(
+                        TimerChip(
                           label: minutes == null ? '不限' : '${minutes}m',
                           selected: _timerMinutes == minutes,
                           onTap: () => _selectTimer(minutes),
@@ -357,43 +356,6 @@ class _WaveformIndicator extends StatelessWidget {
             ],
           );
         },
-      ),
-    );
-  }
-}
-
-class _TimerChip extends StatelessWidget {
-  const _TimerChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AppTokens.of(context);
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected ? tokens.accent : tokens.bgMuted,
-          borderRadius: BorderRadius.circular(AppRadii.panel),
-        ),
-        child: Text(
-          label,
-          style: AppTheme.num(
-            context,
-            size: 14,
-            weight: selected ? FontWeight.w600 : FontWeight.w400,
-            color: selected ? Colors.white : tokens.textSecondary,
-          ),
-        ),
       ),
     );
   }
