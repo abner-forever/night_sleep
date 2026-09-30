@@ -8,6 +8,7 @@ import 'package:night_sleep/app/app.dart';
 import 'package:night_sleep/core/database/app_database.dart';
 import 'package:night_sleep/core/platform/reminders.dart';
 import 'package:night_sleep/core/theme/app_theme.dart';
+import 'package:night_sleep/core/widgets/ios_controls.dart';
 import 'package:night_sleep/features/session/presentation/sleep_session_page.dart';
 import 'package:night_sleep/features/sleep/data/session_repository.dart';
 import 'package:night_sleep/features/sleep/data/sleep_repository.dart';
@@ -234,5 +235,90 @@ void main() {
       isNull,
       reason: '会话行是夹具给的，收起不该往库里写任何东西',
     );
+  });
+
+  testWidgets('点摘要条展开抽屉，四组设定都在', (tester) async {
+    final start = DateTime(2026, 8, 30, 23, 14);
+    await pumpSession(
+      tester,
+      session: sessionAt(start),
+      now: start.add(const Duration(hours: 1)),
+    );
+
+    expect(find.text('今晚的设定'), findsNothing, reason: '收合态不该看到抽屉内容');
+
+    await tester.tap(find.textContaining('白噪音'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('今晚的设定'), findsOneWidget);
+    expect(find.text('起床闹钟'), findsOneWidget);
+    expect(find.text('鼾声/梦话记录'), findsOneWidget);
+    expect(find.text('白噪音'), findsOneWidget);
+  });
+
+  testWidgets('抽屉里的白噪音定时最长 60 分钟，没有「不限」与 90m', (tester) async {
+    final start = DateTime(2026, 8, 30, 23, 14);
+    await pumpSession(
+      tester,
+      session: sessionAt(start),
+      now: start.add(const Duration(hours: 1)),
+    );
+    await tester.tap(find.textContaining('白噪音'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('15m'), findsOneWidget);
+    expect(find.text('30m'), findsOneWidget);
+    expect(find.text('45m'), findsOneWidget);
+    expect(find.text('60m'), findsOneWidget);
+    expect(find.text('不限'), findsNothing, reason: '会话里的白噪音必须有上限');
+    expect(find.text('90m'), findsNothing);
+  });
+
+  testWidgets('鼾声/梦话开关带上「尚未接入录音」的说明（plan A）', (tester) async {
+    final start = DateTime(2026, 8, 30, 23, 14);
+    await pumpSession(
+      tester,
+      session: sessionAt(start),
+      now: start.add(const Duration(hours: 1)),
+    );
+    await tester.tap(find.textContaining('白噪音'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('尚未接入录音'), findsOneWidget);
+  });
+
+  /// 这一条与上一条**互斥**：plan B 落地录音时必须把上一条删掉、这一条补上。
+  /// 两轮之间不存在一个两边都写的中间状态。
+  testWidgets('白噪音区注明后台播放未接入', (tester) async {
+    final start = DateTime(2026, 8, 30, 23, 14);
+    await pumpSession(
+      tester,
+      session: sessionAt(start),
+      now: start.add(const Duration(hours: 1)),
+    );
+    await tester.tap(find.textContaining('白噪音'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('退到后台或锁屏后声音会停'), findsOneWidget);
+  });
+
+  testWidgets('拨动鼾声开关会写回设置', (tester) async {
+    final start = DateTime(2026, 8, 30, 23, 14);
+    await pumpSession(
+      tester,
+      session: sessionAt(start),
+      now: start.add(const Duration(hours: 1)),
+    );
+    await tester.tap(find.textContaining('白噪音'));
+    await tester.pumpAndSettle();
+
+    // 抽屉里有两个开关，**鼾声/梦话是后一个**（前一个是起床闹钟，它要申请通知
+    // 权限，走的是另一条路径）。
+    await tester.tap(find.byType(IosToggle).last);
+    await tester.pumpAndSettle();
+
+    final stored = await database.getSettings();
+    expect(stored.soundRecordingEnabled, isTrue,
+        reason: '会话页与设置页必须共用 AppSettings 里同一个字段');
   });
 }

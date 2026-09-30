@@ -13,6 +13,7 @@ import '../../../core/widgets/atmosphere.dart';
 import '../../../core/widgets/glass_surface.dart';
 import '../../sleep/data/session_repository.dart';
 import '../../sleep/domain/sleep_session.dart';
+import 'widgets/session_drawer.dart';
 import 'widgets/wake_dial.dart';
 
 /// 睡眠会话页。
@@ -46,6 +47,10 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage> {
   Timer? _timer;
   late DateTime _now = widget.now ?? DateTime.now();
 
+  /// 设定抽屉展开着没。收合态才画圆环——展开后它让位给抽屉，
+  /// 但「入睡 ─── 闹钟」那一行两种状态都留着。
+  bool _drawerOpen = false;
+
   @override
   void initState() {
     super.initState();
@@ -77,7 +82,13 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage> {
         body: SafeArea(
           child: session == null
               ? const _NoSession()
-              : _SessionBody(session: session, now: _now),
+              : _SessionBody(
+                  session: session,
+                  now: _now,
+                  drawerOpen: _drawerOpen,
+                  onToggleDrawer: () =>
+                      setState(() => _drawerOpen = !_drawerOpen),
+                ),
         ),
       ),
     );
@@ -106,10 +117,17 @@ class _NoSession extends StatelessWidget {
 }
 
 class _SessionBody extends StatelessWidget {
-  const _SessionBody({required this.session, required this.now});
+  const _SessionBody({
+    required this.session,
+    required this.now,
+    required this.drawerOpen,
+    required this.onToggleDrawer,
+  });
 
   final SleepSession session;
   final DateTime now;
+  final bool drawerOpen;
+  final VoidCallback onToggleDrawer;
 
   @override
   Widget build(BuildContext context) {
@@ -148,22 +166,37 @@ class _SessionBody extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 14),
-        Center(
-          child: WakeDial(
-            progress: session.progressAt(now),
-            label: session.elapsedLabelAt(now),
-            sublabel:
-                overdue ? '已超过起床时间 ${session.overdueLabelAt(now)}' : '已入睡',
-            semanticLabel: overdue
-                ? '已睡 ${session.elapsedLabelAt(now)}，'
-                    '已超过起床时间 ${session.overdueLabelAt(now)}'
-                : '已睡 ${session.elapsedLabelAt(now)}',
+        // 展开设定抽屉时圆环让位；「入睡 ─── 闹钟」那一行则两种状态都留着。
+        if (!drawerOpen) ...[
+          Center(
+            child: WakeDial(
+              progress: session.progressAt(now),
+              label: session.elapsedLabelAt(now),
+              sublabel:
+                  overdue ? '已超过起床时间 ${session.overdueLabelAt(now)}' : '已入睡',
+              semanticLabel: overdue
+                  ? '已睡 ${session.elapsedLabelAt(now)}，'
+                      '已超过起床时间 ${session.overdueLabelAt(now)}'
+                  : '已睡 ${session.elapsedLabelAt(now)}',
+            ),
           ),
-        ),
-        const SizedBox(height: 22),
+          const SizedBox(height: 22),
+        ],
         _BedWakeRow(session: session),
         const SizedBox(height: 12),
-        _AlarmChip(session: session, now: now),
+        if (!drawerOpen) ...[
+          _AlarmChip(session: session, now: now),
+          const SizedBox(height: 12),
+        ],
+        _SettingsSummary(
+          session: session,
+          open: drawerOpen,
+          onTap: onToggleDrawer,
+        ),
+        if (drawerOpen) ...[
+          const SizedBox(height: 14),
+          SessionDrawer(session: session),
+        ],
       ],
     );
   }
@@ -361,6 +394,80 @@ class _AlarmChip extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// 收合态底部那条摘要，同时也是设定抽屉的把手。
+///
+/// **点它打开**，不做纯上拉手势——躺着的时候拖拽不好使（规格 §四）。
+/// 它始终留在页面上：展开后点同一条即可收起，脚下的「入睡 ─── 闹钟」不会跟着消失。
+class _SettingsSummary extends StatelessWidget {
+  const _SettingsSummary({
+    required this.session,
+    required this.open,
+    required this.onTap,
+  });
+
+  final SleepSession session;
+  final bool open;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppTokens.of(context);
+    final percent = (session.noiseVolume * 100).round();
+
+    return GlassSurface(
+      borderRadius: BorderRadius.circular(AppRadii.panel),
+      onTap: onTap,
+      semanticLabel: open ? '收起今晚的设定' : '展开今晚的设定',
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 抽屉把手。
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: tokens.borderStrong,
+              borderRadius: BorderRadius.circular(AppRadii.pill),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              AppIcons.volume(size: 16, color: tokens.accent, strokeWidth: 1.7),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '白噪音 · 音量 $percent%',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: tokens.textPrimary,
+                  ),
+                ),
+              ),
+              Text(
+                open ? '收起' : '调整',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: tokens.accent,
+                ),
+              ),
+              const SizedBox(width: 4),
+              (open ? AppIcons.chevronDown : AppIcons.chevronUp)(
+                size: 16,
+                color: tokens.textMuted,
+                strokeWidth: 2,
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

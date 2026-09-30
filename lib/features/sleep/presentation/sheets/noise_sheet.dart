@@ -10,6 +10,7 @@ import '../../../../core/widgets/app_icons.dart';
 import '../../../../core/widgets/app_sheet.dart';
 import '../../data/noise_player.dart';
 import '../../data/noise_synth.dart';
+import '../widgets/noise_controls.dart';
 
 /// Opens the sleep-sounds sheet.
 Future<void> showNoiseSheet(BuildContext context) {
@@ -18,85 +19,6 @@ Future<void> showNoiseSheet(BuildContext context) {
     builder: (context) => const NoiseSheet(),
   );
 }
-
-/// A sleep sound offered by the sheet.
-class NoiseOption {
-  const NoiseOption({
-    required this.id,
-    required this.label,
-    required this.icon,
-    required this.color,
-  });
-
-  final String id;
-  final String label;
-  final IconBuilder icon;
-
-  /// Fixed brand colour, taken from the prototype's `NOISES` table.
-  final Color color;
-}
-
-typedef IconBuilder = Widget Function(double size, Color color);
-
-/// The eight sounds from the prototype, in its order.
-final List<NoiseOption> kNoiseOptions = [
-  NoiseOption(
-    id: 'white',
-    label: '白噪音',
-    icon: (size, color) =>
-        AppIcons.wave(size: size, color: color, strokeWidth: 1.5),
-    color: const Color(0xFF007AFF),
-  ),
-  NoiseOption(
-    id: 'brown',
-    label: '棕噪音',
-    icon: (size, color) =>
-        AppIcons.sparkle(size: size, color: color, strokeWidth: 1.5),
-    color: const Color(0xFFB5A090),
-  ),
-  NoiseOption(
-    id: 'rain',
-    label: '雨声',
-    icon: (size, color) =>
-        AppIcons.rain(size: size, color: color, strokeWidth: 1.5),
-    color: const Color(0xFF5AC8FA),
-  ),
-  NoiseOption(
-    id: 'ocean',
-    label: '海浪',
-    icon: (size, color) =>
-        AppIcons.ocean(size: size, color: color, strokeWidth: 1.5),
-    color: const Color(0xFF7AB8C4),
-  ),
-  NoiseOption(
-    id: 'fire',
-    label: '篝火',
-    icon: (size, color) =>
-        AppIcons.fire(size: size, color: color, strokeWidth: 1.5),
-    color: const Color(0xFFD4A060),
-  ),
-  NoiseOption(
-    id: 'forest',
-    label: '森林',
-    icon: (size, color) =>
-        AppIcons.forest(size: size, color: color, strokeWidth: 1.5),
-    color: const Color(0xFF90B890),
-  ),
-  NoiseOption(
-    id: 'fan',
-    label: '风扇',
-    icon: (size, color) =>
-        AppIcons.fan(size: size, color: color, strokeWidth: 1.5),
-    color: const Color(0xFFA0B8C4),
-  ),
-  NoiseOption(
-    id: 'pink',
-    label: '粉噪音',
-    icon: (size, color) =>
-        AppIcons.sparkle(size: size, color: color, strokeWidth: 1.5),
-    color: const Color(0xFF5856D6),
-  ),
-];
 
 /// Sleep sounds: pick a sound, set level, set a sleep timer.
 ///
@@ -293,7 +215,7 @@ class _NoiseSheetState extends State<NoiseSheet>
                   runSpacing: 10,
                   children: [
                     for (final option in kNoiseOptions)
-                      _NoiseTile(
+                      NoiseTile(
                         option: option,
                         active: option.id == _activeId,
                         onTap: () => _select(option),
@@ -303,7 +225,7 @@ class _NoiseSheetState extends State<NoiseSheet>
                   ],
                 ),
                 const SizedBox(height: 20),
-                _VolumeSlider(
+                VolumeSlider(
                   value: _volume,
                   color: active?.color ?? tokens.accent,
                   onChanged: _changeVolume,
@@ -436,168 +358,6 @@ class _WaveformIndicator extends StatelessWidget {
           );
         },
       ),
-    );
-  }
-}
-
-class _NoiseTile extends StatelessWidget {
-  const _NoiseTile({
-    required this.option,
-    required this.active,
-    required this.onTap,
-    required this.width,
-  });
-
-  final NoiseOption option;
-  final bool active;
-  final VoidCallback onTap;
-  final double width;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AppTokens.of(context);
-    final color = active ? option.color : tokens.textMuted;
-
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Container(
-        width: width,
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-          color: active ? option.color.withValues(alpha: 0.13) : tokens.bgMuted,
-          borderRadius: BorderRadius.circular(AppRadii.panel),
-          border: Border.all(
-            width: 1.5,
-            color: active
-                ? option.color.withValues(alpha: 0.44)
-                : Colors.transparent,
-          ),
-        ),
-        child: Column(
-          children: [
-            option.icon(22, color),
-            const SizedBox(height: 8),
-            Text(
-              option.label,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-                color: color,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// `.slider-thumb` — 24px, matching the design.
-const double _thumbSize = 24;
-
-class _VolumeSlider extends StatelessWidget {
-  const _VolumeSlider({
-    required this.value,
-    required this.color,
-    required this.onChanged,
-  });
-
-  final double value;
-  final Color color;
-  final ValueChanged<double> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AppTokens.of(context);
-
-    return Row(
-      children: [
-        AppIcons.volume(size: 18, color: tokens.textMuted, strokeWidth: 1.5),
-        const SizedBox(width: 12),
-        Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              void update(double dx) {
-                if (constraints.maxWidth <= 0) return;
-                onChanged((dx / constraints.maxWidth).clamp(0.0, 1.0));
-              }
-
-              // The design positions the thumb with `left: <value>%` plus
-              // `translateX(-50%)`, i.e. centred on the value, and lets it
-              // overhang the track ends. Here it is centred but clamped inside
-              // the track, so it never gets clipped at 0% or 100%.
-              final trackWidth = constraints.maxWidth;
-              final thumbLeft = (value * trackWidth - _thumbSize / 2).clamp(
-                  0.0, (trackWidth - _thumbSize).clamp(0.0, double.infinity));
-
-              return GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTapDown: (details) => update(details.localPosition.dx),
-                onHorizontalDragStart: (details) =>
-                    update(details.localPosition.dx),
-                onHorizontalDragUpdate: (details) =>
-                    update(details.localPosition.dx),
-                child: SizedBox(
-                  height: 28,
-                  child: Stack(
-                    children: [
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        top: (28 - 5) / 2,
-                        height: 5,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: tokens.borderStrong,
-                            borderRadius: BorderRadius.circular(AppRadii.pill),
-                          ),
-                        ),
-                      ),
-                      // `left: 0` — the fill grows from the left edge, never
-                      // from the middle.
-                      Positioned(
-                        left: 0,
-                        top: (28 - 5) / 2,
-                        width: value * trackWidth,
-                        height: 5,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: color,
-                            borderRadius: BorderRadius.circular(AppRadii.pill),
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        left: thumbLeft,
-                        top: (28 - _thumbSize) / 2,
-                        child: Container(
-                          width: _thumbSize,
-                          height: _thumbSize,
-                          decoration: BoxDecoration(
-                            color: tokens.bgCardSolid,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: color, width: 2.5),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.22),
-                                blurRadius: 6,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-        const SizedBox(width: 12),
-        AppIcons.volume(size: 22, color: tokens.textMuted, strokeWidth: 1.5),
-      ],
     );
   }
 }
