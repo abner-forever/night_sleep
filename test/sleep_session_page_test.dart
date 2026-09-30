@@ -18,6 +18,7 @@ import 'package:night_sleep/features/sleep/data/session_repository.dart';
 import 'package:night_sleep/features/sleep/data/sleep_repository.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_entry.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_session.dart';
+import 'package:night_sleep/features/sleep/presentation/widgets/quality_rating.dart';
 
 /// 记下每一次播放器调用的假实现。
 ///
@@ -66,6 +67,45 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
+    // 会话行**真的写进库**。覆盖 `activeSessionProvider` 只是为了冻住时钟、免起
+    // 定时器；结束流程写的是真实数据库——`SessionRepository.finish()` 会 `load()`
+    // 会话行，读不到就抛 `StateError`。只覆盖 provider 不写库，页面看到的会话与
+    // 仓库读到的会话就是两回事，「跳过评星」「评了分」那两条永远红，而且测出来的
+    // 根本不是真实链路。
+    await database.saveActiveSession(
+      ActiveSessionsCompanion.insert(
+        id: SessionRepository.sessionId,
+        startAtUtc: session.startAtUtc,
+        timeZoneId: Value(session.timeZoneId),
+        wakeMinutes: session.wakeMinutes,
+        alarmEnabled: Value(session.alarmEnabled),
+        noiseId: Value(session.noiseId),
+        noiseVolume: Value(session.noiseVolume),
+        createdAt: session.createdAtUtc,
+      ),
+    );
+
+    // 结束流程会 `context.go('/')` 与 `context.push('/log/new')`；裸
+    // `MaterialApp(home:)` 里没有 GoRouter，`GoRouter.of` 会直接断言失败。
+    // 起一个最小路由，把这两个落点都注册上。
+    final router = GoRouter(
+      initialLocation: '/sleep/session',
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (context, state) => const Scaffold(body: SizedBox.shrink()),
+        ),
+        GoRoute(
+          path: '/sleep/session',
+          builder: (context, state) => SleepSessionPage(now: now),
+        ),
+        GoRoute(
+          path: '/log/new',
+          builder: (context, state) => const Scaffold(body: SizedBox.shrink()),
+        ),
+      ],
+    );
+
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -77,9 +117,9 @@ void main() {
           // 真播放器会碰平台通道；白噪音的播放接缝挂在 app 级 provider 上。
           noisePlayerProvider.overrideWithValue(player ?? _FakeNoisePlayer()),
         ],
-        child: MaterialApp(
+        child: MaterialApp.router(
           theme: AppTheme.dark(),
-          home: SleepSessionPage(now: now),
+          routerConfig: router,
         ),
       ),
     );
@@ -563,5 +603,109 @@ void main() {
 
     expect(find.text('雨声'), findsNothing, reason: '会话页已经离开');
     expect(player.calls, isNot(contains('stop')), reason: '收起的是页面，不是声音');
+  });
+
+  testWidgets('结束睡眠先问一次星级', (tester) async {
+    final start = DateTime(2026, 8, 30, 23, 14);
+    await pumpSession(
+      tester,
+      session: sessionAt(start),
+      now: start.add(const Duration(hours: 7, minutes: 48)),
+    );
+
+    await tester.tap(find.text('结束睡眠'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('昨晚睡得怎么样？'), findsOneWidget);
+    expect(find.text('跳过'), findsOneWidget);
+  });
+
+  testWidgets('跳过评星：记录落库但质量为 null 且没有评分', (tester) async {
+    final start = DateTime(2026, 8, 30, 23, 14);
+    await pumpSession(
+      tester,
+      session: sessionAt(start),
+      now: start.add(const Duration(hours: 7, minutes: 48)),
+    );
+
+    await tester.tap(find.text('结束睡眠'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('跳过'));
+    await tester.pumpAndSettle();
+
+    final row = (await database.allRecords()).single;
+    expect(row.quality, isNull);
+    expect(row.source, 'session');
+    expect(await database.activeSession(), isNull);
+  });
+
+  testWidgets('评了分：质量写进记录', (tester) async {
+    final start = DateTime(2026, 8, 30, 23, 14);
+    await pumpSession(
+      tester,
+      session: sessionAt(start),
+      now: start.add(const Duration(hours: 7, minutes: 48)),
+    );
+
+    await tester.tap(find.text('结束睡眠'));
+    await tester.pumpAndSettle();
+    // 点第 5 颗星。
+    await tester.tap(find.byType(QualityStars).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    expect((await database.allRecords()).single.quality, isNotNull);
+  });
+
+  /// 时长守门：点了开始就立刻结束，**不许**静默写出一条零时长记录。
+  testWidgets('时长过短不落库，给出说明与两个出口', (tester) async {
+    final start = DateTime(2026, 8, 30, 23, 14);
+    await pumpSession(
+      tester,
+      session: sessionAt(start),
+      now: start,
+    );
+
+    await tester.tap(find.text('结束睡眠'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('太短'), findsOneWidget);
+    expect(find.text('手动补录某一晚'), findsOneWidget);
+    expect(find.text('丢弃这次会话'), findsOneWidget);
+    expect(await database.allRecords(), isEmpty);
+    expect(await database.activeSession(), isNotNull, reason: '会话仍在，等用户决定');
+  });
+
+  testWidgets('时长超过 24 小时同样不落库', (tester) async {
+    final start = DateTime(2026, 8, 30, 23, 14);
+    await pumpSession(
+      tester,
+      session: sessionAt(start),
+      now: start.add(const Duration(hours: 30)),
+    );
+
+    await tester.tap(find.text('结束睡眠'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('超过 24 小时'), findsOneWidget);
+    expect(await database.allRecords(), isEmpty);
+  });
+
+  testWidgets('丢弃这次会话：不写记录，会话消失', (tester) async {
+    final start = DateTime(2026, 8, 30, 23, 14);
+    await pumpSession(
+      tester,
+      session: sessionAt(start),
+      now: start,
+    );
+
+    await tester.tap(find.text('结束睡眠'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('丢弃这次会话'));
+    await tester.pumpAndSettle();
+
+    expect(await database.allRecords(), isEmpty);
+    expect(await database.activeSession(), isNull);
   });
 }

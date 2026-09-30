@@ -20,6 +20,7 @@ import '../../sleep/domain/sleep_quality.dart';
 import '../../sleep/domain/sleep_score.dart';
 import '../../sleep/domain/sleep_window.dart';
 import '../../sleep/presentation/widgets/moon_arc.dart';
+import '../../sleep/presentation/widgets/quality_rating.dart';
 import '../../sleep/presentation/widgets/stage_style.dart';
 
 /// Log — record last night by hand, or correct a night that is already saved.
@@ -288,19 +289,13 @@ class _LogPageState extends ConsumerState<LogPage> {
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            for (final quality in SleepQuality.values) ...[
-              _QualityStar(
-                quality: quality,
-                selected: _quality == quality,
-                filledTo: _quality?.value ?? 0,
-                onTap: () {
-                  AppHaptics.select();
-                  setState(() => _quality = quality);
-                },
-              ),
-              const SizedBox(width: 10),
-            ],
-            const SizedBox(width: 2),
+            QualityStars(
+              value: _quality,
+              onChanged: (quality) => setState(() => _quality = quality),
+            ),
+            // 星级行与标签之间留 12px：原来是星级行尾部 10px 间隔加 2px，
+            // 提成共享组件后尾部间隔归组件自己管，这里补回同一个观感。
+            const SizedBox(width: 12),
             Flexible(
               child: Text(
                 _quality?.label ?? '未评分',
@@ -496,62 +491,6 @@ class _FieldRow extends StatelessWidget {
           AppIcons.chevronRight(
               size: 16, color: tokens.borderStrong, strokeWidth: 2),
         ],
-      ),
-    );
-  }
-}
-
-class _QualityStar extends StatelessWidget {
-  const _QualityStar({
-    required this.quality,
-    required this.selected,
-    required this.filledTo,
-    required this.onTap,
-  });
-
-  final SleepQuality quality;
-  final bool selected;
-  final int filledTo;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AppTokens.of(context);
-    final color = qualityColor(tokens, quality);
-    final filled = filledTo >= quality.value;
-
-    return Semantics(
-      // The rating row is five unlabelled glyphs; without this a screen reader
-      // announces nothing and the control is unusable.
-      button: true,
-      selected: selected,
-      label: '睡眠质量 ${quality.label}',
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: AnimatedScale(
-          scale: selected ? 1.1 : 1,
-          duration: AppDurations.springy,
-          curve: AppMotion.springyCurve,
-          child: Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: selected ? color.withValues(alpha: 0.16) : tokens.bgMuted,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                width: 1.5,
-                color: selected ? color : Colors.transparent,
-              ),
-            ),
-            alignment: Alignment.center,
-            child: AppIcons.star(
-              size: 18,
-              color: filled ? color : tokens.borderStrong,
-              strokeWidth: filled ? 2 : 1.5,
-            ),
-          ),
-        ),
       ),
     );
   }
