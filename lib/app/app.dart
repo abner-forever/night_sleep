@@ -16,6 +16,7 @@ import '../features/settings/presentation/export_page.dart';
 import '../features/settings/presentation/insight_config_page.dart';
 import '../features/settings/presentation/settings_page.dart';
 import '../features/settings/presentation/sleep_import_page.dart';
+import '../features/session/presentation/sleep_session_page.dart';
 import '../features/sleep/presentation/sheets/noise_sheet.dart';
 import '../features/stats/presentation/stats_page.dart';
 import 'app_shell.dart';
@@ -64,6 +65,11 @@ final _router = GoRouter(
         GoRoute(
           path: 'log/edit',
           builder: (context, state) => LogEditPage(routeArgument: state.extra),
+        ),
+        // 会话页与设置子页同一层级：推入后覆盖标签外壳，全屏。
+        GoRoute(
+          path: 'sleep/session',
+          builder: (context, state) => const SleepSessionPage(),
         ),
       ],
     ),
