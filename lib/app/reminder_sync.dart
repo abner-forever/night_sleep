@@ -55,11 +55,48 @@ Future<void> reconcileReminders(
         ),
       );
       await scheduler.sync(const ReminderPlan());
+      // 闹钟与日常提醒的生命周期无关，不跟着上面那条一起跳过。
+      await syncSessionAlarm(database, scheduler);
       return;
     }
 
     await scheduler.sync(reminderPlanFrom(stored));
+
+    // 会话闹钟**总要**推导一次：没有会话时这一步负责把可能残留的 9003 排掉。
+    await syncSessionAlarm(database, scheduler);
   } catch (_) {
     // 调度是尽力而为：排不上提醒不该影响任何别的功能。
   }
+}
+
+/// 让**会话闹钟**与「今晚有没有会话、闹钟开着没」保持一致。
+///
+/// 与 [reconcileReminders] 里那套日常提醒**分开推导**，因为两者的生命周期不同：
+/// 日常提醒由偏好驱动，会话闹钟由「今晚有没有会话」驱动。
+/// 但推导只有这一处。
+Future<void> syncSessionAlarm(
+  AppDatabase database,
+  ReminderScheduler scheduler,
+) async {
+  final session = await database.activeSession();
+
+  if (session != null && session.alarmEnabled) {
+    // **今晚的闹钟胜过日常起床提醒。** 两者很容易被设成同一个钟点，排在一起
+    // 用户会在同一分钟收到两条通知。起床提醒说的是「记录一下昨晚」，而这件事
+    // 会话已经替你做了。就寝提醒不受影响——「该睡了」与闹钟无关。
+    await scheduler.yieldWakeReminder();
+    await scheduler.syncAlarm(
+      ReminderRequest(
+        id: ReminderScheduler.wakeAlarmId,
+        // **起床时间就是闹钟时间**，会话页上没有第二个钟点。
+        minutesOfDay: session.wakeMinutes,
+        title: ReminderScheduler.wakeAlarmTitle,
+        body: ReminderScheduler.wakeAlarmBody,
+      ),
+    );
+    return;
+  }
+
+  // 没有会话（或闹钟关着）时把闹钟排掉，日常提醒照常。
+  await scheduler.syncAlarm(null);
 }

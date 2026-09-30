@@ -12,6 +12,15 @@ class _FakeScheduler extends ReminderScheduler {
   final ReminderPermission _current;
   ReminderPlan? lastSynced;
 
+  /// 会话闹钟最近一次被设成什么（`null` = 被排掉了）。
+  ReminderRequest? lastAlarm;
+
+  /// 日常起床提醒被显式让位过几次。
+  final yieldedWake = <int>[];
+
+  /// `cancel` 收到过的 id，按序。让「就寝提醒没被碰」这类断言有落点。
+  final cancelled = <int>[];
+
   @override
   Future<void> initialize() async {}
 
@@ -25,13 +34,31 @@ class _FakeScheduler extends ReminderScheduler {
   Future<void> openSystemSettings() async {}
 
   @override
-  Future<void> cancel(int id) async {}
+  Future<void> cancel(int id) async => cancelled.add(id);
 
   @override
   Future<void> schedule(ReminderRequest request) async {}
 
   @override
+  Future<void> scheduleOnce(ReminderRequest request) async =>
+      lastAlarm = request;
+
+  @override
   Future<void> sync(ReminderPlan plan) async => lastSynced = plan;
+
+  /// 记录之外**还走一遍基类**：这样「取消 9003」与「就寝提醒没被碰」是在真代码上
+  /// 断言的，而不是在假实现上空转。
+  @override
+  Future<void> syncAlarm(ReminderRequest? request) async {
+    await super.syncAlarm(request);
+    lastAlarm = request;
+  }
+
+  @override
+  Future<void> yieldWakeReminder() async {
+    yieldedWake.add(ReminderScheduler.wakeId);
+    await super.yieldWakeReminder();
+  }
 }
 
 void main() {
@@ -90,5 +117,102 @@ void main() {
     expect(row.bedtimeReminderMinutes, 22 * 60 + 30,
         reason: '偶发的时区失败不该毁掉用户存过的时刻');
     expect(row.wakeReminderEnabled, isTrue);
+  });
+
+  group('会话闹钟', () {
+    Future<void> seedActiveSession({bool alarmEnabled = false}) {
+      return database.saveActiveSession(
+        ActiveSessionsCompanion.insert(
+          // 非空且无默认值的列收裸值，可空或有默认值的列收 `Value<T>`：
+          // `id` / `startAtUtc` / `wakeMinutes` / `createdAt` 都是裸值，
+          // `alarmEnabled` 有默认值才是 `Value`。
+          id: 'active',
+          startAtUtc: DateTime.utc(2026, 8, 30, 15, 14),
+          wakeMinutes: 420,
+          alarmEnabled: Value(alarmEnabled),
+          createdAt: DateTime.utc(2026, 8, 30, 15, 14),
+        ),
+      );
+    }
+
+    test('有会话且闹钟开着：排出 9003，并让日常起床提醒让位', () async {
+      await seedActiveSession(alarmEnabled: true);
+      await seedBothOn();
+
+      final scheduler = _FakeScheduler(ReminderPermission.granted);
+      await reconcileReminders(database, scheduler);
+
+      expect(scheduler.lastAlarm, isNotNull);
+      expect(scheduler.lastAlarm!.id, ReminderScheduler.wakeAlarmId);
+      expect(scheduler.lastAlarm!.minutesOfDay, 420);
+      expect(
+        scheduler.yieldedWake,
+        contains(ReminderScheduler.wakeId),
+        reason: '两者很容易被设成同一个钟点，会响两条',
+      );
+    });
+
+    test('没有会话：闹钟被排掉，日常提醒照常', () async {
+      await seedBothOn();
+
+      final scheduler = _FakeScheduler(ReminderPermission.granted);
+      await reconcileReminders(database, scheduler);
+
+      expect(scheduler.lastAlarm, isNull);
+      // `lastAlarm` 的初值本来就是 `null`，断言「是 null」抓不到「压根没调用」——
+      // 所以还要钉住「真的走了一次 syncAlarm(null)」。少了这一条，把
+      // `syncSessionAlarm` 尾部的 `syncAlarm(null)` 删掉也不会有任何用例变红。
+      expect(scheduler.cancelled, contains(ReminderScheduler.wakeAlarmId),
+          reason: '没有会话时必须把可能残留的 9003 排掉');
+      expect(scheduler.yieldedWake, isEmpty);
+      expect(scheduler.lastSynced!.wakeMinutes, 7 * 60);
+    });
+
+    test('有会话但闹钟关着：闹钟排掉，9002 不让位', () async {
+      await seedActiveSession();
+      await seedBothOn();
+
+      final scheduler = _FakeScheduler(ReminderPermission.granted);
+      await reconcileReminders(database, scheduler);
+
+      expect(scheduler.lastAlarm, isNull);
+      expect(scheduler.cancelled, contains(ReminderScheduler.wakeAlarmId),
+          reason: '闹钟关着时也要把 9003 排掉，理由同上一条');
+      expect(scheduler.yieldedWake, isEmpty);
+      expect(scheduler.lastSynced!.wakeMinutes, 7 * 60);
+    });
+
+    /// 规格 §五：闹钟让位只针对**起床**提醒。
+    test('闹钟开着也只让起床提醒，就寝提醒 9001 不被碰', () async {
+      await seedActiveSession(alarmEnabled: true);
+      await seedBothOn();
+
+      final scheduler = _FakeScheduler(ReminderPermission.granted);
+      await syncSessionAlarm(database, scheduler);
+
+      expect(
+        scheduler.cancelled,
+        isNot(contains(ReminderScheduler.bedtimeId)),
+        reason: '「该睡了」与今晚设没设闹钟无关，不该被会话闹钟顺手取消',
+      );
+      expect(scheduler.cancelled, contains(ReminderScheduler.wakeId),
+          reason: '起床提醒让位给闹钟');
+      expect(scheduler.cancelled, contains(ReminderScheduler.wakeAlarmId),
+          reason: '9003 先取消再排，幂等');
+    });
+
+    /// 权限被撤销时 `reconcileReminders` 会在回收偏好后提前 `return`——那条路径
+    /// 上也要推导一次会话闹钟，否则上一晚残留在系统里的 9003 再也排不掉：那条
+    /// `return` 之后的正常尾部**不会**执行。
+    test('权限被撤销：残留的 9003 一样被排掉', () async {
+      await seedBothOn();
+
+      final scheduler = _FakeScheduler(ReminderPermission.denied);
+      await reconcileReminders(database, scheduler);
+
+      expect(scheduler.cancelled, contains(ReminderScheduler.wakeAlarmId),
+          reason: '提前 return 前跳过 syncSessionAlarm 的话，残留的 9003 会留在系统里');
+      expect(scheduler.lastAlarm, isNull);
+    });
   });
 }

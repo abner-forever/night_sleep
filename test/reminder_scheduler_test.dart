@@ -29,6 +29,10 @@ class _RecordingScheduler extends ReminderScheduler {
   @override
   Future<void> schedule(ReminderRequest request) async =>
       calls.add('schedule:${request.id}@${request.minutesOfDay}');
+
+  @override
+  Future<void> scheduleOnce(ReminderRequest request) async =>
+      calls.add('scheduleOnce:${request.id}@${request.minutesOfDay}');
 }
 
 void main() {
@@ -108,6 +112,43 @@ void main() {
         requests.map((request) => request.title).toList(), ['到就寝时间了', '早上好']);
     expect(requests.map((request) => request.body).toList(),
         ['该休息了，晚安。', '记录一下昨晚睡得怎么样。']);
+  });
+
+  group('起床闹钟', () {
+    test('syncAlarm 传 null 时只取消，不排', () async {
+      final scheduler = _RecordingScheduler();
+      await scheduler.syncAlarm(null);
+
+      expect(scheduler.calls, ['cancel:9003']);
+    });
+
+    test('syncAlarm 排出 9003，且走的是一次性通道', () async {
+      final scheduler = _RecordingScheduler();
+      await scheduler.syncAlarm(
+        const ReminderRequest(
+          id: ReminderScheduler.wakeAlarmId,
+          minutesOfDay: 7 * 60,
+          title: ReminderScheduler.wakeAlarmTitle,
+          body: ReminderScheduler.wakeAlarmBody,
+        ),
+      );
+
+      // **必须是 `scheduleOnce` 而不是 `schedule`**：后者写死了
+      // `matchDateTimeComponents.time`，那是每天重复。
+      expect(scheduler.calls, ['cancel:9003', 'scheduleOnce:9003@420']);
+    });
+
+    /// 这一条是整个闹钟设计里最关键的反向护栏。
+    test('日常提醒的 sync 不会碰 9003', () async {
+      final scheduler = _RecordingScheduler();
+      await scheduler.sync(const ReminderPlan(bedtimeMinutes: 22 * 60 + 30));
+
+      expect(
+        scheduler.calls.where((call) => call.contains('9003')),
+        isEmpty,
+        reason: 'sync 若取消 9003，每次启动的全量重排都会把会话闹钟抹掉',
+      );
+    });
   });
 
   group('nextOccurrence', () {

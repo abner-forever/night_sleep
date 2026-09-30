@@ -64,6 +64,12 @@ abstract class ReminderScheduler {
   static const bedtimeId = 9001;
   static const wakeId = 9002;
 
+  /// 睡眠会话的起床闹钟。**与上面两个分开**，因为它是一次性的，不是每天重复。
+  static const wakeAlarmId = 9003;
+
+  static const wakeAlarmTitle = '该起床了';
+  static const wakeAlarmBody = '结束睡眠，记录一下昨晚睡得怎么样。';
+
   static const bedtimeTitle = '到就寝时间了';
   static const bedtimeBody = '该休息了，晚安。';
   static const wakeTitle = '早上好';
@@ -98,6 +104,13 @@ abstract class ReminderScheduler {
   @protected
   Future<void> schedule(ReminderRequest request);
 
+  /// 在**下一个** [request] 的墙上时刻响一次，**不重复**。
+  ///
+  /// 与 [schedule] 的区别只在这一点上，但这一点是本质的：`schedule` 写死了
+  /// `matchDateTimeComponents: DateTimeComponents.time`，那是每天都响。
+  @protected
+  Future<void> scheduleOnce(ReminderRequest request);
+
   /// 幂等的全量重排：先取消两个固定 id，再按计划排入。
   ///
   /// 用「先取消再新建」而不是「算差异」：否则调度器的内容与数据库里的偏好会各自
@@ -111,6 +124,24 @@ abstract class ReminderScheduler {
       await schedule(request);
     }
   }
+
+  /// 让闹钟与「今晚有没有会话、闹钟开着没」保持一致。幂等。
+  ///
+  /// 与 [sync] 一样是「先取消再排」：调度与偏好不能各自拥有独立生命周期。
+  /// 但**两者互不干涉**——[sync] 只动 9001/9002，本方法只动 9003。
+  Future<void> syncAlarm(ReminderRequest? request) async {
+    await cancel(wakeAlarmId);
+    if (request != null) {
+      await scheduleOnce(request);
+    }
+  }
+
+  /// 会话闹钟要占用起床这个钟点时，把**日常起床提醒**让出去。
+  ///
+  /// 做成独立方法而不是让调用方直接 `cancel(wakeId)`：`cancel` 是 `@protected`
+  /// 的调度原语，让外部按 id 去取消，等于把「哪些 id 属于谁」的知识漏到调度器
+  /// 之外；而且那样一行 `cancel` 是个**猜不出意图的副作用**，测试只能去数调用。
+  Future<void> yieldWakeReminder() => cancel(wakeId);
 }
 
 /// 没有通知能力的平台（Web）与测试用的空实现。
@@ -134,6 +165,9 @@ class NoopReminderScheduler extends ReminderScheduler {
 
   @override
   Future<void> schedule(ReminderRequest request) async {}
+
+  @override
+  Future<void> scheduleOnce(ReminderRequest request) async {}
 }
 
 /// 包 `flutter_local_notifications` 的实现。
@@ -322,6 +356,49 @@ class LocalReminderScheduler extends ReminderScheduler {
       // 刻意用非精确闹钟：Android 14+ 的精确闹钟要么多一个
       // SCHEDULE_EXACT_ALARM 申请流程，要么用需要上架审核的 USE_EXACT_ALARM，
       // 而「该睡了」差几分钟完全无所谓。
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    );
+  }
+
+  @override
+  Future<void> scheduleOnce(ReminderRequest request) async {
+    if (!_ready) return;
+
+    await _plugin.zonedSchedule(
+      id: request.id,
+      title: request.title,
+      body: request.body,
+      // **不传 `matchDateTimeComponents`。** 传了就是每天重复，而这个闹钟
+      // 只该响一次。排定时刻复用 `nextOccurrence`——那个纯函数已经带着
+      // 跨午夜的严格比较与跨夏令时的墙上时刻规则，且有自己的测试。
+      scheduledDate: nextOccurrence(request, now: tz.TZDateTime.now(tz.local)),
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          _channelId,
+          _channelName,
+          channelDescription: _channelDescription,
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+        iOS: DarwinNotificationDetails(
+          // 起床闹钟要能穿透专注模式。`interrupt` 级别是**刻意的上限**：
+          // `critical` 需要 Apple 单独批准一项 entitlement，本项目没有。
+          // 界面上如实写着「强度不如系统闹钟」。
+          interruptionLevel: InterruptionLevel.timeSensitive,
+          presentAlert: true,
+          presentBanner: true,
+          presentList: true,
+          presentSound: true,
+        ),
+        macOS: DarwinNotificationDetails(
+          interruptionLevel: InterruptionLevel.timeSensitive,
+          presentAlert: true,
+          presentBanner: true,
+          presentList: true,
+          presentSound: true,
+        ),
+      ),
+      // 与日常提醒同一取舍：不申请精确闹钟权限。
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
     );
   }

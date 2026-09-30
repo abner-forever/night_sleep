@@ -52,6 +52,9 @@ class _FakeScheduler extends ReminderScheduler {
   Future<void> schedule(ReminderRequest request) async {}
 
   @override
+  Future<void> scheduleOnce(ReminderRequest request) async {}
+
+  @override
   Future<void> sync(ReminderPlan plan) async => lastSynced = plan;
 }
 
