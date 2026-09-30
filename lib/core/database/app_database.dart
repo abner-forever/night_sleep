@@ -357,6 +357,12 @@ class AppDatabase extends _$AppDatabase {
     await into(activeSessions).insertOnConflictUpdate(session);
   }
 
+  /// 只写传入的列。会话页每次调一个开关都走它，不必读-改-写整行。
+  Future<void> updateActiveSession(ActiveSessionsCompanion values) async {
+    await (update(activeSessions)..where((table) => table.id.equals('active')))
+        .write(values);
+  }
+
   Future<void> deleteActiveSession() async {
     await (delete(activeSessions)..where((table) => table.id.equals('active')))
         .go();
@@ -420,4 +426,8 @@ final recordsProvider = StreamProvider<List<SleepRecord>>((ref) {
 
 final recordProvider = FutureProvider.family<SleepRecord?, String>((ref, id) {
   return ref.watch(databaseProvider).findRecord(id);
+});
+
+final activeSessionWatchProvider = StreamProvider<ActiveSession?>((ref) {
+  return ref.watch(databaseProvider).watchActiveSession();
 });
