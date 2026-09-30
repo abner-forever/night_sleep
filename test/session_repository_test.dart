@@ -1,3 +1,6 @@
+// 只要 `Value`：整个 `drift/drift.dart` 会连带引入它自己的 `isNull`（SQL 表达式），
+// 与 `flutter_test` 的 `isNull` 匹配器撞名。
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sleep/core/database/app_database.dart';
@@ -14,8 +17,10 @@ void main() {
   });
   tearDown(() => database.close());
 
-  final start = DateTime.utc(2026, 8, 30, 15, 14); // 本地 23:14（CST）
-  final end = DateTime.utc(2026, 8, 30, 23, 2); // 本地 07:02
+  // 用**本地时刻**构造再 `.toUtc()`，不要硬编 UTC 偏移：断言的语义是
+  // 「本地 8/30 23:14 入睡、本地 8/31 07:02 醒来」，在任何时区的 runner 上都成立。
+  final start = DateTime(2026, 8, 30, 23, 14).toUtc();
+  final end = DateTime(2026, 8, 31, 7, 2).toUtc();
 
   test('没有会话时 load 返回 null', () async {
     expect(await repo.load(), isNull);
@@ -39,6 +44,16 @@ void main() {
           .wakeMinutes,
       390,
     );
+  });
+
+  /// 用户设过起床提醒时**复用那个时刻**，不落在 07:00 的默认值上——会话页的
+  /// 起床时间与设置页的起床提醒本来就是同一个概念，用户多半只该设一次。
+  test('未传 wakeMinutes 时复用设置里的起床提醒时刻', () async {
+    await database.updateSettings(
+      const AppSettingsCompanion(wakeReminderMinutes: Value(390)),
+    );
+
+    expect((await repo.start(now: start.toLocal())).wakeMinutes, 390);
   });
 
   test('update 只改传入的字段', () async {
@@ -69,9 +84,10 @@ void main() {
     final rows = await database.allRecords();
     expect(rows, hasLength(1));
     expect(rows.single.source, 'session');
-    // `isAtSameMomentAs`, not `==`: drift hands back a DateTime flagged local,
-    // and `==` also compares that flag. What must survive the round trip is the
-    // instant — `SleepSession` 会把标记摆正，但这里是直接读的原始行。
+    // 用 `isAtSameMomentAs` 而不是 `==`：这里是直接读原始 drift 行，而 drift
+    // 读回来的 `DateTime` 带的是**本地**标记，`==` 会连这个标记一起比——
+    // 先例与详细理由见 `test/schema_migration_test.dart`（v1 记录升级那条）。
+    // 要保住的是**瞬时值**；墙钟读法由上层 `.toLocal()` 派生。
     expect(rows.single.startAtUtc.isAtSameMomentAs(start), isTrue);
     expect(rows.single.endAtUtc.isAtSameMomentAs(end), isTrue);
     expect(rows.single.quality, SleepQuality.good.value);
