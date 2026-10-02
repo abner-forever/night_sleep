@@ -12,6 +12,285 @@ import '../night_style.dart';
 /// `double * int` 会自动提升成 `double`，数值语义不变。
 const int _kLoopSeconds = 60;
 
+/// 八套夜景的几何：把原型 `index.css` / `App.tsx` 的数值**逐条转写**成 Dart 算式。
+///
+/// **为什么单独抽一层**：这一页出过的错（极光盒高的符号、流星位移的分母、极光 i2 的
+/// 左右内缩、海浪的嵌套百分比、`animation-delay` 的正负号……）全部出在
+/// 「看着 CSS 手写 Dart 公式」这一步，而画进 `Canvas` 的东西没法在单测里直接断言。
+/// 把算式拎成纯函数，`test/night_backdrop_test.dart` 才能拿 CSS 的字面量去核。
+///
+/// **坐标口径**：这些元素的包含块是 `.sleep-scene-visual { position: fixed; inset: 0 }`，
+/// 也就是整块画布，所以它的 `%` / `vw` / `vh` 一律相对 `size` 解析；
+/// **只有嵌套元素的 `%` 相对父盒**（海浪那层要当心）。
+///
+/// **有意的近似**（不假装逐像素）：
+/// - `filter: blur(N)` 一律换算成 `MaskFilter.blur(…, N/2)`（CSS 的半径对应高斯 σ = r/2）；
+/// - `animation-direction: alternate` 用三角波 [pingPong]；
+/// - 各处的 `ease` / `ease-in` / `ease-in-out` 只在少数几处用 `Curves` 近似，
+///   其余按线性处理（暗色渐变里看不出差别）；
+/// - `radial-gradient(circle, …)` 的半径口径：CSS 按 farthest-corner、Flutter 的
+///   `RadialGradient.radius` 按短边，所以光晕的**外扩范围**是近似的（色带形状对得上）。
+@visibleForTesting
+abstract final class NightSceneGeometry {
+  // ── 通用 ────────────────────────────────────────────────────────────────
+  /// CSS 的 `animation-direction: alternate`——往返一趟。
+  static double pingPong(double v) => 1 - (2 * v - 1).abs();
+
+  /// CSS 的 `ease-in-out`。
+  static double easeInOut(double t) =>
+      Curves.easeInOut.transform(t.clamp(0.0, 1.0));
+
+  /// 某个元素在它自己那一轮里的进度（0–1）。
+  ///
+  /// `delay` 就是 CSS 的 `animation-delay`，**原样传进来、不要翻符号**：
+  /// CSS 的本地时间是 `t - delay`，所以 `-4s`（相位提前）自带负号、
+  /// `3.8s`（晚开始）自带正号。
+  ///
+  /// 近似：这里对负的本地时间取模回绕，而 CSS 在 `animation-fill-mode: none`
+  /// （默认）下是「延迟期间保持元素自身的基线样式」。差别只出现在每 60 秒循环的
+  /// 最前面那一小段（最长 3.44 秒，星点里延迟最大的一颗），暗色背景上看不出来。
+  static double loopProgress(
+      {required double t, required double duration, double delay = 0}) {
+    final v = ((t - delay) / duration) % 1.0;
+    return v < 0 ? v + 1 : v;
+  }
+
+  // ── 网点 ────────────────────────────────────────────────────────────────
+  /// `.sleep-mode::before { background-size: 67px 67px;
+  ///   background-image: radial-gradient(circle, rgba(255,255,255,.7) 0 1px, transparent 1.5px);
+  ///   opacity: .13 }`。折出来 alpha = .7 × .13 ≈ .091。
+  ///
+  /// 近似：CSS 的渐变圆心默认在每格的**中心**，这里画在格点左上角——周期图案整体平移
+  /// 半格，看不出差别。
+  static const double textureStep = 67;
+  static const double textureAlpha = .7 * .13;
+
+  // ── 光晕 ────────────────────────────────────────────────────────────────
+  /// `.sleep-scene-glow { opacity: .55 }`——两层光晕共用的**整层**透明度。
+  /// 原型的 `filter: blur(4px)` 不跟：对这种尺寸的软径向渐变不足 1% 的差别。
+  static const double glowOpacity = .55;
+
+  /// `.sleep-scene-glow-one { width: 70vw; height: 42vw; top: -12vw; right: -10vw }`
+  /// ⇒ 左边 = 100vw - 10vw - 70vw = 40vw。
+  static Rect glowOneRect(Size size) => Rect.fromLTWH(
+      size.width * .40, -size.width * .12, size.width * .70, size.width * .42);
+
+  /// `.sleep-scene-moon .sleep-scene-glow-one { width: 48vw; height: 48vw; top: 8%; right: 7% }`
+  /// ⇒ 左边 = 100% - 7% - 48% = 45% **宽**；`top: 8%` 是相对容器**高**。
+  static Rect moonGlowRect(Size size) => Rect.fromLTWH(
+      size.width * .45, size.height * .08, size.width * .48, size.width * .48);
+
+  /// `.sleep-scene-glow-two { width: 62vw; height: 48vw; bottom: -20vw; left: -18vw }`
+  /// ⇒ 顶边 = H + 20vw - 48vw（`bottom` 是 vw 单位，跟高无关）。
+  static Rect glowTwoRect(Size size) => Rect.fromLTWH(-size.width * .18,
+      size.height - size.width * .28, size.width * .62, size.width * .48);
+
+  // ── 星点 ────────────────────────────────────────────────────────────────
+  /// `SLEEP_STARS`（原型 App.tsx）：34 颗。`left`/`top` 是**百分数**。
+  static const int starCount = 34;
+  static double starLeft(int i) => ((i * 37 + 11) % 97) / 100;
+  static double starTop(int i) => ((i * 53 + 7) % 82) / 100;
+
+  /// `size: index % 6 === 0 ? 2 : 1`——那是**直径**（px），半径减半。
+  static double starRadius(int i) => i % 6 == 0 ? 1 : .5;
+
+  /// `animationDelay: (index % 9) * 0.43`（秒）——**正数**，即「晚一点才开始」。
+  static double starDelay(int i) => (i % 9) * .43;
+
+  /// `sleepTwinkle { 50% { opacity: .25; transform: scale(.65) } }`，4.5 秒，
+  /// **没有** `alternate`（0% 与 100% 都是原样，中点最暗最小）。
+  /// 返回 0–1 的「闪烁程度」：0 = 原样，1 = 中点。
+  static double starTwinkleAt(double v) => easeInOut(pingPong(v));
+
+  // ── 流星 ────────────────────────────────────────────────────────────────
+  /// `.sleep-meteors i` 三条：基线是 `top: 8%; left: 78%; width: 110px`，
+  /// 第 2/3 条由 `:nth-child(2)` / `:nth-child(3)` 覆盖。
+  static const meteorTop = [.08, .27, .15];
+  static const meteorLeft = [.78, .92, .55];
+  static const meteorWidth = [110.0, 76.0, 58.0];
+  static const meteorDuration = [8.5, 10.5, 12.0];
+
+  /// CSS 的 `animation-delay` 是**正数**（3.8s / 7.1s）——「晚 3.8 秒才开始」。
+  static const meteorDelay = [0.0, 3.8, 7.1];
+
+  /// `sleepMeteor`：`0%, 82% { opacity: 0 }` 与 `91%, 100% { opacity: 0 }`
+  /// 给出可见窗口，`84%` 是唯一亮点。
+  static bool meteorVisibleAt(double p) => p >= .82 && p <= .91;
+
+  /// `transform` 只在 `82%` 与 `91%` 两处声明，所以 `0 → (-58vw, 38vw)` 是在
+  /// 这 9% 的区间里走完的（不是走到 100%）。
+  static double meteorTravelAt(double p) => ((p - .82) / .09).clamp(0.0, 1.0);
+
+  /// 透明度：`82% → 0`、`84% → .9`、`91% → 0`（两段线性）。
+  static double meteorOpacityAt(double p) {
+    if (!meteorVisibleAt(p)) return 0;
+    return p < .84 ? .9 * (p - .82) / .02 : .9 * (.91 - p) / .07;
+  }
+
+  /// `background: linear-gradient(90deg, transparent, rgba(230,237,255,.85))`
+  /// ——拖尾末端的 alpha 上限。
+  static const meteorTrailAlpha = .85;
+
+  // ── 极光 ────────────────────────────────────────────────────────────────
+  /// `.sleep-scene-aurora .sleep-aurora { inset: -8% -20% 42% }`（i1）与
+  /// `.sleep-aurora i:nth-child(2) { inset: 18% -8% -22% }`（i2）。
+  ///
+  /// CSS 的 `inset: A B C D` 是 top / right / bottom / left，于是
+  /// 宽 = `W(1 - left - right)`、高 = `H(1 - top - bottom)`。
+  /// **两层的左右内缩不同**（i1 是 -20%，i2 是 -8%），所以宽与左偏移都不一样。
+  static Rect auroraBandRect(Size size, int index) => index == 0
+      ? Rect.fromLTWH(-size.width * .20, -size.height * .08, size.width * 1.40,
+          size.height * .66)
+      : Rect.fromLTWH(-size.width * .08, size.height * .18, size.width * 1.16,
+          size.height * 1.04);
+
+  /// i1 `9s` / i2 `12s`；i2 另有 `animation-delay: -4s`（负号 = 相位**提前**）。
+  static const auroraDuration = [9.0, 12.0];
+  static const auroraDelay = [0.0, -4.0];
+
+  /// `.sleep-aurora` 是 `opacity: .5`，`:nth-child(2)` 覆盖成 `.65`。
+  static const auroraLayerOpacity = [.5, .65];
+
+  /// `sleepAurora { to { transform: translate(8%, 8%) skewX(-8deg) scale(1.08) } }`。
+  /// `translate` 的百分比相对**色带自己**的尺寸（不是视口）；`skewX` 略过——
+  /// 它与那点旋转叠加在暗色渐变上看不出单独一档。
+  static const auroraTranslate = .08;
+  static const auroraScale = .08;
+
+  // ── 海浪 ────────────────────────────────────────────────────────────────
+  /// `.sleep-scene-ocean .sleep-ocean-waves { position: absolute; inset: auto -12% -4%;
+  ///   height: 42%; opacity: .42 }`。
+  ///
+  /// `inset: auto A B` ⇒ top 由 `bottom: -4%`（相对容器**高**）反推：
+  /// 顶边 = H + 4%H - 42%H = 62%H；左右各外扩 12% ⇒ 宽 124%W。
+  static Rect oceanWaveContainerRect(Size size) => Rect.fromLTWH(
+      -size.width * .12,
+      size.height * (1 + .04 - .42),
+      size.width * 1.24,
+      size.height * .42);
+
+  /// `.sleep-ocean-waves i { left: -8%; width: 116%; height: 52%; top: 0 / 20% / 42% }`
+  /// ——**这些百分比相对父盒**（`.sleep-ocean-waves`），不是视口，所以先乘容器的宽/高。
+  static const oceanWaveTop = [0.0, .20, .42];
+  static const oceanWaveDelay = [0.0, -4.0, -7.0];
+
+  /// `border: 1px solid rgba(81,168,202,.15)` × 容器 `opacity: .42` × 子元素各自的
+  /// `opacity`（`1` / `.7` / `.45`）——三者相乘才是描边真正的不透明度。
+  static const oceanWaveStrokeAlpha = .15 * .42;
+  static const oceanWaveChildOpacity = [1.0, .7, .45];
+
+  /// `sleepWaveDrift { to { transform: translateX(4%) translateY(-10px) scaleX(1.06) } }`。
+  ///
+  /// `transform-origin` 默认在元素中心：缩放不动中心，平移直接加在中心上。
+  /// `translateX(4%)` 的百分比同样是**元素自己**的宽。轴对齐椭圆被 `scaleX`
+  /// 拉完仍是轴对齐椭圆，所以结果能用矩形精确表示（描边宽度按 1px 画，不跟着拉）。
+  static Rect oceanWaveRect(Size size, int index, double t) {
+    final box = oceanWaveContainerRect(size);
+    final left = box.left + box.width * -.08;
+    final top = box.top + box.height * oceanWaveTop[index];
+    final width = box.width * 1.16;
+    final height = box.height * .52;
+    final centre = Offset(
+      left + width / 2 + width * .04 * t,
+      top + height / 2 - 10 * t,
+    );
+    return Rect.fromCenter(
+      center: centre,
+      width: width * (1 + .06 * t),
+      height: height,
+    );
+  }
+
+  // ── 云 ──────────────────────────────────────────────────────────────────
+  /// `.sleep-clouds i { position: absolute; left: -55vw; width: 50vw; height: 15vw }`
+  /// 加 `sleepCloud { from { translateX(0) } to { translateX(170vw) } }`
+  /// ⇒ 横向从 **-55vw 走到 115vw**。
+  static const cloudTop = [.18, .55, .76];
+  static const cloudWidth = [.50, .68, .44];
+  static const cloudHeight = .15;
+  static const cloudDuration = [26.0, 34.0, 29.0];
+  static const cloudDelay = [0.0, -12.0, -21.0];
+  static double cloudLeftAt(Size size, double p) =>
+      size.width * (-.55 + 1.70 * p);
+
+  // ── 萤火 ────────────────────────────────────────────────────────────────
+  /// `.sleep-fireflies i:nth-child(1..10)` 逐条列举；`:nth-child(n+11)` 共用
+  /// `left: 52%; top: 54%; animation-delay: -3.5s`，所以第 11–14 只**严格重叠**
+  /// （相位也相同），实际可见 11 只。**原型如此，不是笔误**，照抄。
+  static const fireflyLeft = [
+    8.0, 18.0, 28.0, 38.0, 48.0, 58.0, 68.0, 78.0, 88.0, 93.0, //
+    52.0, 52.0, 52.0, 52.0,
+  ];
+  static const fireflyTop = [
+    25.0, 72.0, 44.0, 82.0, 31.0, 66.0, 17.0, 78.0, 42.0, 88.0, //
+    54.0, 54.0, 54.0, 54.0,
+  ];
+  static const fireflyDelay = [
+    0.0, -2.0, -5.0, -1.0, -3.0, -6.0, -4.0, -2.5, -5.5, -1.5, //
+    -3.5, -3.5, -3.5, -3.5,
+  ];
+
+  /// `.sleep-fireflies i { width: 3px; height: 3px }` ⇒ 半径 1.5。
+  static const fireflyRadius = 1.5;
+
+  /// `sleepFirefly { 0%, 100% { opacity: .15; translate(0,0) }
+  ///   45% { opacity: 1; translate(14px, -24px) }
+  ///   70% { opacity: .4; translate(-9px, -12px) } }`——三段线性插值。
+  static double fireflyOpacityAt(double p) {
+    if (p < .45) return .15 + .85 * easeInOut(p / .45);
+    if (p < .70) return 1 - .6 * ((p - .45) / .25);
+    return .4 - .25 * easeInOut((p - .70) / .30);
+  }
+
+  static Offset fireflyShiftAt(double p) {
+    if (p < .45) {
+      final k = easeInOut(p / .45);
+      return Offset(14 * k, -24 * k);
+    }
+    if (p < .70) {
+      final k = (p - .45) / .25;
+      return Offset.lerp(const Offset(14, -24), const Offset(-9, -12), k)!;
+    }
+    final k = easeInOut((p - .70) / .30);
+    return Offset.lerp(const Offset(-9, -12), Offset.zero, k)!;
+  }
+
+  // ── 银河 ────────────────────────────────────────────────────────────────
+  /// `.sleep-scene-galaxy .sleep-galaxy-band { inset: -22% -45%; transform: rotate(-24deg) }`
+  /// ⇒ 宽 = W(1 + 90%) = 190%W、高 = H(1 + 44%) = 144%H、左上角 (-45%W, -22%H)。
+  static Rect galaxyBandRect(Size size) => Rect.fromLTWH(-size.width * .45,
+      -size.height * .22, size.width * 1.90, size.height * 1.44);
+
+  /// `sleepGalaxy { to { transform: rotate(-19deg) scale(1.08); opacity: .7 } }`
+  /// 配 `alternate`：起点是基线的 `rotate(-24deg)`、`scale(1)`、`opacity: 1`。
+  static double galaxyAngleAt(double t) => (-24 + 5 * t) * math.pi / 180;
+  static double galaxyScaleAt(double t) => 1 + .08 * t;
+  static double galaxyFadeAt(double t) => 1 - .30 * t;
+
+  // ── 雨丝 ────────────────────────────────────────────────────────────────
+  /// `.sleep-rain-lines i:nth-child(1..14)` 逐条列举 `left` 与 `animation-delay`；
+  /// `:nth-child(n+15)` 共用 `left: 50%; animation-delay: -2s`。
+  /// 共 18 条（原型 `Array.from({ length: 18 })`），后 4 条同样重叠。
+  static const rainLeft = [
+    .04, .11, .18, .25, .32, .39, .46, .53, .60, .67, .74, .81, .88, .95, //
+    .50, .50, .50, .50,
+  ];
+  static const rainDelay = [
+    0.0, -.8, -1.7, -.2, -2.1, -1.1, -.5, -2.3, -1.4, -.3, -1.9, -.9, -2.5,
+    -1.3, //
+    -2.0, -2.0, -2.0, -2.0,
+  ];
+
+  /// `.sleep-rain-lines i { top: -12%; width: 1px; height: 38px }` 加
+  /// `sleepRain { to { translateY(115vh) } }` ⇒ 纵向从 -12vh 走到 103vh。
+  static const rainHeight = 38.0;
+  static double rainTopAt(Size size, double p) =>
+      size.height * (-.12 + 1.15 * p);
+
+  /// `.sleep-rain-lines { opacity: .18 }` × 线色 `rgba(188,214,237,.8)`。
+  static const rainAlpha = .8 * .18;
+}
+
 /// 会话页的全屏夜景背景。
 ///
 /// **一个 60 秒循环的 `AnimationController` 驱动全部八套场景**，元素全画在
@@ -97,25 +376,14 @@ class _NightScenePainter extends CustomPainter {
   final double phase;
   final bool reduceMotion;
 
-  /// 某个元素在它自己那一轮里的进度（0–1）。
-  ///
-  /// `delay` 就是 CSS 的 `animation-delay`，**负数表示相位提前**（原型的
-  /// `animation-delay: -4s`），所以是减。
   double _progress(double seconds, {double delay = 0}) {
     if (reduceMotion) return 0;
-    final elapsed = phase * _kLoopSeconds - delay;
-    final v = (elapsed / seconds) % 1.0;
-    return v < 0 ? v + 1 : v;
+    return NightSceneGeometry.loopProgress(
+        t: phase * _kLoopSeconds, duration: seconds, delay: delay);
   }
 
-  /// CSS 的 `animation-direction: alternate`：往返一趟。
-  double _pingPong(double seconds, {double delay = 0}) {
-    final v = _progress(seconds, delay: delay);
-    return 1 - (2 * v - 1).abs();
-  }
-
-  /// CSS 的 `ease-in-out` 在三角波上的近似。
-  double _easeInOut(double t) => Curves.easeInOut.transform(t.clamp(0.0, 1.0));
+  double _pingPong(double seconds, {double delay = 0}) =>
+      NightSceneGeometry.pingPong(_progress(seconds, delay: delay));
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -143,11 +411,10 @@ class _NightScenePainter extends CustomPainter {
     }
   }
 
-  /// `.sleep-mode::before`：67px 一格的网点，`radial-gradient(… rgba(255,255,255,.7))
-  /// 0 1px` 叠 `opacity: .13`。乘出来是 alpha ≈ .091。
   void _paintTexture(Canvas canvas, Size size) {
-    const step = 67.0;
-    final paint = Paint()..color = const Color(0x17FFFFFF);
+    const step = NightSceneGeometry.textureStep;
+    final paint = Paint()
+      ..color = Colors.white.withValues(alpha: NightSceneGeometry.textureAlpha);
     for (var y = 0.0; y < size.height + step; y += step) {
       for (var x = 0.0; x < size.width + step; x += step) {
         canvas.drawCircle(Offset(x, y), 1, paint);
@@ -156,69 +423,66 @@ class _NightScenePainter extends CustomPainter {
   }
 
   /// `.sleep-scene-glow-one` / `-two`：两团大范围径向光晕。
-  ///
-  /// 原型给它们挂了 `filter: blur(4px)`——对这种尺寸的软径向渐变来说不足 1% 的
-  /// 视觉差别，这里不额外套一层模糊去凑那个数字。
-  ///
-  /// **一处如实的近似**：这几团的衰减范围不是与原型逐像素对齐的。CSS 的
-  /// `radial-gradient(circle, …)` 默认按 **farthest-corner** 算半径，而 Flutter 的
-  /// `RadialGradient.radius` 是相对**短边**的比例。盒子越扁，两者差得越多；这里沿用
-  /// `stops` 的百分比落在色带内的相对位置，所以色带形状对得上、外扩范围是近似的。
   void _paintGlows(Canvas canvas, Size size) {
-    final w = size.width;
     final moon = scene == NightScene.moon;
+    const layer = NightSceneGeometry.glowOpacity;
 
-    // glow-one：默认 70vw × 42vw / top -12vw right -10vw；
-    // `.sleep-scene-moon .sleep-scene-glow-one`：48vw 见方，top 8%（相对容器高）、
-    // right 7%（相对容器宽）——即盒的左上角在 45% 宽、8% 高处，也就是一轮月华。
+    // 月华：`.sleep-scene-moon .sleep-scene-glow-one` 换成 48vw 见方的一轮月华。
+    // 它的渐变多一档 `rgba(226,232,255,.27) 0 5%`——0–5% 是一块**平**的亮盘，
+    // 所以 stops 是 [0, .05, .14, .57]，前两档同色。
     final oneRect = moon
-        ? Rect.fromLTWH(w * .45, size.height * .08, w * .48, w * .48)
-        : Rect.fromLTWH(w + w * .10 - w * .70, -w * .12, w * .70, w * .42);
+        ? NightSceneGeometry.moonGlowRect(size)
+        : NightSceneGeometry.glowOneRect(size);
     canvas.drawRect(
       oneRect,
       Paint()
-        ..shader = RadialGradient(
-          colors: moon
-              ? const [
-                  Color(0x45E2E8FF),
-                  Color(0x2997A3DC),
-                  Color(0x00000000),
-                ]
-              : const [Color(0x426D7EE0), Color(0x00000000)],
-          stops: moon ? const [0, .14, .57] : const [0, .68],
-        ).createShader(oneRect),
+        ..shader = (moon
+                ? RadialGradient(
+                    colors: [
+                      const Color(0xFFE2E8FF).withValues(alpha: .27 * layer),
+                      const Color(0xFFE2E8FF).withValues(alpha: .27 * layer),
+                      const Color(0xFF97A3DC).withValues(alpha: .16 * layer),
+                      const Color(0xFF97A3DC).withValues(alpha: 0),
+                    ],
+                    stops: const [0, .05, .14, .57],
+                  )
+                : RadialGradient(
+                    colors: [
+                      const Color(0xFF6D7EE0).withValues(alpha: .26 * layer),
+                      const Color(0xFF6D7EE0).withValues(alpha: 0),
+                    ],
+                    stops: const [0, .68],
+                  ))
+            .createShader(oneRect),
     );
 
-    // glow-two：62vw × 48vw / bottom -20vw left -18vw。
-    final twoRect = Rect.fromLTWH(
-        -w * .18, size.height + w * .20 - w * .48, w * .62, w * .48);
+    final twoRect = NightSceneGeometry.glowTwoRect(size);
     canvas.drawRect(
       twoRect,
       Paint()
-        ..shader = const RadialGradient(
-          colors: [Color(0x291F7695), Color(0x00000000)],
-          stops: [0, .70],
+        ..shader = RadialGradient(
+          colors: [
+            const Color(0xFF1F7695).withValues(alpha: .16 * layer),
+            const Color(0xFF1F7695).withValues(alpha: 0),
+          ],
+          stops: const [0, .70],
         ).createShader(twoRect),
     );
   }
 
   /// `.sleep-stars i` 34 颗 + `sleepTwinkle`（中点 opacity .25、scale .65，4.5 秒）。
-  ///
-  /// 位置用的是原型 `SLEEP_STARS` 那两条取模公式，逐颗对得上。
   void _paintStars(Canvas canvas, Size size) {
-    for (var i = 0; i < 34; i++) {
-      final left = ((i * 37 + 11) % 97) / 100;
-      final top = ((i * 53 + 7) % 82) / 100;
-      final radius = i % 6 == 0 ? 1.0 : 0.5;
-      final delay = -((i % 9) * 0.43);
-
+    for (var i = 0; i < NightSceneGeometry.starCount; i++) {
+      final radius = NightSceneGeometry.starRadius(i);
       final twinkle = reduceMotion
           ? 0.0
-          : _easeInOut(1 - (2 * _progress(4.5, delay: delay) - 1).abs());
+          : NightSceneGeometry.starTwinkleAt(
+              _progress(4.5, delay: NightSceneGeometry.starDelay(i)));
       final opacity = 1 - 0.75 * twinkle;
       final scale = 1 - 0.35 * twinkle;
 
-      final centre = Offset(left * size.width, top * size.height);
+      final centre = Offset(NightSceneGeometry.starLeft(i) * size.width,
+          NightSceneGeometry.starTop(i) * size.height);
       // `box-shadow: 0 0 5px rgba(196,209,255,.6)`——用一层模糊圆代替。
       canvas.drawCircle(
         centre,
@@ -236,40 +500,33 @@ class _NightScenePainter extends CustomPainter {
     }
   }
 
-  /// `.sleep-meteors i` 三条 + `sleepMeteor`：0–82% 不可见，84% 亮点，91% 起淡出，
-  /// 整段沿 `translate(-58vw, 38vw) rotate(-32deg)` 划过去。
+  /// `.sleep-meteors i` 三条 + `sleepMeteor`。
   void _paintMeteors(Canvas canvas, Size size) {
-    const specs = [
-      (top: .08, left: .78, width: 110.0, duration: 8.5, delay: 0.0),
-      (top: .27, left: .92, width: 76.0, duration: 10.5, delay: 3.8),
-      (top: .15, left: .55, width: 58.0, duration: 12.0, delay: 7.1),
-    ];
+    for (var i = 0; i < NightSceneGeometry.meteorTop.length; i++) {
+      final p = _progress(NightSceneGeometry.meteorDuration[i],
+          delay: NightSceneGeometry.meteorDelay[i]);
+      if (!NightSceneGeometry.meteorVisibleAt(p)) continue;
 
-    for (final spec in specs) {
-      final p = _progress(spec.duration, delay: -spec.delay);
-      if (p < .82 || p > .91) continue;
-
-      // 82%→84% 亮起，84%→91% 淡出。
-      final opacity = p < .84 ? (p - .82) / .02 : (.91 - p) / .07;
-      // `@keyframes sleepMeteor` 只在 82% 与 91% 两处声明 `transform`，所以整段位移
-      // 是在这 9% 的区间里走完的（不是走到 100%）。可见窗口恰好也在 91% 处被 `opacity: 0`
-      // 截断，所以窗口内 `travel` 会走满 1，「整段划过去」成立。
-      final travel = ((p - .82) / .09).clamp(0.0, 1.0);
-      final origin = Offset(spec.left * size.width, spec.top * size.height);
+      final opacity = NightSceneGeometry.meteorOpacityAt(p);
+      final travel = NightSceneGeometry.meteorTravelAt(p);
+      final origin = Offset(NightSceneGeometry.meteorLeft[i] * size.width,
+          NightSceneGeometry.meteorTop[i] * size.height);
+      // `translate(-58vw, 38vw)`——两个分量都是 **vw**，所以都乘宽。
       final offset =
           Offset(-.58 * size.width * travel, .38 * size.width * travel);
 
       canvas.save();
       canvas.translate(origin.dx + offset.dx, origin.dy + offset.dy);
       canvas.rotate(-32 * math.pi / 180);
-      final rect = Rect.fromLTWH(0, -0.5, spec.width, 1);
+      final rect = Rect.fromLTWH(0, -0.5, NightSceneGeometry.meteorWidth[i], 1);
       canvas.drawRect(
         rect,
         Paint()
           ..shader = LinearGradient(
             colors: [
-              const Color(0x00000000),
-              const Color(0xD9E6EDFF).withValues(alpha: .85 * opacity),
+              const Color(0xFFE6EDFF).withValues(alpha: 0),
+              const Color(0xFFE6EDFF).withValues(
+                  alpha: NightSceneGeometry.meteorTrailAlpha * opacity),
             ],
           ).createShader(rect),
       );
@@ -283,34 +540,21 @@ class _NightScenePainter extends CustomPainter {
   /// 整个被忽略（不是叠加），写上去是一句看不见效果的空话。原型那两层的 `.5` / `.65`
   /// 是 CSS 的 `opacity:`，等价于把整层的 alpha 乘一遍。
   void _paintAurora(Canvas canvas, Size size) {
-    // i1：inset -8% -20% 42%，opacity .5；i2：inset 18% -8% -22%，opacity .65、
-    // delay -4、12 秒。
-    final bands = [
-      (top: -.08, bottom: .42, delay: 0.0, duration: 9.0, layer: .5),
-      (top: .18, bottom: -.22, delay: -4.0, duration: 12.0, layer: .65),
-    ];
-
-    for (final band in bands) {
-      final t = _easeInOut(_pingPong(band.duration, delay: band.delay));
-      // CSS 的 `inset: A B C D` 是 top / right / bottom / left，所以元素高
-      // `H(1 - top - bottom)`——`bottom` 是**从底边往上收**的内缩量，正数让盒子变矮。
-      // （原计划这里写成了 `+ bottom`，把两条带的相对高低整个颠倒了：
-      // i1 该是 .66H 却给成 1.50H，i2 该是 1.04H 却给成 .60H。）
-      final rect = Rect.fromLTWH(
-        -size.width * .20,
-        size.height * band.top,
-        size.width * 1.40,
-        size.height * (1 - band.top - band.bottom),
-      );
+    for (var i = 0; i < NightSceneGeometry.auroraDuration.length; i++) {
+      final t = NightSceneGeometry.easeInOut(_pingPong(
+          NightSceneGeometry.auroraDuration[i],
+          delay: NightSceneGeometry.auroraDelay[i]));
+      final rect = NightSceneGeometry.auroraBandRect(size, i);
+      final layer = NightSceneGeometry.auroraLayerOpacity[i];
 
       canvas.save();
       canvas.translate(rect.center.dx, rect.center.dy);
-      // `rotate(-8deg)` 起步，`sleepAurora` 再叠 `translate(8%,8%) skewX(-8deg)
-      // scale(1.08)`；这里把位移与缩放折进画布变换（`skewX` 在暗色渐变的观感里
-      // 与旋转叠加后看不出单独一档，略过）。
+      // 基线 `rotate(-8deg)`。`sleepAurora` 的 `translate(8%,8%)` 相对**色带自己**，
+      // 加在已经对好中心的画布上就是色带内的百分比。
       canvas.rotate((-8) * math.pi / 180);
-      canvas.translate(size.width * .08 * t, size.height * .08 * t);
-      canvas.scale(1 + .08 * t);
+      canvas.translate(rect.width * NightSceneGeometry.auroraTranslate * t,
+          rect.height * NightSceneGeometry.auroraTranslate * t);
+      canvas.scale(1 + NightSceneGeometry.auroraScale * t);
 
       final r = Rect.fromCenter(
           center: Offset.zero, width: rect.width, height: rect.height);
@@ -321,10 +565,10 @@ class _NightScenePainter extends CustomPainter {
             begin: const Alignment(-.42, -.96),
             end: const Alignment(.42, .42),
             colors: [
-              const Color(0x0047DCBD),
-              const Color(0xFF47DCBD).withValues(alpha: .30 * band.layer),
-              const Color(0xFF6671ED).withValues(alpha: .24 * band.layer),
-              const Color(0x006671ED),
+              const Color(0xFF47DCBD).withValues(alpha: 0),
+              const Color(0xFF47DCBD).withValues(alpha: .30 * layer),
+              const Color(0xFF6671ED).withValues(alpha: .24 * layer),
+              const Color(0xFF6671ED).withValues(alpha: 0),
             ],
             stops: const [.22, .38, .58, .72],
           ).createShader(r)
@@ -336,49 +580,42 @@ class _NightScenePainter extends CustomPainter {
 
   /// `.sleep-ocean-waves`：三条描边椭圆，`sleepWaveDrift` 往返。
   void _paintOceanWaves(Canvas canvas, Size size) {
-    const specs = [
-      (top: 0.0, opacity: .42, delay: 0.0),
-      (top: .20, opacity: .42 * .7, delay: -4.0),
-      (top: .42, opacity: .42 * .45, delay: -7.0),
-    ];
-
-    for (final spec in specs) {
-      final t = _easeInOut(_pingPong(10, delay: spec.delay));
-      final rect = Rect.fromLTWH(
-        -size.width * .08 + size.width * 1.16 * .04 * t,
-        size.height * .58 + size.height * .42 * spec.top - 10 * t,
-        size.width * 1.16 * (1 + .06 * t),
-        size.height * .42 * .52,
-      );
+    for (var i = 0; i < NightSceneGeometry.oceanWaveTop.length; i++) {
+      final t = NightSceneGeometry.easeInOut(
+          _pingPong(10, delay: NightSceneGeometry.oceanWaveDelay[i]));
+      // 描边色 `rgba(81,168,202,.15)` × 容器 `.42` × 子元素各档，三者相乘。
+      final alpha = NightSceneGeometry.oceanWaveStrokeAlpha *
+          NightSceneGeometry.oceanWaveChildOpacity[i];
       canvas.drawOval(
-        rect,
+        NightSceneGeometry.oceanWaveRect(size, i, t),
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1
-          ..color = const Color(0x2651A8CA).withValues(alpha: spec.opacity),
+          ..color = const Color(0xFF51A8CA).withValues(alpha: alpha),
       );
     }
   }
 
-  /// `.sleep-clouds i` 三朵，`sleepCloud` 从左穿到右（0 → 170vw）。
+  /// `.sleep-clouds i` 三朵，`sleepCloud` 从左穿到右（-55vw → 115vw）。
   void _paintClouds(Canvas canvas, Size size) {
-    const specs = [
-      (top: .18, width: .50, duration: 26.0, delay: -0.0),
-      (top: .55, width: .68, duration: 34.0, delay: -12.0),
-      (top: .76, width: .44, duration: 29.0, delay: -21.0),
-    ];
-
-    for (final spec in specs) {
-      final p = _progress(spec.duration, delay: spec.delay);
-      final left = -size.width * .55 + size.width * 1.70 * p;
-      final rect = Rect.fromLTWH(left, size.height * spec.top,
-          size.width * spec.width, size.width * .15);
+    for (var i = 0; i < NightSceneGeometry.cloudTop.length; i++) {
+      final p = _progress(NightSceneGeometry.cloudDuration[i],
+          delay: NightSceneGeometry.cloudDelay[i]);
+      final rect = Rect.fromLTWH(
+        NightSceneGeometry.cloudLeftAt(size, p),
+        size.height * NightSceneGeometry.cloudTop[i],
+        size.width * NightSceneGeometry.cloudWidth[i],
+        size.width * NightSceneGeometry.cloudHeight,
+      );
       canvas.drawRect(
         rect,
         Paint()
-          ..shader = const RadialGradient(
-            colors: [Color(0x1AC8D6EE), Color(0x00000000)],
-            stops: [0, .68],
+          ..shader = RadialGradient(
+            colors: [
+              const Color(0xFFC8D6EE).withValues(alpha: .10),
+              const Color(0xFFC8D6EE).withValues(alpha: 0),
+            ],
+            stops: const [0, .68],
           ).createShader(rect)
           // `.sleep-clouds i { filter: blur(8px) }` → σ≈4。
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
@@ -387,60 +624,21 @@ class _NightScenePainter extends CustomPainter {
   }
 
   /// `.sleep-fireflies i` 14 只，`sleepFirefly` 7 秒。
-  ///
-  /// 原型把前 10 只的位置与延迟逐个列了出来，其余四只共用 `left: 52%; top: 54%`；
-  /// 这里照抄那份列表，第 11–14 只沿用 CSS 的共用值。
   void _paintFireflies(Canvas canvas, Size size) {
-    const spots = [
-      (left: 8.0, top: 25.0, delay: -0.0),
-      (left: 18.0, top: 72.0, delay: -2.0),
-      (left: 28.0, top: 44.0, delay: -5.0),
-      (left: 38.0, top: 82.0, delay: -1.0),
-      (left: 48.0, top: 31.0, delay: -3.0),
-      (left: 58.0, top: 66.0, delay: -6.0),
-      (left: 68.0, top: 17.0, delay: -4.0),
-      (left: 78.0, top: 78.0, delay: -2.5),
-      (left: 88.0, top: 42.0, delay: -5.5),
-      (left: 93.0, top: 88.0, delay: -1.5),
-      (left: 52.0, top: 54.0, delay: -3.5),
-      (left: 52.0, top: 54.0, delay: -3.5),
-      (left: 52.0, top: 54.0, delay: -3.5),
-      (left: 52.0, top: 54.0, delay: -3.5),
-    ];
-
-    for (final spot in spots) {
-      final p = _progress(7, delay: spot.delay);
-      // `sleepFirefly`：0/100% opacity .15 + 原点；45% opacity 1 + (14,-24)；
-      // 70% opacity .4 + (-9,-12)。三段线性插值。
-      final double opacity;
-      final Offset shift;
-      if (p < .45) {
-        final k = _easeInOut(p / .45);
-        opacity = .15 + .85 * k;
-        shift = Offset(14 * k, -24 * k);
-      } else if (p < .70) {
-        final k = (p - .45) / .25;
-        opacity = 1 - .6 * k;
-        shift = Offset.lerp(const Offset(14, -24), const Offset(-9, -12), k)!;
-      } else {
-        final k = _easeInOut((p - .70) / .30);
-        opacity = .4 - .25 * k;
-        shift = Offset.lerp(const Offset(-9, -12), Offset.zero, k)!;
-      }
-
-      // 最后四只共用同一格：`left: 52%; top: 54%; animation-delay: -3.5s` 逐字相同，
-      // 是原型 CSS `nth-child(n+11)` 的原样。`_progress` 是纯函数，相位也一样，
-      // 所以这四只严格叠在一起、透明度也相同——**实际可见 11 只，不是 14 只**。
-      // 这是原型如此，不是笔误：照抄，不替它挪位置、也不「修好」它。
+    for (var i = 0; i < NightSceneGeometry.fireflyLeft.length; i++) {
+      final p = _progress(7, delay: NightSceneGeometry.fireflyDelay[i]);
+      final shift = NightSceneGeometry.fireflyShiftAt(p);
       final centre = Offset(
-        spot.left / 100 * size.width + shift.dx,
-        spot.top / 100 * size.height + shift.dy,
+        NightSceneGeometry.fireflyLeft[i] / 100 * size.width + shift.dx,
+        NightSceneGeometry.fireflyTop[i] / 100 * size.height + shift.dy,
       );
       canvas.drawCircle(
         centre,
-        1.5,
+        NightSceneGeometry.fireflyRadius,
         Paint()
-          ..color = const Color(0xFFD7E982).withValues(alpha: opacity)
+          ..color = const Color(0xFFD7E982)
+              .withValues(alpha: NightSceneGeometry.fireflyOpacityAt(p))
+          // `box-shadow: 0 0 10px #b9d75b` → σ≈5。
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
       );
     }
@@ -448,18 +646,16 @@ class _NightScenePainter extends CustomPainter {
 
   /// `.sleep-galaxy-band`：一条斜带，`sleepGalaxy` 往返。
   void _paintGalaxy(Canvas canvas, Size size) {
-    final t = _easeInOut(_pingPong(16));
+    final t = NightSceneGeometry.easeInOut(_pingPong(16));
     // `sleepGalaxy { to { opacity: .7 } }` 配 `alternate`：1 → .7 → 1。
     // 同样**折进渐变色**，设了 shader 之后 `Paint.color` 是被忽略的。
-    final fade = 1 - .30 * t;
-    final rect = Rect.fromLTWH(-size.width * .45, -size.height * .22,
-        size.width * 1.90, size.height * 1.44);
+    final fade = NightSceneGeometry.galaxyFadeAt(t);
+    final rect = NightSceneGeometry.galaxyBandRect(size);
 
     canvas.save();
     canvas.translate(rect.center.dx, rect.center.dy);
-    // `rotate(-24deg)` → `rotate(-19deg) scale(1.08)`。
-    canvas.rotate(((-24) + 5 * t) * math.pi / 180);
-    canvas.scale(1 + .08 * t);
+    canvas.rotate(NightSceneGeometry.galaxyAngleAt(t));
+    canvas.scale(NightSceneGeometry.galaxyScaleAt(t));
     final r = Rect.fromCenter(
         center: Offset.zero, width: rect.width, height: rect.height);
     canvas.drawRect(
@@ -469,11 +665,11 @@ class _NightScenePainter extends CustomPainter {
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
           colors: [
-            const Color(0x009671E0),
+            const Color(0xFF9671E0).withValues(alpha: 0),
             const Color(0xFF9671E0).withValues(alpha: .05 * fade),
             const Color(0xFF6589DE).withValues(alpha: .18 * fade),
             const Color(0xFFCC9AE6).withValues(alpha: .06 * fade),
-            const Color(0x00CC9AE6),
+            const Color(0xFFCC9AE6).withValues(alpha: 0),
           ],
           stops: const [.32, .40, .50, .62, .68],
         ).createShader(r)
@@ -484,26 +680,28 @@ class _NightScenePainter extends CustomPainter {
   }
 
   /// `.sleep-rain-lines i` 18 条，`sleepRain` 2.8 秒，整层 `opacity: .18`。
-  ///
-  /// 原型逐个列了前 14 条的 `left`（4%/7% 递增到 95%）与各自的延迟；这里沿用同一个
-  /// 递增规律给出 `left`，延迟用等距公式代替逐条列举——2.8 秒一轮的雨丝看不出
-  /// 那条延迟差几十毫秒。
   void _paintRain(Canvas canvas, Size size) {
-    for (var i = 0; i < 18; i++) {
-      final left = (i < 14 ? 4 + i * 7 : 50) / 100;
-      final delay = -((i * 0.7) % 2.8);
-      final p = _progress(2.8, delay: delay);
-      final top = -0.12 + p * 1.15;
-      final rect = Rect.fromLTWH(left * size.width, top * size.height, 1, 38);
+    for (var i = 0; i < NightSceneGeometry.rainLeft.length; i++) {
+      final p = _progress(2.8, delay: NightSceneGeometry.rainDelay[i]);
+      final rect = Rect.fromLTWH(
+        NightSceneGeometry.rainLeft[i] * size.width,
+        NightSceneGeometry.rainTopAt(size, p),
+        1,
+        NightSceneGeometry.rainHeight,
+      );
       canvas.drawRect(
         rect,
         Paint()
-          // 整层 `.18` 的 opacity 折进这一条渐变里：`rgba(188,214,237,.8) × .18`。
+          // 整层 `.18` 的 opacity 与线色自带的 `.8` 一起折进这条渐变里。
           // 设了 shader 之后 `Paint.color` 会被忽略，那样写等于没写。
-          ..shader = const LinearGradient(
+          ..shader = LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0x00BCD5ED), Color(0x25BCD5ED)],
+            colors: [
+              const Color(0xFFBCD5ED).withValues(alpha: 0),
+              const Color(0xFFBCD5ED)
+                  .withValues(alpha: NightSceneGeometry.rainAlpha),
+            ],
           ).createShader(rect),
       );
     }
