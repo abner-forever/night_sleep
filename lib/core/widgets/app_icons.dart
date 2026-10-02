@@ -75,6 +75,23 @@ class AppIcons {
       '<path d="M6.5 7l.8 12.1a1 1 0 0 0 1 .9h7.4a1 1 0 0 0 1-.9L17.5 7"/>'
       '<path d="M10 11v6"/><path d="M14 11v6"/>';
 
+  // 长按结束：一只按在圆弧上的手，逐字取自原型 `icons.tsx` 的 `IconHoldEnd`。
+  static const _holdEnd = '<path d="M8.5 11V7.5a1.5 1.5 0 0 1 3 0V11"/>'
+      '<path d="M11.5 10V6.5a1.5 1.5 0 0 1 3 0V11"/>'
+      '<path d="M14.5 10V8a1.5 1.5 0 0 1 3 0v5"/>'
+      '<path d="M8.5 10.5 7 9.2a1.5 1.5 0 0 0-2.1 2.1l4.2 6.2A4 4 0 0 0 12.4 19H14a3.5 3.5 0 0 0 3.5-3.5V13"/>'
+      '<path d="M5 4.5A9 9 0 0 1 19 4"/>';
+
+  // 静音喇叭，逐字取自原型 `icons.tsx` 的 `IconSoundOff`。
+  //
+  // **不借 `_stop`（播放控制里的停止方块）凑数**：语义对不上，正是偏差 #12 当初
+  // 骂过的那种「借一个形状差不多的图标」。
+  static const _soundOff = '<path d="M11 5 6.5 9H3v6h3.5l2.1 1.9"/>'
+      '<path d="M11 12V5"/>'
+      '<path d="m15 10 6 6"/>'
+      '<path d="m21 10-6 6"/>'
+      '<path d="m3 3 18 18"/>';
+
   // Filled glyphs the prototype swaps in for the active tab. Only three tabs
   // have a filled counterpart; Settings falls back to the stroked icon.
   static const _moonFilled =
@@ -255,6 +272,14 @@ class AppIcons {
   static Widget trash(
           {double size = 24, Color? color, double strokeWidth = 1.6}) =>
       glyph(_trash, size: size, color: color, strokeWidth: strokeWidth);
+
+  static Widget holdEnd(
+          {double size = 24, Color? color, double strokeWidth = 1.6}) =>
+      glyph(_holdEnd, size: size, color: color, strokeWidth: strokeWidth);
+
+  static Widget soundOff(
+          {double size = 24, Color? color, double strokeWidth = 1.6}) =>
+      glyph(_soundOff, size: size, color: color, strokeWidth: strokeWidth);
 
   /// Filled tab glyph for [id]; returns null when the design has no filled
   /// variant, and the caller falls back to the stroked icon.
