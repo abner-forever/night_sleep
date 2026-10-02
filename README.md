@@ -310,14 +310,15 @@ Bundle ID、Android application ID、签名和发布账号保持 Flutter 默认�
 - `dart format .` → 只有 `test/pages_widget_test.dart` 有**既存**的格式漂移（不属于本轮改动，
   已 `git checkout` 还原、未提交）；本轮改动的文件本身无需格式化
 - `flutter analyze` → **No issues found**
-- `flutter test` → **399/399 通过**（v3.0 那次的 337 之后，v3.1 与 v3.2 累计新增 62 条）。本轮
+- `flutter test` → **400/400 通过**（v3.0 那次的 337 之后，v3.1 与 v3.2 累计新增 63 条）。本轮
   新增/补测：夜景几何 19（`test/night_backdrop_test.dart` 16 + `test/night_scene_test.dart` 3，
   含「流星只在 `meteor` / `moon` / `galaxy` 三场景可见」这条**订正**）、月亮标记 6
   （`test/sleep_moon_mark_test.dart`，含「丢弃 `<filter>` 后不打印 unhandled element」）、
   会话页夜景 widget 7（`test/session_night_widgets_test.dart`：8 种场景、`disableAnimations`
-  停表、弹窗九宫格与四档时长、**浅色应用主题下弹窗内仍是深色令牌**）、长按按钮 6
+  停表、弹窗九宫格与四档时长、**浅色应用主题下弹窗内仍是深色令牌**）、长按按钮 7
   （`test/hold_to_finish_button_test.dart`，含
-  「**开启「减弱动态效果」时 1.5 秒守卫仍按真实时长计时**」这条**行为修复**的回归）、
+  「**开启「减弱动态效果」时 1.5 秒守卫仍按真实时长计时**」这条**行为修复**的回归、
+  「**按满触发后指针被取消，再短按仍给提示**」这条 `onPointerCancel` 复位的回归）、
   v4→v5 迁移 4（`test/schema_migration_test.dart` 的 `v4 → v5` 组）、场景持久化
   （`test/session_repository_test.dart`）与 `SleepSession.elapsedClockAt`
   （`test/sleep_session_test.dart`）；会话页自身补到 33 条
