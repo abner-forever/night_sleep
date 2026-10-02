@@ -87,7 +87,7 @@ Future<void> syncAllReminders(
   await syncSessionAlarm(database, scheduler);
 }
 
-/// 让**会话闹钟**与「今晚有没有会话、闹钟开着没」保持一致。
+/// 让**会话闹钟**与「今晚有没有会话、闹钟开着没、调度器能不能排」保持一致。
 ///
 /// 与 [reconcileReminders] 里那套日常提醒**分开推导**，因为两者的生命周期不同：
 /// 日常提醒由偏好驱动，会话闹钟由「今晚有没有会话」驱动。
@@ -98,7 +98,19 @@ Future<void> syncSessionAlarm(
 ) async {
   final session = await database.activeSession();
 
-  if (session != null && session.alarmEnabled) {
+  // **能不能排也要纳入推导。** `LocalReminderScheduler` 的 `scheduleOnce`/`cancel`
+  // 写死了 `if (!_ready) return;`：某次冷启动 `initialize()` 失败（例如取不到可用
+  // 时区）时，`permission()` 返回 `unsupported`，9003 会被**静默排不上**——而库里
+  // `alarmEnabled` 仍是 `true`、界面照旧显示「起床闹钟已开 · 还有 X」。那正是规格
+  // 明令消灭的「开关写着开却不响」的假状态。
+  //
+  // 只认 `unsupported`，不写 `!= granted`：与 `reconcileReminders` 同一条理由——
+  // `unsupported` 可能是**偶发**的初始化失败，把它当成「用户没授权」会去动偏好；
+  // 这里也不动偏好，只是在排不上时改为只取消 9003，不声称它已排上。
+  final canSchedule =
+      await scheduler.permission() != ReminderPermission.unsupported;
+
+  if (session != null && session.alarmEnabled && canSchedule) {
     // **今晚的闹钟胜过日常起床提醒。** 两者很容易被设成同一个钟点，排在一起
     // 用户会在同一分钟收到两条通知。起床提醒说的是「记录一下昨晚」，而这件事
     // 会话已经替你做了。就寝提醒不受影响——「该睡了」与闹钟无关。

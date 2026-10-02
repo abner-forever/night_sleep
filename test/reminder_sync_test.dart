@@ -15,6 +15,10 @@ class _FakeScheduler extends ReminderScheduler {
   /// 会话闹钟最近一次被设成什么（`null` = 被排掉了）。
   ReminderRequest? lastAlarm;
 
+  /// `scheduleOnce` 收到的会话闹钟请求，按序。让「不排 9003」有非空落点：
+  /// `lastAlarm` 的初值就是 `null`，单看它分辨不出「没调用」与「被排掉了」。
+  final scheduledAlarms = <ReminderRequest>[];
+
   /// 日常起床提醒被显式让位过几次。
   final yieldedWake = <int>[];
 
@@ -40,8 +44,10 @@ class _FakeScheduler extends ReminderScheduler {
   Future<void> schedule(ReminderRequest request) async {}
 
   @override
-  Future<void> scheduleOnce(ReminderRequest request) async =>
-      lastAlarm = request;
+  Future<void> scheduleOnce(ReminderRequest request) async {
+    scheduledAlarms.add(request);
+    lastAlarm = request;
+  }
 
   @override
   Future<void> sync(ReminderPlan plan) async => lastSynced = plan;
@@ -198,6 +204,27 @@ void main() {
           reason: '起床提醒让位给闹钟');
       expect(scheduler.cancelled, contains(ReminderScheduler.wakeAlarmId),
           reason: '9003 先取消再排，幂等');
+    });
+
+    /// **排不上就不排、也不假装排上了。**
+    ///
+    /// `LocalReminderScheduler` 的 `scheduleOnce` 在 `!_ready` 时静默 no-op，
+    /// 而 `permission()` 此时返回 `unsupported`。少了「能不能排」这一项推导，
+    /// 会话活跃且闹钟开着就会走排 9003 的分支：库里 `alarmEnabled` 仍是 true、
+    /// 界面显示「已开」，实际什么都不会响——规格明令消灭的假状态。
+    /// 把 `canSchedule` 那项判断删掉，这条必须变红。
+    test('调度器没就绪（unsupported）时不排 9003，也不让 9002 让位', () async {
+      await seedActiveSession(alarmEnabled: true);
+      await seedBothOn();
+
+      final scheduler = _FakeScheduler(ReminderPermission.unsupported);
+      await syncSessionAlarm(database, scheduler);
+
+      expect(scheduler.scheduledAlarms, isEmpty,
+          reason: '排不上还照排，界面会显示「已开」却什么都不会响');
+      expect(scheduler.yieldedWake, isEmpty, reason: '排不上就不该让 9002 让位，否则两条都不响');
+      expect(scheduler.cancelled, contains(ReminderScheduler.wakeAlarmId),
+          reason: '不能排时必须走 syncAlarm(null)，把可能残留的 9003 排掉');
     });
 
     /// 权限被撤销时 `reconcileReminders` 会在回收偏好后提前 `return`——那条路径

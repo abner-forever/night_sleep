@@ -388,9 +388,14 @@ class LocalReminderScheduler extends ReminderScheduler {
           priority: Priority.high,
         ),
         iOS: DarwinNotificationDetails(
-          // 起床闹钟要能穿透专注模式。`interrupt` 级别是**刻意的上限**：
-          // `critical` 需要 Apple 单独批准一项 entitlement，本项目没有。
-          // 界面上如实写着「强度不如系统闹钟」。
+          // 起床闹钟**请求** `timeSensitive`，但当前产物并不能真正穿透专注模式：
+          // 工程里没有配套的 Time Sensitive Notifications entitlement
+          // （`ios/` 下没有任何 `.entitlements`，`macos/Runner/*.entitlements`
+          // 也没有 `com.apple.developer.usernotifications.time-sensitive`），
+          // 按 Apple 的规则，缺这个键时该级别会被系统降级。要真正拿到这个能力，
+          // 需要加 entitlement 并在 App ID 上开启该能力，且要真机实测。
+          // `critical` 更强，但需要 Apple 单独批准，本项目也没有；界面上如实写着
+          // 「强度不如系统闹钟」。
           interruptionLevel: InterruptionLevel.timeSensitive,
           presentAlert: true,
           presentBanner: true,
