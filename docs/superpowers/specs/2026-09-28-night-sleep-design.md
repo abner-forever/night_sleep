@@ -1,6 +1,6 @@
 # 夜深：Flutter 睡眠记录 App 项目规格说明书
 
-> 版本：3.0（2026-09-30）
+> 版本：3.1（2026-10-02）
 > 用途：本项目的实现与验收基准。
 > 设计原型：[Figma Make：睡眠记录 APP 设计](https://www.figma.com/make/hKbqp1qjtcNQmmiDtVvXpk/%E7%9D%A1%E7%9C%A0%E8%AE%B0%E5%BD%95APP%E8%AE%BE%E8%AE%A1)
 > 变更史见 [CHANGELOG.md](../../../CHANGELOG.md)
@@ -138,7 +138,7 @@
 | 就寝/起床提醒（原型只有装饰性开关） | `lib/core/platform/reminders.dart`（权限、时区与调度，含 `nextOccurrence` 的夏令时口径）、`lib/app/reminder_sync.dart`（启动全量重排与「偏好 → 计划」映射） |
 | 会话起床闹钟（一次性，原型无对应） | `ReminderScheduler.wakeAlarmId`（9003）与 `scheduleOnce`（`lib/core/platform/reminders.dart`，**不传** `matchDateTimeComponents`）；「有无会话 → 排/取消」在 `lib/app/reminder_sync.dart` 的 `syncSessionAlarm`；投递强度文案常量 `wakeAlarmDeliveryNote` |
 | 通知权限闸口（设置页与会话页共用） | `lib/app/reminder_permission.dart`（`ensureNotificationPermission`） |
-| 睡眠会话页 | `lib/features/session/presentation/sleep_session_page.dart`（路由 `/sleep/session`）；设定抽屉 `presentation/widgets/session_drawer.dart`、日晷圆环 `widgets/wake_dial.dart`、就地评星 `sheets/quality_rating_sheet.dart` |
+| 睡眠会话页 | `lib/features/session/presentation/sleep_session_page.dart`（路由 `/sleep/session`）；常驻设定区 `presentation/widgets/session_settings_section.dart`、白噪音展开区 `presentation/widgets/session_noise_section.dart`、长按结束按钮 `presentation/widgets/hold_to_finish_button.dart`、日晷圆环 `widgets/wake_dial.dart`、就地评星 `sheets/quality_rating_sheet.dart` |
 | 会话状态与仓库 | 领域模型 `lib/features/sleep/domain/sleep_session.dart`；读写 `lib/features/sleep/data/session_repository.dart`（`start` / `update` / `finish` / `discard`） |
 | 会话白噪音（比页面长命） | `lib/app/noise_session.dart`（`noiseSessionControllerProvider` 持有播放器与倒计时） |
 | 回顾页与手动补录（原型无对应） | `lib/features/log/presentation/review_page.dart`（换一晚选择器 `review_night_picker.dart`）、`log_new_page.dart`（`/log/new`） |
@@ -369,9 +369,10 @@
 | 数据 | 时长守门：0 时长与 > 24h **不落库**、不写记录、会话仍在 | ✅ `test/session_repository_test.dart`、`test/sleep_session_test.dart`（结束守门组） |
 | 通知 | `scheduleOnce` 排出 9003 且走**一次性**通道；`sync` **不动** 9003（变异验证）；会话活跃且闹钟开启时排 9003 并让日常起床提醒 `9002` 让位、就寝提醒 `9001` 不受影响；无会话/闹钟关着时 9003 被排掉、`9002` 排回；排定时刻复用 `nextOccurrence`（跨午夜与跨夏令时落在同一墙上时刻） | ✅ `test/reminder_scheduler_test.dart`（起床闹钟组、`nextOccurrence` 组）、`test/reminder_sync_test.dart`（会话闹钟组 6 条） |
 | 数据 | 「鼾声/梦话记录」**只有一个真相来源**：会话页开关写的是 `AppSettings.soundRecordingEnabled` | ✅ `test/sleep_session_page_test.dart`（拨动鼾声开关写回设置） |
-| Widget | 会话页：点摘要条展开抽屉（四组设定都在）；圆环进度随已过时长变化、超过起床时间显示「已超过…」；闹钟关闭时报自然醒；闹钟开着时报剩余时间**并带上后台投递的如实标注**（文案缺失必红）；鼾声开关带「尚未接入录音」说明、白噪音区注明后台播放未接入；闹钟开关被拒时回弹且不写入会话 | ✅ `test/sleep_session_page_test.dart` |
+| Widget | 会话页：设定开关常驻、无需展开即可拨动；点摘要条展开白噪音区（八宫格/音量/定时/说明都在）；圆环进度随已过时长变化、超过起床时间显示「已超过…」；闹钟关闭时报自然醒；闹钟开着时报剩余时间**并带上后台投递的如实标注**（文案缺失必红）；鼾声开关带「尚未接入录音」说明、白噪音区注明后台播放未接入；闹钟开关被拒时回弹且不写入会话 | ✅ `test/sleep_session_page_test.dart` |
+| Widget | 会话页结束方式：**按住 1.5 秒、圆环填满才结束**；未按满松手不结束且无副作用；短按不生效并给出提示；按下即开始（不必等长按超时） | ✅ `test/sleep_session_page_test.dart`（结束按钮组） |
 | Widget | 会话页评星：结束先问一次星级；跳过 → 落库记录质量为 `null` 且**没有评分**；评了 → 质量写进记录；时长越界不落库并给出手动补录/丢弃两个出口 | ✅ `test/sleep_session_page_test.dart`（结束流程组） |
-| Widget | 会话白噪音：播放器收到选中、倒计时到点停掉并清空会话选中值；**收起抽屉不停**、**pop 掉会话页仍继续响**；会话里的定时只有 15/30/45/60、没有「不限」与 90m | ✅ `test/sleep_session_page_test.dart` |
+| Widget | 会话白噪音：播放器收到选中、倒计时到点停掉并清空会话选中值；**收起展开区不停**、**pop 掉会话页仍继续响**；会话里的定时只有 15/30/45/60、没有「不限」与 90m | ✅ `test/sleep_session_page_test.dart` |
 | Widget | 回顾页：默认最近一条真实记录；只有演示数据时不可补充并说明；无记录空状态；记录头可换一晚且**演示记录不出现**；未评分的记录星级一颗都不选中；保存写回**同一条 id**、不改起止时刻、**不清空已有阶段** | ✅ `test/review_page_test.dart`（10 条） |
 | Widget | 首页：无会话时主按钮是「开始睡眠」；有会话时显示「正在睡眠」卡且可回到会话页；`LogPage` 恒以 `Subpage` 呈现（Tab 分支已删）、保存后 `pop()`、回顾页底部入口真的落在 `/log/new` | ✅ `test/pages_widget_test.dart` |
 | 单元/配置 | 显示名：iOS plist 的 `CFBundleDisplayName` 为 `夜深`；macOS plist 有该键；web 的 `title`、`apple-mobile-web-app-title`、manifest 的 `name` / `short_name` 均为 `夜深`；且 `PRODUCT_NAME` / `CFBundleName` **仍为 `night_sleep`**（反向护栏，防误伤构建路径） | ✅ `test/app_display_name_test.dart`（5 条） |
