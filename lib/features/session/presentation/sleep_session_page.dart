@@ -13,15 +13,16 @@ import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_basics.dart';
 import '../../../core/widgets/app_icons.dart';
 import '../../../core/widgets/app_sheet.dart';
-import '../../../core/widgets/atmosphere.dart';
-import '../../../core/widgets/glass_surface.dart';
 import '../../sleep/data/session_repository.dart';
 import '../../sleep/domain/sleep_session.dart';
+import 'night_scene.dart';
+import 'night_style.dart';
 import 'sheets/quality_rating_sheet.dart';
 import 'widgets/hold_to_finish_button.dart';
-import 'widgets/session_noise_section.dart';
-import 'widgets/session_settings_section.dart';
-import 'widgets/wake_dial.dart';
+import 'widgets/night_backdrop.dart';
+import 'widgets/night_scene_picker.dart';
+import 'widgets/session_events_card.dart';
+import 'widgets/sleep_moon_mark.dart';
 
 /// 睡眠会话页。
 ///
@@ -54,10 +55,7 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage> {
   Timer? _timer;
   late DateTime _now = widget.now ?? DateTime.now();
 
-  /// 白噪音展开区开着没。它不占圆环的位置——圆环、结束按钮与常驻开关都不动。
-  bool _noiseOpen = false;
-
-  /// 页面滚动位置。展开白噪音区时要把它滚进视野。
+  /// 页面滚动位置。
   final ScrollController _scroll = ScrollController();
 
   @override
@@ -80,48 +78,43 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage> {
     super.dispose();
   }
 
-  void _toggleNoise() {
-    setState(() => _noiseOpen = !_noiseOpen);
-    if (_noiseOpen) unawaited(_revealNoise());
-  }
-
-  /// 展开区在摘要条下方撑开，而摘要条本来就在页面底部——不滚的话用户只看得到
-  /// 箭头翻了个面，内容全在屏幕外。
-  ///
-  /// 等高度动画走完再滚：展开还没长高时 `maxScrollExtent` 也是小的，提前滚会
-  /// 停在一个够不着内容的半路上。
-  Future<void> _revealNoise() async {
-    await Future<void>.delayed(AppDurations.standard);
-    if (!mounted || !_noiseOpen || !_scroll.hasClients) return;
-    await _scroll.animateTo(
-      _scroll.position.maxScrollExtent,
-      duration: AppDurations.standard,
-      curve: AppMotion.standardCurve,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(activeSessionProvider).valueOrNull;
+    final scene = NightScene.fromId(session?.sceneId);
 
-    return Atmosphere(
+    // 会话页是**常暗**的（原型的睡眠模式就是这么设计的：setup 页写着「屏幕将保持
+    // 暗色」），而应用主题可能是浅色。包一层 dark `Theme` 之后，复用的共享组件
+    // （白噪音宫格 / 音量条 / 时长 chip / `IosToggle` / `EmptyState`）照常从
+    // `AppTokens` 取深色值，不必给它们抄第二份。
+    return Theme(
+      data: AppTheme.dark(),
       child: Scaffold(
-        // 透明，让 atmosphere 透出来；这个 Scaffold 只为 Material 祖先与键盘
-        // 内边距而存在，不是为了它的颜色。推入的路由继承不到外壳的任何东西。
+        // 透明，让夜景背景透出来；这个 Scaffold 只为 Material 祖先与键盘内边距
+        // 而存在，不是为了它的颜色。推入的路由继承不到外壳的任何东西。
         backgroundColor: Colors.transparent,
-        body: SafeArea(
-          child: session == null
-              ? const _NoSession()
-              : _SessionBody(
-                  session: session,
-                  now: _now,
-                  noiseOpen: _noiseOpen,
-                  onToggleNoise: _toggleNoise,
-                  onFinish: () => _finish(session),
-                  onFinishHint: () =>
-                      ref.read(toastProvider.notifier).show('按住不放，圆环填满才结束。'),
-                  scrollController: _scroll,
-                ),
+        body: Stack(
+          children: [
+            Positioned.fill(child: NightBackdrop(scene: scene)),
+            SafeArea(
+              minimum: const EdgeInsets.only(top: 20),
+              child: session == null
+                  ? const _NoSession()
+                  : _SessionBody(
+                      session: session,
+                      now: _now,
+                      scene: scene,
+                      onSceneChanged: (picked) => ref
+                          .read(sessionRepositoryProvider)
+                          .update(sceneId: picked.id),
+                      onFinish: () => _finish(session),
+                      onFinishHint: () => ref
+                          .read(toastProvider.notifier)
+                          .show('按住不放，填充条扫满才结束。'),
+                      scrollController: _scroll,
+                    ),
+            ),
+          ],
         ),
       ),
     );
@@ -214,8 +207,8 @@ class _SessionBody extends StatelessWidget {
   const _SessionBody({
     required this.session,
     required this.now,
-    required this.noiseOpen,
-    required this.onToggleNoise,
+    required this.scene,
+    required this.onSceneChanged,
     required this.onFinish,
     required this.onFinishHint,
     required this.scrollController,
@@ -223,100 +216,175 @@ class _SessionBody extends StatelessWidget {
 
   final SleepSession session;
   final DateTime now;
-  final bool noiseOpen;
-  final VoidCallback onToggleNoise;
+  final NightScene scene;
+  final ValueChanged<NightScene> onSceneChanged;
   final VoidCallback onFinish;
   final VoidCallback onFinishHint;
   final ScrollController scrollController;
 
   @override
   Widget build(BuildContext context) {
-    final tokens = AppTokens.of(context);
-    final overdue = session.overdueAt(now);
-
     return ListView(
       controller: scrollController,
-      padding: EdgeInsets.fromLTRB(
-        16,
-        MediaQuery.paddingOf(context).top + 8,
-        16,
-        24,
-      ),
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
       children: [
-        Row(
-          children: [
-            _CollapsePill(onTap: () => _collapse(context)),
-            const Spacer(),
-            Text(
-              '夜深 · 睡眠中',
-              style: TextStyle(fontSize: 12, color: tokens.textMuted),
-            ),
-          ],
-        ),
-        const SizedBox(height: 18),
-        // 状态一行：这是「此刻在跑一个会话」的正面确认，收起态也看得见。
-        // 中文文案，不是数字，所以不走 `AppTheme.num`（那个 helper 带
-        // tabular figures）。
-        Text(
-          '正在睡眠',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.5,
-            color: tokens.textPrimary,
-          ),
-        ),
-        const SizedBox(height: 14),
-        // 圆环始终在视野里：白噪音展开区在摘要条下方撑开，不让位。
-        Center(
-          child: WakeDial(
-            progress: session.progressAt(now),
-            label: session.elapsedLabelAt(now),
-            sublabel:
-                overdue ? '已超过起床时间 ${session.overdueLabelAt(now)}' : '已入睡',
-            semanticLabel: overdue
-                ? '已睡 ${session.elapsedLabelAt(now)}，'
-                    '已超过起床时间 ${session.overdueLabelAt(now)}'
-                : '已睡 ${session.elapsedLabelAt(now)}',
-          ),
-        ),
-        const SizedBox(height: 22),
-        _BedWakeRow(session: session),
-        const SizedBox(height: 22),
-        // 结束按钮紧跟圆环：它是这一页唯一的出口，也是拇指最顺的位置。
-        Center(
-          child: HoldToFinishButton(
-            onFinish: onFinish,
-            onHint: onFinishHint,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Center(
-          child: Text(
-            '按住不放',
-            style: TextStyle(fontSize: 12, color: tokens.textMuted),
-          ),
-        ),
-        const SizedBox(height: 24),
-        SessionSettingsSection(session: session, now: now),
-        const SizedBox(height: 16),
-        _NoiseSummaryBar(
-          session: session,
-          open: noiseOpen,
-          onTap: onToggleNoise,
-        ),
-        AnimatedSize(
-          duration: AppDurations.standard,
-          curve: AppMotion.standardCurve,
-          alignment: Alignment.topCenter,
-          child: noiseOpen
-              ? const Padding(
-                  padding: EdgeInsets.only(top: 14),
-                  child: SessionNoiseSection(),
-                )
-              : const SizedBox(width: double.infinity),
-        ),
+        _StatusHeader(onCollapse: () => _collapse(context)),
+        const SizedBox(height: 4),
+        _TimerBlock(session: session, now: now),
+        const SizedBox(height: 12),
+        NightScenePicker(scene: scene, onChanged: onSceneChanged),
+        const SizedBox(height: 12),
+        SessionEventsCard(session: session, now: now),
+        const SizedBox(height: 20),
+        // 结束按钮在事件卡下方：它是这一页唯一的出口，也是拇指最顺的位置。
+        HoldToFinishButton(onFinish: onFinish, onHint: onFinishHint),
       ],
+    );
+  }
+}
+
+/// 顶部一行：左边「收起」，右边居中的状态点与「睡眠进行中」。
+///
+/// **「收起」是我们相对原型多留的**：原型的激活态是个占满全屏的模态，没有任何出口，
+/// 而我们收起之后会话继续跑（首页显示「正在睡眠」卡）。照搬模态等于砍掉这条既有
+/// 能力（规格偏差 #28）。
+class _StatusHeader extends StatelessWidget {
+  const _StatusHeader({required this.onCollapse});
+
+  final VoidCallback onCollapse;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 40,
+      child: Row(
+        children: [
+          _CollapsePill(onTap: onCollapse),
+          const Expanded(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _PulseDot(),
+                SizedBox(width: 8),
+                Text(
+                  '睡眠进行中',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.3,
+                    color: NightStyle.statusText,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // 右侧留一块与左侧胶囊等宽的空白，标题才真的居中（原型用
+          // `.sleep-header-spacer { width: 48px }` 达到同一效果）。
+          const SizedBox(width: 62),
+        ],
+      ),
+    );
+  }
+}
+
+/// `.sleep-live-status > span:first-child`：2.2 秒一轮的呼吸圆点。
+class _PulseDot extends StatefulWidget {
+  const _PulseDot();
+
+  @override
+  State<_PulseDot> createState() => _PulseDotState();
+}
+
+class _PulseDotState extends State<_PulseDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2200),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (NightStyle.reduceMotion(context)) {
+      _pulse.stop();
+    } else if (!_pulse.isAnimating) {
+      _pulse.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _pulse,
+      builder: (context, child) => Opacity(
+        // `sleepPulse { 50% { opacity: .45 } }`
+        opacity: 1 - 0.55 * Curves.easeInOut.transform(_pulse.value),
+        child: child,
+      ),
+      child: const DecoratedBox(
+        decoration: BoxDecoration(
+          color: NightStyle.statusDot,
+          shape: BoxShape.circle,
+          boxShadow: [BoxShadow(color: NightStyle.statusDot, blurRadius: 12)],
+        ),
+        child: SizedBox(width: 6, height: 6),
+      ),
+    );
+  }
+}
+
+/// 中央：月亮 + 当前时刻 + `HH:MM:SS` + 「已进入睡眠模式」。
+class _TimerBlock extends StatelessWidget {
+  const _TimerBlock({required this.session, required this.now});
+
+  final SleepSession session;
+  final DateTime now;
+
+  @override
+  Widget build(BuildContext context) {
+    final clock = now.toLocal();
+    final hhmm = '${clock.hour.toString().padLeft(2, '0')}:'
+        '${clock.minute.toString().padLeft(2, '0')}';
+    final elapsed = session.elapsedClockAt(now);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      child: Column(
+        children: [
+          const SleepMoonOrbit(size: 132, live: true),
+          const SizedBox(height: 24),
+          Text(
+            hhmm,
+            style: const TextStyle(
+              fontSize: 13,
+              letterSpacing: 1.6,
+              color: NightStyle.clockText,
+            ),
+          ),
+          const SizedBox(height: 7),
+          Text(
+            elapsed,
+            style: AppTheme.num(
+              context,
+              size: 46,
+              weight: FontWeight.w500,
+              letterSpacing: 1.1,
+              color: NightStyle.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            '已进入睡眠模式',
+            style: TextStyle(fontSize: 12, color: NightStyle.textFaint),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -399,7 +467,6 @@ class _CollapsePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = AppTokens.of(context);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
@@ -407,20 +474,20 @@ class _CollapsePill extends StatelessWidget {
         onTap();
       },
       child: Container(
-        constraints: const BoxConstraints(minHeight: 36),
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        constraints: const BoxConstraints(minWidth: 56, minHeight: 34),
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
         decoration: BoxDecoration(
-          color: tokens.material,
+          color: NightStyle.glassFill,
           borderRadius: BorderRadius.circular(AppRadii.pill),
-          border: Border.all(color: tokens.glassBorder),
+          border: Border.all(color: NightStyle.glassStroke),
         ),
         alignment: Alignment.center,
-        child: Text(
+        child: const Text(
           '收起',
           style: TextStyle(
-            fontSize: 14,
+            fontSize: 13,
             fontWeight: FontWeight.w600,
-            color: tokens.accent,
+            color: NightStyle.glassInk,
           ),
         ),
       ),
@@ -433,148 +500,5 @@ void _collapse(BuildContext context) {
     context.pop();
   } else {
     context.go('/');
-  }
-}
-
-/// `入睡 23:14 ─────── 闹钟 07:00`。
-///
-/// **收合态就必须看得见**：睡前设完的起床时间若藏在抽屉里，等于设完就再也
-/// 看不到自己设了什么。
-class _BedWakeRow extends StatelessWidget {
-  const _BedWakeRow({required this.session});
-
-  final SleepSession session;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AppTokens.of(context);
-    final start = session.startAtUtc.toLocal();
-    final hour = session.wakeMinutes ~/ 60;
-    final minute = session.wakeMinutes % 60;
-
-    return GlassSurface(
-      borderRadius: BorderRadius.circular(AppRadii.panel),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      child: Row(
-        children: [
-          _TimeColumn(label: '入睡', value: _hhmm(start), color: tokens.accent),
-          Expanded(
-            child: Container(
-              height: 1,
-              margin: const EdgeInsets.symmetric(horizontal: 10),
-              color: tokens.border,
-            ),
-          ),
-          _TimeColumn(
-            label: '闹钟',
-            value: '${hour.toString().padLeft(2, '0')}:'
-                '${minute.toString().padLeft(2, '0')}',
-            color: tokens.accentViolet,
-            alignEnd: true,
-          ),
-        ],
-      ),
-    );
-  }
-
-  static String _hhmm(DateTime local) =>
-      '${local.hour.toString().padLeft(2, '0')}:'
-      '${local.minute.toString().padLeft(2, '0')}';
-}
-
-class _TimeColumn extends StatelessWidget {
-  const _TimeColumn({
-    required this.label,
-    required this.value,
-    required this.color,
-    this.alignEnd = false,
-  });
-
-  final String label;
-  final String value;
-  final Color color;
-  final bool alignEnd;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AppTokens.of(context);
-    return Column(
-      crossAxisAlignment:
-          alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-      children: [
-        Text(label, style: TextStyle(fontSize: 10, color: tokens.textMuted)),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          style: AppTheme.num(context,
-              size: 15, weight: FontWeight.w700, color: color),
-        ),
-      ],
-    );
-  }
-}
-
-/// 白噪音摘要条，同时也是展开区的把手。
-///
-/// **点它开合**，不做纯上拉手势——躺着的时候拖拽不好使（规格 §四）。
-/// 它始终留在页面上：展开后点同一条即可收起，脚下的圆环与常驻开关不会跟着消失。
-class _NoiseSummaryBar extends StatelessWidget {
-  const _NoiseSummaryBar({
-    required this.session,
-    required this.open,
-    required this.onTap,
-  });
-
-  final SleepSession session;
-  final bool open;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AppTokens.of(context);
-    final percent = (session.noiseVolume * 100).round();
-
-    return GlassSurface(
-      borderRadius: BorderRadius.circular(AppRadii.panel),
-      onTap: onTap,
-      semanticLabel: open ? '收起白噪音设定' : '展开白噪音设定',
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      child: Row(
-        children: [
-          AppIcons.volume(size: 16, color: tokens.accent, strokeWidth: 1.7),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              '白噪音 · 音量 $percent%',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: tokens.textPrimary,
-              ),
-            ),
-          ),
-          Text(
-            open ? '收起' : '更多',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: tokens.accent,
-            ),
-          ),
-          const SizedBox(width: 4),
-          // 同一个字形旋转 180°，展开与收起的过渡才连贯。
-          AnimatedRotation(
-            turns: open ? 0.5 : 0,
-            duration: AppDurations.springy,
-            curve: AppMotion.standardCurve,
-            child: AppIcons.chevronDown(
-              size: 16,
-              color: tokens.textMuted,
-              strokeWidth: 2,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }
