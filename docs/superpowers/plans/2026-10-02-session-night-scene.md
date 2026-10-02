@@ -801,9 +801,35 @@ void main() {
     expect(sleepMoonSvg.contains('clipPath'), isTrue);
   });
 
-  test('「结束睡眠」的长按图标是一个独立的具名访问器', () {
-    final widget = AppIcons.holdEnd(size: 20, color: const Color(0xFFFFFFFF));
-    expect(widget, isNotNull);
+  testWidgets('长按图标与静音图标都能渲染', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppIcons.holdEnd(size: 20, color: const Color(0xFFFFFFFF)),
+              AppIcons.soundOff(size: 21, color: const Color(0xFFFFFFFF)),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    // 两个都是真的画出来了，而不是返回了一个空盒子。
+    expect(find.byType(SvgPicture), findsNWidgets(2));
+  });
+
+  test('svgFor 把 currentColor 换成了给定颜色', () {
+    // `AppIcons.glyph` 的取色走的就是这条替换；两个新图标与其余 29 个共用它。
+    final resolved = AppIcons.svgFor(
+      '<path d="M1 1" stroke="currentColor"/>',
+      color: const Color(0xFFAEBDFF),
+    );
+    expect(resolved, contains('#aebdff'));
+    expect(resolved, isNot(contains('currentColor')));
   });
 }
 ```
@@ -1045,10 +1071,31 @@ git commit -m "feat(session): 月亮标记与长按结束图标"
 `test/night_backdrop_test.dart`（**只有这一份开动画，且只用显式 `pump()`**）：
 
 ```dart
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sleep/features/session/presentation/night_scene.dart';
 import 'package:night_sleep/features/session/presentation/widgets/night_backdrop.dart';
+
+/// 把背景当前这一帧真的光栅化出来。
+///
+/// 这是这一份测试唯一能钉住「动画到底动没动」的办法：pixel 比较不会因为
+/// `CustomPaint` 的画笔是私有的就变成一句空断言。
+Future<Uint8List> snapshot(WidgetTester tester) async {
+  final boundary = tester.renderObject<RenderRepaintBoundary>(
+    find.byType(RepaintBoundary).first,
+  );
+  final bytes = await tester.runAsync(() async {
+    final image = await boundary.toImage();
+    final data = await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    return data!.buffer.asUint8List();
+  });
+  return bytes!;
+}
 
 void main() {
   Future<void> pumpBackdrop(
@@ -1060,16 +1107,12 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    if (reduceMotion) {
-      tester.platformDispatcher.accessibilityFeaturesTestValue =
-          const FakeAccessibilityFeatures(disableAnimations: true);
-      addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
-    }
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        FakeAccessibilityFeatures(disableAnimations: reduceMotion);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
 
     await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(body: NightBackdrop(scene: scene)),
-      ),
+      MaterialApp(home: Scaffold(body: NightBackdrop(scene: scene))),
     );
     // 这里**不能**用 pumpAndSettle：开了动画时它会 `timed out`。
     await tester.pump();
@@ -1083,30 +1126,32 @@ void main() {
     }
   });
 
-  testWidgets('减弱动态效果时停表：连推几帧画面不变', (tester) async {
+  testWidgets('减弱动态效果时停表：隔两秒的画面一模一样', (tester) async {
     await pumpBackdrop(tester, scene: NightScene.meteor);
+    final before = await snapshot(tester);
 
-    // 相位冻结在 0 时，同一帧反复渲染的像素必须完全一致。
-    final first = await tester.runAsync(() async => null);
-    expect(first, isNull);
-    for (var i = 0; i < 5; i++) {
-      await tester.pump(const Duration(seconds: 2));
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 500));
     }
-    expect(tester.takeException(), isNull);
+
+    expect(await snapshot(tester), before,
+        reason: '开了「减弱动态效果」还在动 = 无障碍要求没落实');
   });
 
-  testWidgets('开了动画仍在渲染（相位真的在走）', (tester) async {
+  testWidgets('没开减弱动态效果时相位真的在走：画面会变', (tester) async {
     await pumpBackdrop(tester, scene: NightScene.rain, reduceMotion: false);
+    final before = await snapshot(tester);
 
     // 显式推帧而不是 pumpAndSettle——60 秒的循环表永远不会「settle」。
-    await tester.pump(const Duration(milliseconds: 500));
-    await tester.pump(const Duration(milliseconds: 500));
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 500));
+    }
 
-    expect(tester.takeException(), isNull);
-    expect(find.byType(NightBackdrop), findsOneWidget);
+    expect(await snapshot(tester), isNot(before),
+        reason: '动画根本没跑起来（变异验证：把重复控制器摘掉，这条必须变红）');
   });
 
-  testWidgets('换场景重建后仍然是同一棵树，不抛', (tester) async {
+  testWidgets('换场景后重绘不抛异常', (tester) async {
     await pumpBackdrop(tester, scene: NightScene.meteor);
     await tester.pumpWidget(
       MaterialApp(
@@ -1396,11 +1441,16 @@ class _NightScenePainter extends CustomPainter {
   }
 
   /// `.sleep-aurora`：两层斜放的色带，`filter: blur(22px)` → σ≈11。
+  ///
+  /// **透明度要折进渐变色里**，不能靠 `Paint.color`：设了 `shader` 之后 `Paint.color`
+  /// 整个被忽略（不是叠加），写上去是一句看不见效果的空话。原型那两层的 `.5` / `.65`
+  /// 是 CSS 的 `opacity:`，等价于把整层的 alpha 乘一遍。
   void _paintAurora(Canvas canvas, Size size) {
-    // i1：inset -8% -20% 42%；i2：inset 18% -8% -22%，opacity .65、delay -4、12 秒。
+    // i1：inset -8% -20% 42%，opacity .5；i2：inset 18% -8% -22%，opacity .65、
+    // delay -4、12 秒。
     final bands = [
-      (top: -.08, bottom: .42, delay: 0.0, duration: 9.0, opacity: .5),
-      (top: .18, bottom: -.22, delay: -4.0, duration: 12.0, opacity: .65 * .5),
+      (top: -.08, bottom: .42, delay: 0.0, duration: 9.0, layer: .5),
+      (top: .18, bottom: -.22, delay: -4.0, duration: 12.0, layer: .65),
     ];
 
     for (final band in bands) {
@@ -1415,7 +1465,8 @@ class _NightScenePainter extends CustomPainter {
       canvas.save();
       canvas.translate(rect.center.dx, rect.center.dy);
       // `rotate(-8deg)` 起步，`sleepAurora` 再叠 `translate(8%,8%) skewX(-8deg)
-      // scale(1.08)`；这里把位移与缩放折进画布变换。
+      // scale(1.08)`；这里把位移与缩放折进画布变换（`skewX` 在暗色渐变的观感里
+      // 与旋转叠加后看不出单独一档，略过）。
       canvas.rotate((-8) * math.pi / 180);
       canvas.translate(size.width * .08 * t, size.height * .08 * t);
       canvas.scale(1 + .08 * t);
@@ -1425,19 +1476,18 @@ class _NightScenePainter extends CustomPainter {
       canvas.drawOval(
         r,
         Paint()
-          ..shader = const LinearGradient(
-            begin: Alignment(-.42, -.96),
-            end: Alignment(.42, .42),
+          ..shader = LinearGradient(
+            begin: const Alignment(-.42, -.96),
+            end: const Alignment(.42, .42),
             colors: [
-              Color(0x00000000),
-              Color(0x4D47DCBD),
-              Color(0x3D6671ED),
-              Color(0x00000000),
+              const Color(0x0047DCBD),
+              const Color(0xFF47DCBD).withValues(alpha: .30 * band.layer),
+              const Color(0xFF6671ED).withValues(alpha: .24 * band.layer),
+              const Color(0x006671ED),
             ],
-            stops: [.22, .38, .58, .72],
+            stops: const [.22, .38, .58, .72],
           ).createShader(r)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 11)
-          ..color = Colors.white.withValues(alpha: band.opacity),
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 11),
       );
       canvas.restore();
     }
@@ -1472,9 +1522,9 @@ class _NightScenePainter extends CustomPainter {
   /// `.sleep-clouds i` 三朵，`sleepCloud` 从左穿到右（0 → 170vw）。
   void _paintClouds(Canvas canvas, Size size) {
     const specs = [
-      (top: .18, width: .50, duration: 26.0, delay: -0.0, opacity: 1.0),
-      (top: .55, width: .68, duration: 34.0, delay: -12.0, opacity: 1.0),
-      (top: .76, width: .44, duration: 29.0, delay: -21.0, opacity: 1.0),
+      (top: .18, width: .50, duration: 26.0, delay: -0.0),
+      (top: .55, width: .68, duration: 34.0, delay: -12.0),
+      (top: .76, width: .44, duration: 29.0, delay: -21.0),
     ];
 
     for (final spec in specs) {
@@ -1537,13 +1587,12 @@ class _NightScenePainter extends CustomPainter {
         shift = Offset.lerp(const Offset(-9, -12), Offset.zero, k)!;
       }
 
+      // 最后四只共用同一格（原型 CSS 的 `nth-child(n+11)` 就是这么写的），
+      // 叠在同一处——照抄，不替它挪位置。
       final centre = Offset(
-            spot.left / 100 * size.width + shift.dx,
-            spot.top / 100 * size.height + shift.dy,
-          ) +
-          // 四只共用同一个坐标时会叠成一团，按序号错开一点，与 CSS 里
-          // `nth-child(n+11)` 落在同一格上的观感一致（原型那一格本来就重叠）。
-          Offset.zero;
+        spot.left / 100 * size.width + shift.dx,
+        spot.top / 100 * size.height + shift.dy,
+      );
       canvas.drawCircle(
         centre,
         1.5,
@@ -1557,6 +1606,9 @@ class _NightScenePainter extends CustomPainter {
   /// `.sleep-galaxy-band`：一条斜带，`sleepGalaxy` 往返。
   void _paintGalaxy(Canvas canvas, Size size) {
     final t = _easeInOut(_pingPong(16));
+    // `sleepGalaxy { to { opacity: .7 } }` 配 `alternate`：1 → .7 → 1。
+    // 同样**折进渐变色**，设了 shader 之后 `Paint.color` 是被忽略的。
+    final fade = 1 - .30 * t;
     final rect = Rect.fromLTWH(
         -size.width * .45,
         -size.height * .22,
@@ -1573,21 +1625,20 @@ class _NightScenePainter extends CustomPainter {
     canvas.drawRect(
       r,
       Paint()
-        ..shader = const LinearGradient(
+        ..shader = LinearGradient(
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
           colors: [
-            Color(0x00000000),
-            Color(0x0D9671E0),
-            Color(0x2E6589DE),
-            Color(0x0FCC9AE6),
-            Color(0x00000000),
+            const Color(0x009671E0),
+            const Color(0xFF9671E0).withValues(alpha: .05 * fade),
+            const Color(0xFF6589DE).withValues(alpha: .18 * fade),
+            const Color(0xFFCC9AE6).withValues(alpha: .06 * fade),
+            const Color(0x00CC9AE6),
           ],
-          stops: [.32, .40, .50, .62, .68],
+          stops: const [.32, .40, .50, .62, .68],
         ).createShader(r)
         // `filter: blur(12px)` → σ≈6。
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6)
-        ..color = Colors.white.withValues(alpha: .45 + .25 * t),
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
     );
     canvas.restore();
   }
@@ -1608,12 +1659,13 @@ class _NightScenePainter extends CustomPainter {
       canvas.drawRect(
         rect,
         Paint()
+          // 整层 `.18` 的 opacity 折进这一条渐变里：`rgba(188,214,237,.8) × .18`。
+          // 设了 shader 之后 `Paint.color` 会被忽略，那样写等于没写。
           ..shader = const LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0x00000000), Color(0xCCBCD5ED)],
-          ).createShader(rect)
-          ..color = Colors.white.withValues(alpha: .18),
+            colors: [Color(0x00BCD5ED), Color(0x25BCD5ED)],
+          ).createShader(rect),
       );
     }
   }
@@ -2872,11 +2924,12 @@ class _SessionEventsCardState extends ConsumerState<SessionEventsCard> {
           const SizedBox(height: 5),
 
           // ── 开始睡眠 ──────────────────────────────────────────────────
-          const _EventRow(
-            icon: _MoonIcon.new,
+          _EventRow(
+            icon: AppIcons.moon(
+                size: 18, color: NightStyle.iconInk, strokeWidth: 1.5),
             title: '开始睡眠',
             subtitle: '睡眠时长正在记录',
-            trailing: _StateText('记录中'),
+            trailing: const _StateText('记录中'),
           ),
 
           // ── 白噪音 ────────────────────────────────────────────────────
@@ -2884,7 +2937,8 @@ class _SessionEventsCardState extends ConsumerState<SessionEventsCard> {
           // 常驻可点：原型在没选声音时把这一行整个藏掉，那会把设置入口一起藏掉
           // （见规格偏差 #29）。未选时副标题写「未开启」，整行照常可点。
           _EventRow(
-            icon: _MusicIcon.new,
+            icon: AppIcons.music(
+                size: 18, color: NightStyle.iconInk, strokeWidth: 1.5),
             title: noise.activeOption?.label ?? '白噪音',
             subtitle: _noiseSubtitle(noise),
             onTap: () => showNightNoiseSheet(context),
@@ -2895,7 +2949,8 @@ class _SessionEventsCardState extends ConsumerState<SessionEventsCard> {
 
           // ── 起床闹钟 ──────────────────────────────────────────────────
           _EventRow(
-            icon: _ClockIcon.new,
+            icon: AppIcons.clock(
+                size: 18, color: NightStyle.iconInk, strokeWidth: 1.5),
             title: '$wake 起床闹钟',
             subtitle: _alarmStatus,
             trailing: Row(
@@ -2929,7 +2984,8 @@ class _SessionEventsCardState extends ConsumerState<SessionEventsCard> {
 
           // ── 鼾声检测 ──────────────────────────────────────────────────
           _EventRow(
-            icon: _SnoreIcon.new,
+            icon: AppIcons.snore(
+                size: 18, color: NightStyle.iconInk, strokeWidth: 1.5),
             title: '鼾声/梦话记录',
             // plan A 阶段录音还没接入，如实标注。plan B 落地时删掉这句，
             // 换成真实状态（规格 §六）。这行字是产品红线，一个字都不许改。
@@ -2974,7 +3030,10 @@ class _EventRow extends StatelessWidget {
     this.onTap,
   });
 
-  final Widget Function() icon;
+  /// 直接给一个 `Widget` 而不是构造器：「开始睡眠」「记录中」那几行本来能写成
+  /// `const`，但 `AppIcons.*` 是普通函数、不是常量表达式，硬要留 `const` 就得给
+  /// 每个字形再包一个类。可读性不值得那点编译期收益，这个组件本身也没贵到需要缓存。
+  final Widget icon;
   final String title;
   final String subtitle;
   final Widget trailing;
@@ -2998,7 +3057,7 @@ class _EventRow extends StatelessWidget {
               borderRadius:
                   BorderRadius.circular(NightStyle.eventIconRadius),
             ),
-            child: Center(child: icon()),
+            child: Center(child: icon),
           ),
           const SizedBox(width: 11),
           Expanded(
@@ -3042,34 +3101,6 @@ class _EventRow extends StatelessWidget {
       child: row,
     );
   }
-}
-
-class _MoonIcon extends StatelessWidget {
-  const _MoonIcon();
-  @override
-  Widget build(BuildContext context) =>
-      AppIcons.moon(size: 18, color: NightStyle.iconInk, strokeWidth: 1.5);
-}
-
-class _MusicIcon extends StatelessWidget {
-  const _MusicIcon();
-  @override
-  Widget build(BuildContext context) =>
-      AppIcons.music(size: 18, color: NightStyle.iconInk, strokeWidth: 1.5);
-}
-
-class _ClockIcon extends StatelessWidget {
-  const _ClockIcon();
-  @override
-  Widget build(BuildContext context) =>
-      AppIcons.clock(size: 18, color: NightStyle.iconInk, strokeWidth: 1.5);
-}
-
-class _SnoreIcon extends StatelessWidget {
-  const _SnoreIcon();
-  @override
-  Widget build(BuildContext context) =>
-      AppIcons.snore(size: 18, color: NightStyle.iconInk, strokeWidth: 1.5);
 }
 
 class _StateText extends StatelessWidget {
@@ -3646,6 +3677,16 @@ git rm lib/features/session/presentation/widgets/wake_dial.dart
 
 - [ ] **Step 6: 加新用例**
 
+先给 `test/sleep_session_page_test.dart` 的 import 区补上这三行：
+
+```dart
+import 'package:night_sleep/features/session/presentation/night_scene.dart';
+import 'package:night_sleep/features/session/presentation/widgets/night_backdrop.dart';
+import 'package:night_sleep/features/session/presentation/widgets/night_scene_picker.dart';
+```
+
+然后是三条新用例：
+
 ```dart
   testWidgets('列出八种夜景氛围，选中的写回会话行', (tester) async {
     final start = DateTime(2026, 8, 30, 23, 14);
@@ -3758,7 +3799,6 @@ git commit -m "feat(session): 会话页照原型的「睡眠进行中」态重�
 - Modify: `README.md`、`CHANGELOG.md`
 - Modify: `docs/superpowers/specs/2026-09-28-night-sleep-design.md`（§2.4、§3、§8、§9）
 - Modify: `integration_test/app_screens_test.dart`
-- Modify: `test/app_screens_test.dart`（若存在同名的 widget 版；否则跳过）
 
 - [ ] **Step 1: 集成巡检适配循环动画**
 
