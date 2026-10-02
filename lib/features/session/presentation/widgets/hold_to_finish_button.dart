@@ -17,6 +17,11 @@ import '../night_style.dart';
 /// 形态换成原型 `.sleep-hold-button` 的横向胶囊（全宽、min-height 56、圆角 18），
 /// 但**按住时长仍是 1.5 秒**——原型是 1.6 秒，那 0.1 秒是本项目 v3.1 的产品裁定，
 /// 且已有测试钉住，不为此改动。
+///
+/// **前提：父级横向约束必须有界**。胶囊靠 `minWidth: double.infinity` 撑满可用宽度，
+/// 当前唯一调用点在竖向滚动列表里（宽度有界）。若日后塞进 `Row` 或横向滚动视图，
+/// 会遇到无界宽度断言——那种场景要自己套一层 `SizedBox(width:)` 或
+/// `ConstrainedBox` 给个有限宽。
 class HoldToFinishButton extends StatefulWidget {
   const HoldToFinishButton({
     super.key,
@@ -49,6 +54,12 @@ class _HoldToFinishButtonState extends State<HoldToFinishButton>
   late final AnimationController _progress = AnimationController(
     vsync: this,
     duration: widget.holdDuration,
+    // **`preserve` 不能省**：这条时长是承载语义的功能性进度反馈（用户靠它判断
+    // 「还要按多久」），不是装饰动效，不属于 Reduce Motion 想抑制的范畴。默认的
+    // `AnimationBehavior.normal` 会在系统开启「减弱动态效果」时把时长乘 0.05
+    // （`animation_controller.dart`），1.5 秒的误触守卫会塌成 75ms——轻蹭一下就结束，
+    // 而且填充条瞬间满格，失效还不可见。`preserve` 正是为「时长本身有意义」的动画准备的。
+    animationBehavior: AnimationBehavior.preserve,
   );
 
   /// 已经触发过结束，等这次抬手收尾——不让它再被当成短按。

@@ -8,13 +8,20 @@ void main() {
     WidgetTester tester, {
     required VoidCallback onFinish,
     VoidCallback? onHint,
+    bool disableAnimations = false,
   }) async {
     tester.view.physicalSize = const Size(430, 932);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
-    // **不要**在这里开 `disableAnimations`：`AnimationController` 在减弱动态效果下
-    // 会把时长压到 5%，1.5 秒的按住会缩成 75ms，「没按满就松手」与「滑开作废」
-    // 两条用例会假红。进度动画本来就是有限时长、会自己收敛的，不需要那条设置。
+    // 默认**不开** `disableAnimations`：`AnimationController` 在减弱动态效果下会把时长
+    // 压到 5%，1.5 秒的按住会缩成 75ms，「没按满就松手」与「滑开作废」两条用例会假红。
+    // 只有专门验这条缺陷的用例才把它打开（见「减弱动态效果…」那条）。
+    if (disableAnimations) {
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(disableAnimations: true);
+      addTearDown(
+          tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    }
 
     await tester.pumpWidget(
       MaterialApp(
@@ -115,5 +122,25 @@ void main() {
     final size = tester.getSize(find.byType(HoldToFinishButton));
     expect(size.width, greaterThan(size.height * 3),
         reason: '原型那个按钮是全宽胶囊；退回圆形会在这里变红');
+    expect(size.width, 390, reason: '要撑满父宽：430 画布 − 左右各 20 内边距');
+    expect(size.height, greaterThanOrEqualTo(56),
+        reason: '胶囊是 minHeight，内容高度可以更高，但不该低于 NightStyle.holdButtonMinHeight');
+  });
+
+  testWidgets('开启减弱动态效果时，1.5 秒守卫仍按真实时长计时', (tester) async {
+    var finished = 0;
+    await pumpButton(
+      tester,
+      onFinish: () => finished++,
+      disableAnimations: true,
+    );
+
+    final gesture =
+        await pressAndHold(tester, const Duration(milliseconds: 600));
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(finished, 0,
+        reason: '这 1.5 秒是误触守卫、不是装饰动效；Reduce Motion 把时长缩成 75ms 等于没闸门');
   });
 }
