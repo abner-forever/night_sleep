@@ -100,11 +100,14 @@ void main() {
     required SleepSession session,
     required DateTime now,
     bool wide = false,
+    Size? size,
     NoisePlayer? player,
     ReminderScheduler? scheduler,
   }) async {
+    // 默认给一块很高的视口，好让整页一次渲染完（断言不用先滚）。
+    // 要测「屏幕外」这类几何问题，传一个真实手机尺寸的 `size`。
     tester.view.physicalSize =
-        wide ? const Size(1200, 2000) : const Size(430, 2000);
+        size ?? (wide ? const Size(1200, 2000) : const Size(430, 2000));
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
@@ -427,6 +430,28 @@ void main() {
     expect(find.text('助眠音效'), findsOneWidget);
     expect(find.text('15m'), findsOneWidget);
     expect(find.textContaining('退到后台或锁屏后声音会停'), findsOneWidget);
+  });
+
+  /// 摘要条在页面底部，展开区又在它下方——不滚的话点「更多」只看到箭头翻了个面，
+  /// 内容全在屏幕外（目视验证时实机上就是这样）。默认那块 2000 高的测试视口把
+  /// 整页一次渲染完，掩盖了这个问题，所以这条用真实手机尺寸。
+  testWidgets('展开白噪音区会自动把它滚进视野', (tester) async {
+    final start = DateTime(2026, 8, 30, 23, 14);
+    await pumpSession(
+      tester,
+      session: sessionAt(start),
+      now: start.add(const Duration(hours: 1)),
+      size: const Size(430, 932),
+    );
+
+    await tester.tap(find.textContaining('白噪音 · 音量'));
+    await tester.pumpAndSettle();
+
+    final header = tester.getTopLeft(find.text('助眠音效')).dy;
+    expect(header, greaterThanOrEqualTo(0), reason: '滚过头了');
+    expect(header, lessThan(932), reason: '展开后标题还在屏幕外，等于点了「更多」什么都没发生');
+    expect(tester.getBottomLeft(find.text('60m')).dy, lessThanOrEqualTo(932),
+        reason: '定时那排 chip 也应当看得见');
   });
 
   testWidgets('展开区里的白噪音定时最长 60 分钟，没有「不限」与 90m', (tester) async {

@@ -57,6 +57,9 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage> {
   /// 白噪音展开区开着没。它不占圆环的位置——圆环、结束按钮与常驻开关都不动。
   bool _noiseOpen = false;
 
+  /// 页面滚动位置。展开白噪音区时要把它滚进视野。
+  final ScrollController _scroll = ScrollController();
+
   @override
   void initState() {
     super.initState();
@@ -73,7 +76,28 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage> {
   @override
   void dispose() {
     _timer?.cancel();
+    _scroll.dispose();
     super.dispose();
+  }
+
+  void _toggleNoise() {
+    setState(() => _noiseOpen = !_noiseOpen);
+    if (_noiseOpen) unawaited(_revealNoise());
+  }
+
+  /// 展开区在摘要条下方撑开，而摘要条本来就在页面底部——不滚的话用户只看得到
+  /// 箭头翻了个面，内容全在屏幕外。
+  ///
+  /// 等高度动画走完再滚：展开还没长高时 `maxScrollExtent` 也是小的，提前滚会
+  /// 停在一个够不着内容的半路上。
+  Future<void> _revealNoise() async {
+    await Future<void>.delayed(AppDurations.standard);
+    if (!mounted || !_noiseOpen || !_scroll.hasClients) return;
+    await _scroll.animateTo(
+      _scroll.position.maxScrollExtent,
+      duration: AppDurations.standard,
+      curve: AppMotion.standardCurve,
+    );
   }
 
   @override
@@ -92,10 +116,11 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage> {
                   session: session,
                   now: _now,
                   noiseOpen: _noiseOpen,
-                  onToggleNoise: () => setState(() => _noiseOpen = !_noiseOpen),
+                  onToggleNoise: _toggleNoise,
                   onFinish: () => _finish(session),
                   onFinishHint: () =>
                       ref.read(toastProvider.notifier).show('按住不放，圆环填满才结束。'),
+                  scrollController: _scroll,
                 ),
         ),
       ),
@@ -193,6 +218,7 @@ class _SessionBody extends StatelessWidget {
     required this.onToggleNoise,
     required this.onFinish,
     required this.onFinishHint,
+    required this.scrollController,
   });
 
   final SleepSession session;
@@ -201,6 +227,7 @@ class _SessionBody extends StatelessWidget {
   final VoidCallback onToggleNoise;
   final VoidCallback onFinish;
   final VoidCallback onFinishHint;
+  final ScrollController scrollController;
 
   @override
   Widget build(BuildContext context) {
@@ -208,6 +235,7 @@ class _SessionBody extends StatelessWidget {
     final overdue = session.overdueAt(now);
 
     return ListView(
+      controller: scrollController,
       padding: EdgeInsets.fromLTRB(
         16,
         MediaQuery.paddingOf(context).top + 8,
