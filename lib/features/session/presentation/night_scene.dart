@@ -171,8 +171,8 @@ enum NightScene {
           ]),
       };
 
-  /// 预览卡上那几个光点。`.sleep-scene-preview i` 的三颗星在每一张上都在；
-  /// 月海与萤火另有各自的原生径向点。
+  /// 预览卡上那几个光点。流星夜 / 极光 / 深海 / 云上 / 银河 用三颗默认星，
+  /// 月海与萤火各有自己的点，雨夜没有。
   List<Alignment> get previewDots => switch (this) {
         NightScene.rain => const [],
         NightScene.moon => const [Alignment(0.44, -0.4)],
