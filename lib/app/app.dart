@@ -9,6 +9,7 @@ import '../core/theme/app_tokens.dart';
 import '../core/widgets/atmosphere.dart';
 import '../features/home/presentation/home_page.dart';
 import '../features/log/presentation/log_edit_page.dart';
+import '../features/log/presentation/log_new_page.dart';
 import '../features/log/presentation/review_page.dart';
 import '../features/onboarding/presentation/onboarding_overlay.dart';
 import '../features/settings/presentation/demo_data_page.dart';
@@ -66,6 +67,11 @@ final _router = GoRouter(
         GoRoute(
           path: 'log/edit',
           builder: (context, state) => LogEditPage(routeArgument: state.extra),
+        ),
+        // 手动补录：回顾页底部的入口与会话时长越界的说明层都推到这里。
+        GoRoute(
+          path: 'log/new',
+          builder: (context, state) => const LogNewPage(),
         ),
         // 会话页与设置子页同一层级：推入后覆盖标签外壳，全屏。
         GoRoute(

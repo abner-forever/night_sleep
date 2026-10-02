@@ -13,6 +13,7 @@ import 'package:night_sleep/core/database/app_database.dart';
 import 'package:night_sleep/core/platform/reminders.dart';
 import 'package:night_sleep/core/theme/app_theme.dart';
 import 'package:night_sleep/core/widgets/ios_controls.dart';
+import 'package:night_sleep/features/log/presentation/log_new_page.dart';
 import 'package:night_sleep/features/session/presentation/sleep_session_page.dart';
 import 'package:night_sleep/features/sleep/data/noise_player.dart';
 import 'package:night_sleep/features/sleep/data/noise_synth.dart';
@@ -138,9 +139,11 @@ void main() {
           path: '/sleep/session',
           builder: (context, state) => SleepSessionPage(now: now),
         ),
+        // 真实的手动补录页，不是占位：时长越界说明层的出口按钮指向这里，
+        // 用空 Scaffold 占位会把「出口是不是真的到了补录页」这条断言架空。
         GoRoute(
           path: '/log/new',
-          builder: (context, state) => const Scaffold(body: SizedBox.shrink()),
+          builder: (context, state) => const LogNewPage(),
         ),
       ],
     );
@@ -760,6 +763,24 @@ void main() {
 
     expect(await database.allRecords(), isEmpty);
     expect(await database.activeSession(), isNotNull, reason: '会话仍在，等用户决定');
+  });
+
+  /// 时长越界说明层的出口真的通到手动补录页，而不是 go_router 的「Page Not
+  /// Found」。这条走的是真实路由：夹具此前把 `/log/new` 注册成空 Scaffold，结构上
+  /// 盖住了「路由没注册」——真机上点下去只会看到找不到页面的屏幕。
+  testWidgets('时长越界的出口通往手动补录页', (tester) async {
+    final start = DateTime(2026, 8, 30, 23, 14);
+    await pumpSession(tester, session: sessionAt(start), now: start);
+
+    await tester.tap(find.text('结束睡眠'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('手动补录某一晚'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('手动补录'), findsOneWidget, reason: '应落在手动补录页的标题上');
+    expect(find.text('Page Not Found'), findsNothing, reason: '路由必须真的注册过');
+    expect(find.text('保存记录'), findsOneWidget, reason: '补录表单应已渲染');
+    expect(find.text('正在睡眠'), findsNothing, reason: '会话页应已离开');
   });
 
   testWidgets('时长超过 24 小时同样不落库', (tester) async {

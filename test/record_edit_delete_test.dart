@@ -113,6 +113,41 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// 编辑表单现在是**推入页**：保存走 `Navigator.pop`。保存类用例必须真的把它
+  /// 压在一个能 pop 的路由之上，否则会退到 `context.go('/')` 并因没有 GoRouter 抛错。
+  /// 表单本身的内容用例仍可用 [pump] 直接挂载。
+  Future<void> pumpPushed(
+    WidgetTester tester,
+    Widget page, {
+    List<SleepEntry> entries = const [],
+  }) async {
+    tester.view.physicalSize = const Size(430, 2600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(database),
+          sleepEntriesProvider.overrideWith((ref) => entries),
+          settingsProvider.overrideWith(
+            (ref) => Stream.value(testSettings()),
+          ),
+          activeSessionProvider.overrideWith((ref) => null),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: Center(child: Text('外壳'))),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    tester
+        .state<NavigatorState>(find.byType(Navigator).first)
+        .push(MaterialPageRoute<void>(builder: (_) => page));
+    await tester.pumpAndSettle();
+  }
+
   // The nights arrive through the provider override, not the constructor.
   Widget home() => HomePage(
         animateRing: false,
@@ -281,7 +316,7 @@ void main() {
         final createdAtBefore =
             (await database.findRecord(entry.id))!.createdAt;
 
-        await pump(tester, LogPage(editing: entry));
+        await pumpPushed(tester, LogPage(editing: entry));
 
         await tester.tap(find.bySemanticsLabel('睡眠质量 一般'));
         await tester.pumpAndSettle();
@@ -289,6 +324,9 @@ void main() {
 
         await tester.tap(find.text('保存修改'));
         await tester.pumpAndSettle();
+
+        expect(find.text('外壳'), findsOneWidget, reason: '保存后应 pop 回下面的路由');
+        expect(find.text('保存修改'), findsNothing, reason: '保存后应离开编辑页');
 
         final rows = await database.allRecords();
         expect(rows, hasLength(1), reason: '编辑不能变成新增');
@@ -323,7 +361,7 @@ void main() {
       );
       expect(entry.hasStages, isTrue);
 
-      await pump(tester, LogPage(editing: entry));
+      await pumpPushed(tester, LogPage(editing: entry));
       await tester.tap(find.text('保存修改'));
       await tester.pumpAndSettle();
 

@@ -138,6 +138,32 @@ void main() {
     );
   }
 
+  /// 真实路由外壳。用来验证「Tab 入口 → `/log/new` → 手动补录页」这条链路真的连上，
+  /// 而不只是把页面单独挂起来渲染。
+  Future<void> pumpRealApp(
+    WidgetTester tester, {
+    List<SleepEntry> entries = const [],
+  }) async {
+    tester.view.physicalSize = const Size(430, 2600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(database),
+          sleepEntriesProvider.overrideWith((ref) => entries),
+          settingsProvider.overrideWith(
+            (ref) => Stream.value(settings()),
+          ),
+          activeSessionProvider.overrideWith((ref) => null),
+        ],
+        child: const NightSleepApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
   /// A pushed sub-page, rendered the way the router renders it: **no Scaffold**.
   ///
   /// This distinction is the whole point. An earlier version of these tests
@@ -151,6 +177,41 @@ void main() {
     List<SleepEntry> entries = const [],
   }) {
     return pumpWithOverrides(tester, page, entries: entries);
+  }
+
+  /// 手动补录表单现在是**推入页**：保存走 `Navigator.pop`。
+  ///
+  /// 必须真的把它压在一个能 pop 的路由之上，否则保存分支会退到 `context.go('/')`
+  /// （这里没有 GoRouter，会直接抛错），「保存后 pop 掉」这条断言也就无从谈起。
+  Future<void> pumpLogPushed(
+    WidgetTester tester, {
+    List<SleepEntry> entries = const [],
+  }) async {
+    tester.view.physicalSize = const Size(430, 2600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(database),
+          sleepEntriesProvider.overrideWith((ref) => entries),
+          settingsProvider.overrideWith(
+            (ref) => Stream.value(settings()),
+          ),
+          activeSessionProvider.overrideWith((ref) => null),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(body: Center(child: Text('外壳'))),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    tester
+        .state<NavigatorState>(find.byType(Navigator).first)
+        .push(MaterialPageRoute<void>(builder: (_) => const LogPage()));
+    await tester.pumpAndSettle();
   }
 
   /// Guards the failure above: the text must be on a `Material`, not on the
@@ -296,7 +357,8 @@ void main() {
     testWidgets('表单分组齐全', (tester) async {
       await pumpPage(tester, const LogPage());
 
-      expect(find.text('今天睡得怎么样？'), findsOneWidget);
+      expect(find.text('手动补录'), findsOneWidget, reason: '作为推入页应自带标题');
+      expect(find.text('今天睡得怎么样？'), findsNothing, reason: 'Tab 版的页头已删除');
       expect(find.text('入睡时间'), findsOneWidget);
       expect(find.text('起床时间'), findsOneWidget);
       expect(find.text('睡眠质量'), findsOneWidget);
@@ -311,15 +373,17 @@ void main() {
     });
 
     testWidgets('未选星级保存时，记录没有评分', (tester) async {
-      await pumpPage(tester, const LogPage());
+      await pumpLogPushed(tester);
 
       // 表单初始无选中：没碰星级就保存，记录**没有**评分。
       expect(find.text('未评分'), findsOneWidget, reason: '表单初始就该显示「未评分」');
 
       await tester.tap(find.text('保存记录'));
-      // Advance past the 2s "已保存" reset so no timer is left pending.
-      await tester.pump();
-      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+
+      // 保存后 pop 掉这一页，不再有任何「切回首页 Tab」或「2 秒后重置」的副作用。
+      expect(find.text('保存记录'), findsNothing, reason: '保存后应离开补录页');
+      expect(find.text('外壳'), findsOneWidget, reason: '应回到推入页下面的路由');
 
       final saved = await SleepRepository(database).loadAll();
       expect(saved, hasLength(1));
@@ -337,14 +401,15 @@ void main() {
     testWidgets('点第 4 颗星再保存，质量是「良好」并按它估算', (tester) async {
       // `ensureSemantics` 必须在用例体内释放：绑定会在 tearDown 里检查。
       final semantics = tester.ensureSemantics();
-      await pumpPage(tester, const LogPage());
+      await pumpLogPushed(tester);
 
       await tester.tap(find.bySemanticsLabel('睡眠质量 良好'));
       await tester.pump();
 
       await tester.tap(find.text('保存记录'));
-      await tester.pump();
-      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+
+      expect(find.text('外壳'), findsOneWidget, reason: '保存后应 pop 回下面的路由');
 
       final saved = await SleepRepository(database).loadAll();
       expect(saved, hasLength(1));
@@ -354,6 +419,33 @@ void main() {
       expect(saved.single.isEstimated, isTrue);
       expect(saved.single.score, 91);
       semantics.dispose();
+    });
+  });
+
+  group('手动补录页', () {
+    testWidgets('作为推入页渲染时自带 Material 祖先与标题', (tester) async {
+      // 推入路由什么都继承不到：没有 Scaffold、没有 Material、没有背景、没有
+      // 留白。这一页必须自己带齐，否则文字会落到 Flutter 的黄色双下划线错误样式。
+      // `pumpRoute` 不套 Scaffold，正是为了暴露这类问题。
+      await pumpRoute(tester, const LogPage());
+
+      expectProperlyRendered(tester, '睡眠质量');
+      expectProperlyRendered(tester, '手动补录');
+    });
+
+    testWidgets('回顾页底部的入口真的落在 /log/new 上', (tester) async {
+      // 这条走真实路由：Tab 入口 → `/log/new` → 手动补录页。app.dart 里那条
+      // 路由一旦缺失，用户看到的就是 go_router 的 Page Not Found。
+      await pumpRealApp(tester, entries: const []);
+
+      await tester.tap(find.text('回顾'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('手动补录某一晚'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('手动补录'), findsOneWidget, reason: '应落在手动补录页');
+      expect(find.text('Page Not Found'), findsNothing,
+          reason: '/log/new 必须注册');
     });
   });
 

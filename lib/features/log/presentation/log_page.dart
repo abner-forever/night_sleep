@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
-import '../../../app/app_shell.dart';
 import '../../../app/app_toast.dart';
 import '../../../core/platform/haptics.dart';
 import '../../../core/theme/app_theme.dart';
@@ -24,15 +24,15 @@ import '../../sleep/presentation/widgets/moon_arc.dart';
 import '../../sleep/presentation/widgets/quality_rating.dart';
 import '../../sleep/presentation/widgets/stage_style.dart';
 
-/// Log — record last night by hand, or correct a night that is already saved.
+/// 手动补录 / 编辑记录表单。
 ///
 /// Duration is never typed: it is derived from the two times, and the form
 /// validates that the window is physically plausible before saving.
 ///
 /// The same form serves both jobs. With [editing] set it comes up pre-filled and
-/// saves back onto that record's id; pushed over the shell by [LogEditPage] it
-/// brings its own chrome, while the tab-hosted new-record form does not because
-/// the shell already pads it.
+/// saves back onto that record's id. Either way it is now **only** ever reached
+/// as a pushed route — the 「记录」tab that used to host the blank form is gone,
+/// replaced by the 回顾 tab — so it always brings its own chrome via [Subpage].
 class LogPage extends ConsumerStatefulWidget {
   const LogPage({super.key, this.editing});
 
@@ -55,7 +55,6 @@ class _LogPageState extends ConsumerState<LogPage> {
   SleepQuality? _quality;
   LoggedEvents _events = LoggedEvents.none;
   final _notesController = TextEditingController();
-  bool _saved = false;
   bool _saving = false;
 
   /// True for the whole life of the widget: an edit never turns into a new
@@ -152,30 +151,19 @@ class _LogPageState extends ConsumerState<LogPage> {
       // not leave the button stuck on「保存中…」.
       unawaited(AppHaptics.success());
       if (!mounted) return;
-      setState(() {
-        _saved = true;
-        _saving = false;
-      });
+      setState(() => _saving = false);
 
-      if (editing != null) {
-        // The edit form is a pushed route, so going back is the whole of the
-        // "done" action and the shell underneath is still on the tab that
-        // opened it. The fallback covers being opened without anything to pop.
-        ref.read(toastProvider.notifier).show('记录已更新。');
-        if (Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        } else {
-          ref.read(activeTabProvider.notifier).state = AppTab.home;
-        }
-        return;
+      // 手动补录与编辑都只会以推入路由的形式出现，所以「保存完成」就是把这一页
+      // pop 掉：外壳还停在打开它的那个 Tab 上。`canPop` 的兜底覆盖了被当成根路由
+      // 直接挂载的情况（没有可 pop 的东西）。
+      ref.read(toastProvider.notifier).show(
+            editing != null ? '记录已更新。' : '睡眠记录已保存。',
+          );
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      } else {
+        context.go('/');
       }
-
-      ref.read(toastProvider.notifier).show('睡眠记录已保存，明天回来看看你的趋势。');
-      ref.read(activeTabProvider.notifier).state = AppTab.home;
-      // Reset for the next entry.
-      Future<void>.delayed(const Duration(seconds: 2), () {
-        if (mounted) setState(() => _saved = false);
-      });
     } catch (error) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -190,11 +178,6 @@ class _LogPageState extends ConsumerState<LogPage> {
     final hours = window.durationHours;
 
     final items = <Widget>[
-      if (!_isEditing) ...[
-        const PageHeading(eyebrow: '记录睡眠', title: '今天睡得怎么样？'),
-        const SizedBox(height: 18),
-      ],
-
       // ── Live duration preview ──────────────────────────────────────────
       GlassSurface(
         borderRadius: BorderRadius.circular(AppRadii.card),
@@ -341,59 +324,35 @@ class _LogPageState extends ConsumerState<LogPage> {
 
       Pressable(
         onTap: _saving ? null : _save,
-        child: AnimatedContainer(
-          duration: AppDurations.standard,
+        child: Container(
           padding: const EdgeInsets.symmetric(vertical: 16),
           decoration: BoxDecoration(
-            color: _saved ? tokens.accentSoft : tokens.accent,
+            color: tokens.accent,
             borderRadius: BorderRadius.circular(AppRadii.panel),
           ),
           alignment: Alignment.center,
-          child: _saved
-              ? Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    AppIcons.check(
-                        size: 18, color: tokens.accent, strokeWidth: 2.5),
-                    const SizedBox(width: 8),
-                    Text(
-                      '已保存',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: tokens.accent,
-                      ),
-                    ),
-                  ],
-                )
-              : Text(
-                  _saving
-                      ? '保存中…'
-                      : _isEditing
-                          ? '保存修改'
-                          : '保存记录',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
+          child: Text(
+            _saving
+                ? '保存中…'
+                : _isEditing
+                    ? '保存修改'
+                    : '保存记录',
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+          ),
         ),
       ),
     ];
 
-    // 编辑表单是压在标签外壳之上的推入页，自带一套外框与留白；
-    // 新建表单是个 tab，顶部与底部留白由下面的 ListView 自己补（见 pageTopInset）。
-    if (_isEditing) {
-      return Subpage(title: '编辑记录', children: items);
-    }
-    return ListView(
-      padding: EdgeInsets.fromLTRB(
-        pageGutter(context),
-        pageTopInset(context),
-        pageGutter(context),
-        pageBottomInset(context),
-      ),
+    // 手动补录与编辑现在**只会**以推入路由的形式出现（回顾 Tab 取代了原来的
+    // 「记录」Tab），所以永远自带外框。Tab 分支随之删除，附带的两个跨页副作用
+    // 也一起消失：不再需要「保存后切回首页」，也不再需要「2 秒后重置已保存态」
+    // —— 推入页 pop 掉就没了，不存在需要重置的下一次。
+    return Subpage(
+      title: _isEditing ? '编辑记录' : '手动补录',
       children: items,
     );
   }
