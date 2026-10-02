@@ -251,7 +251,10 @@ class _NightScenePainter extends CustomPainter {
 
       // 82%→84% 亮起，84%→91% 淡出。
       final opacity = p < .84 ? (p - .82) / .02 : (.91 - p) / .07;
-      final travel = ((p - .82) / .18).clamp(0.0, 1.0);
+      // `@keyframes sleepMeteor` 只在 82% 与 91% 两处声明 `transform`，所以整段位移
+      // 是在这 9% 的区间里走完的（不是走到 100%）。可见窗口恰好也在 91% 处被 `opacity: 0`
+      // 截断，所以窗口内 `travel` 会走满 1，「整段划过去」成立。
+      final travel = ((p - .82) / .09).clamp(0.0, 1.0);
       final origin = Offset(spec.left * size.width, spec.top * size.height);
       final offset =
           Offset(-.58 * size.width * travel, .38 * size.width * travel);
@@ -289,11 +292,15 @@ class _NightScenePainter extends CustomPainter {
 
     for (final band in bands) {
       final t = _easeInOut(_pingPong(band.duration, delay: band.delay));
+      // CSS 的 `inset: A B C D` 是 top / right / bottom / left，所以元素高
+      // `H(1 - top - bottom)`——`bottom` 是**从底边往上收**的内缩量，正数让盒子变矮。
+      // （原计划这里写成了 `+ bottom`，把两条带的相对高低整个颠倒了：
+      // i1 该是 .66H 却给成 1.50H，i2 该是 1.04H 却给成 .60H。）
       final rect = Rect.fromLTWH(
         -size.width * .20,
         size.height * band.top,
         size.width * 1.40,
-        size.height * (1 - band.top + band.bottom),
+        size.height * (1 - band.top - band.bottom),
       );
 
       canvas.save();
