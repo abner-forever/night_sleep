@@ -133,6 +133,12 @@ class ActiveSessions extends Table {
 
   RealColumn get noiseVolume => real().withDefault(const Constant(0.5))();
 
+  /// 选中的夜景氛围 id（见 `NightScene`）。`null` = 用默认的「流星夜」。
+  ///
+  /// 存 id 字符串而不是枚举序号，与 [noiseId] 同一条既有做法：读不到认识的 id 时
+  /// 按默认处理，一行坏数据不至于让整个会话读不出来。
+  TextColumn get sceneId => text().nullable()();
+
   DateTimeColumn get createdAt => dateTime()();
 
   @override
@@ -188,7 +194,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -238,6 +244,15 @@ class AppDatabase extends _$AppDatabase {
             // v3 那次踩的就是同一类「顺序与开关状态」的坑。
             await m.createTable(activeSessions);
             await m.alterTable(TableMigration(sleepRecords));
+          }
+          // 下界不能省成 `from < 5`：`from < 4` 那条分支的 `createTable` 用的是
+          // **当前**的表定义，从 v1/v2/v3 升上来的库里 `active_sessions` 一建出来
+          // 就带着 `scene_id`，再加一次就是 `duplicate column name: scene_id`。
+          // 只有真正停在 v4 的库才需要补这一列——它那张表是用 v4 的列集建的。
+          if (from >= 4 && from < 5) {
+            // 只加一列可空列，不重建表：SQLite 的 `ALTER TABLE ADD COLUMN` 支持
+            // 可空列原地添加，与 v4 那次「改可空性必须重建」是两回事。
+            await m.addColumn(activeSessions, activeSessions.sceneId);
           }
         },
         beforeOpen: (details) async {

@@ -174,4 +174,23 @@ void main() {
     final reopened = SessionRepository(database);
     expect((await reopened.load())!.wakeMinutes, 360);
   });
+
+  test('场景 id 写进会话行，重开还在', () async {
+    await repo.start(now: start.toLocal());
+    await repo.update(sceneId: 'galaxy');
+
+    expect((await repo.load())!.sceneId, 'galaxy');
+  });
+
+  test('不传 sceneId 时不动它；显式传 null 才清回默认', () async {
+    await repo.start(now: start.toLocal());
+    await repo.update(sceneId: 'ocean');
+
+    // 改别的字段不该顺手把场景抹掉——`_unset` 哨兵存在的全部理由。
+    await repo.update(alarmEnabled: true);
+    expect((await repo.load())!.sceneId, 'ocean');
+
+    await repo.update(sceneId: null);
+    expect((await repo.load())!.sceneId, isNull);
+  });
 }

@@ -11,6 +11,7 @@ class SleepSession {
     required this.timeZoneId,
     required this.wakeMinutes,
     required this.alarmEnabled,
+    this.sceneId,
     this.noiseId,
     this.noiseVolume = 0.5,
     required this.createdAtUtc,
@@ -26,6 +27,9 @@ class SleepSession {
 
   /// 到点响不响。只影响通知，不影响圆环的目标。
   final bool alarmEnabled;
+
+  /// 选中的夜景氛围 id。`null` 表示没选过，界面按默认的「流星夜」渲染。
+  final String? sceneId;
 
   /// 正在播放的助眠音效 id，`null` 表示没选。
   final String? noiseId;

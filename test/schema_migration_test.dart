@@ -529,7 +529,7 @@ void main() {
   });
 
   group('v3 → v4', () {
-    test('夹具确实是 v3，而升级后确实是 v4', () async {
+    test('夹具确实是 v3，而升级后停在当前版本', () async {
       await writeV3Database();
       final v3 = _V3Database(NativeDatabase(file));
       expect(await userVersion(v3), 3);
@@ -539,7 +539,9 @@ void main() {
       final db = openCurrent();
       addTearDown(db.close);
       await db.allRecords(); // 触发迁移
-      expect(await userVersion(db), 4);
+      // 同「夹具确实是 v1 / v2」两条：与 `schemaVersion` 比，不写死数字。写死 4
+      // 时它只在 v4 那一版成立，schemaVersion 一升就变成一句假话（本轮 v5 就是）。
+      expect(await userVersion(db), db.schemaVersion);
     });
 
     test('v3 的记录、阶段、片段、洞察、设置一行不动', () async {
@@ -642,6 +644,81 @@ void main() {
         ),
       );
       expect((await db.activeSession())!.wakeMinutes, 420);
+    });
+  });
+
+  /// 写出一份 v4 的库：一条会话行 + 一条设置。会话行正是 `scene_id` 要加在的那张表。
+  Future<void> writeV4Database() async {
+    final v4 = _V4Database(NativeDatabase(file));
+    try {
+      await v4.customStatement(
+        "INSERT INTO active_sessions (id, start_at_utc, time_zone_id, "
+        "wake_minutes, alarm_enabled, noise_id, noise_volume, created_at) "
+        "VALUES ('active', 1759000000000, 'Asia/Shanghai', 420, 1, "
+        "'rain', 0.35, 1759000000000)",
+      );
+      await v4.customStatement(
+        "INSERT INTO app_settings (id, theme_mode, sleep_goal_minutes) "
+        "VALUES ('default', 'dark', 450)",
+      );
+    } finally {
+      await v4.close();
+    }
+  }
+
+  group('v4 → v5', () {
+    test('夹具确实是 v4，而升级后停在当前版本', () async {
+      await writeV4Database();
+      final v4 = _V4Database(NativeDatabase(file));
+      expect(await userVersion(v4), 4);
+      await v4.customStatement('SELECT 1');
+      await v4.close();
+
+      final db = openCurrent();
+      addTearDown(db.close);
+      await db.activeSession(); // 触发迁移
+      // 与其余几条同口径：和 `schemaVersion` 比，不写死数字。
+      expect(await userVersion(db), db.schemaVersion);
+    });
+
+    test('既有会话行一个字段不差，scene_id 读出来是空的', () async {
+      await writeV4Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+
+      final row = await db.activeSession();
+      expect(row, isNotNull, reason: '加列把既有会话行弄丢了');
+      expect(row!.wakeMinutes, 420);
+      expect(row.alarmEnabled, isTrue);
+      expect(row.noiseId, 'rain');
+      expect(row.noiseVolume, 0.35);
+      // 新增列必须是可空的，且既有行读出来为空——这正是「没选过就按默认渲染」
+      // 这条语义能成立的前提。
+      expect(row.sceneId, isNull);
+    });
+
+    test('迁移后可以写入并读回 scene_id', () async {
+      await writeV4Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+      await db.activeSession(); // 触发迁移
+
+      await db.updateActiveSession(
+        const ActiveSessionsCompanion(sceneId: Value('galaxy')),
+      );
+      expect((await db.activeSession())!.sceneId, 'galaxy');
+    });
+
+    test('升级后的库再次打开不重跑迁移', () async {
+      await writeV4Database();
+      final first = openCurrent();
+      await first.activeSession(); // 触发迁移
+      await first.close();
+
+      final second = openCurrent();
+      addTearDown(second.close);
+      // 重跑会撞上 `duplicate column name: scene_id`。
+      expect((await second.activeSession())!.id, 'active');
     });
   });
 }
@@ -879,6 +956,117 @@ class _V3Database extends AppDatabase {
               score INTEGER,
               generated_at_utc INTEGER NOT NULL,
               status TEXT NOT NULL DEFAULT 'unavailable',
+              PRIMARY KEY (id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE app_settings (
+              id TEXT NOT NULL,
+              theme_mode TEXT NOT NULL DEFAULT 'system',
+              sleep_goal_minutes INTEGER NOT NULL DEFAULT 480,
+              bedtime_reminder_enabled INTEGER NOT NULL DEFAULT 0,
+              bedtime_reminder_minutes INTEGER,
+              wake_reminder_enabled INTEGER NOT NULL DEFAULT 0,
+              wake_reminder_minutes INTEGER,
+              sound_recording_enabled INTEGER NOT NULL DEFAULT 0,
+              onboarded INTEGER NOT NULL DEFAULT 0,
+              insight_provider TEXT,
+              insight_model TEXT,
+              PRIMARY KEY (id)
+            )
+          ''');
+        },
+      );
+}
+
+/// v4 出厂时的 schema：`sleep_records.quality` 已可空，`active_sessions` 已存在，
+/// 但还没有 `scene_id`。
+///
+/// 理由与 [_V1Database] / [_V2Database] / [_V3Database] 完全一样，最要紧的一条是
+/// 裸 DDL 把这个形态**冻住了**：用表类写的夹具会跟着 `app_database.dart` 一起演进，
+/// `sceneId` 一落，它就悄悄不再代表 v4，v4→v5 那条断言会在迁移代码一行没跑的情况
+/// 下全绿。
+class _V4Database extends AppDatabase {
+  _V4Database(super.executor);
+
+  @override
+  int get schemaVersion => 4;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) async {
+          await customStatement('''
+            CREATE TABLE sleep_records (
+              id TEXT NOT NULL,
+              start_at_utc INTEGER NOT NULL,
+              end_at_utc INTEGER NOT NULL,
+              time_zone_id TEXT NOT NULL DEFAULT 'UTC',
+              quality INTEGER,
+              notes TEXT NOT NULL DEFAULT '',
+              tags_json TEXT NOT NULL DEFAULT '[]',
+              source TEXT NOT NULL DEFAULT 'manual',
+              flagged_snore INTEGER NOT NULL DEFAULT 0,
+              flagged_talk INTEGER NOT NULL DEFAULT 0,
+              flagged_restless INTEGER NOT NULL DEFAULT 0,
+              flagged_nightmare INTEGER NOT NULL DEFAULT 0,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL,
+              PRIMARY KEY (id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE sleep_stage_segments (
+              id TEXT NOT NULL,
+              record_id TEXT NOT NULL
+                REFERENCES sleep_records (id) ON DELETE CASCADE,
+              stage TEXT NOT NULL,
+              start_at_utc INTEGER NOT NULL,
+              end_at_utc INTEGER NOT NULL,
+              source TEXT NOT NULL DEFAULT 'import',
+              PRIMARY KEY (id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE sound_clips (
+              id TEXT NOT NULL,
+              record_id TEXT NOT NULL
+                REFERENCES sleep_records (id) ON DELETE CASCADE,
+              kind TEXT NOT NULL,
+              started_at_utc INTEGER NOT NULL,
+              duration_ms INTEGER NOT NULL,
+              local_uri TEXT,
+              transcript TEXT,
+              analysis TEXT,
+              analysis_status TEXT NOT NULL DEFAULT 'pending',
+              source TEXT NOT NULL DEFAULT 'recording',
+              PRIMARY KEY (id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE insights (
+              id TEXT NOT NULL,
+              record_id TEXT
+                REFERENCES sleep_records (id) ON DELETE CASCADE,
+              kind TEXT NOT NULL DEFAULT 'record_summary',
+              content TEXT,
+              provider TEXT,
+              model TEXT,
+              score INTEGER,
+              generated_at_utc INTEGER NOT NULL,
+              status TEXT NOT NULL DEFAULT 'unavailable',
+              PRIMARY KEY (id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE active_sessions (
+              id TEXT NOT NULL,
+              start_at_utc INTEGER NOT NULL,
+              time_zone_id TEXT NOT NULL DEFAULT 'UTC',
+              wake_minutes INTEGER NOT NULL,
+              alarm_enabled INTEGER NOT NULL DEFAULT 0,
+              noise_id TEXT,
+              noise_volume REAL NOT NULL DEFAULT 0.5,
+              created_at INTEGER NOT NULL,
               PRIMARY KEY (id)
             )
           ''');

@@ -52,12 +52,13 @@ class SessionRepository {
     return stored.wakeReminderMinutes ?? defaultWakeMinutes;
   }
 
-  /// 只改传入的字段。`noiseId` 显式传 `null` 表示取消选择。
+  /// 只改传入的字段。`noiseId` 与 `sceneId` 显式传 `null` 表示清成默认/取消选择。
   Future<void> update({
     int? wakeMinutes,
     bool? alarmEnabled,
     Object? noiseId = _unset,
     double? noiseVolume,
+    Object? sceneId = _unset,
   }) async {
     await _db.updateActiveSession(
       db.ActiveSessionsCompanion(
@@ -70,6 +71,9 @@ class SessionRepository {
             : Value(noiseId as String?),
         noiseVolume:
             noiseVolume == null ? const Value.absent() : Value(noiseVolume),
+        sceneId: identical(sceneId, _unset)
+            ? const Value.absent()
+            : Value(sceneId as String?),
       ),
     );
   }
@@ -130,6 +134,7 @@ class SessionRepository {
         timeZoneId: row.timeZoneId,
         wakeMinutes: row.wakeMinutes,
         alarmEnabled: row.alarmEnabled,
+        sceneId: row.sceneId,
         noiseId: row.noiseId,
         noiseVolume: row.noiseVolume,
         createdAtUtc: row.createdAt.toUtc(),
