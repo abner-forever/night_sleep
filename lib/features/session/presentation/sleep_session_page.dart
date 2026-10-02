@@ -8,7 +8,6 @@ import '../../../app/app_shell.dart';
 import '../../../app/app_toast.dart';
 import '../../../app/session_teardown.dart';
 import '../../../core/platform/haptics.dart';
-import '../../../core/platform/reminders.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_basics.dart';
@@ -19,7 +18,9 @@ import '../../../core/widgets/glass_surface.dart';
 import '../../sleep/data/session_repository.dart';
 import '../../sleep/domain/sleep_session.dart';
 import 'sheets/quality_rating_sheet.dart';
-import 'widgets/session_drawer.dart';
+import 'widgets/hold_to_finish_button.dart';
+import 'widgets/session_noise_section.dart';
+import 'widgets/session_settings_section.dart';
 import 'widgets/wake_dial.dart';
 
 /// 睡眠会话页。
@@ -53,9 +54,8 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage> {
   Timer? _timer;
   late DateTime _now = widget.now ?? DateTime.now();
 
-  /// 设定抽屉展开着没。收合态才画圆环——展开后它让位给抽屉，
-  /// 但「入睡 ─── 闹钟」那一行两种状态都留着。
-  bool _drawerOpen = false;
+  /// 白噪音展开区开着没。它不占圆环的位置——圆环、结束按钮与常驻开关都不动。
+  bool _noiseOpen = false;
 
   @override
   void initState() {
@@ -91,10 +91,11 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage> {
               : _SessionBody(
                   session: session,
                   now: _now,
-                  drawerOpen: _drawerOpen,
-                  onToggleDrawer: () =>
-                      setState(() => _drawerOpen = !_drawerOpen),
+                  noiseOpen: _noiseOpen,
+                  onToggleNoise: () => setState(() => _noiseOpen = !_noiseOpen),
                   onFinish: () => _finish(session),
+                  onFinishHint: () =>
+                      ref.read(toastProvider.notifier).show('按住不放，圆环填满才结束。'),
                 ),
         ),
       ),
@@ -151,7 +152,7 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage> {
   Future<void> _discard(BuildContext sheetContext) async {
     await ref.read(sessionRepositoryProvider).discard();
     // 与结束路径**同一套收尾**（[teardownSession]）。丢弃删的是同一行会话，而
-    // 9003 是抽屉里那个闹钟开关排的、那次调用同时让 9002 让了位：这里若不重排，
+    // 9003 是设定区那个闹钟开关排的、那次调用同时让 9002 让了位：这里若不重排，
     // 一个已经不存在的会话会留着起床闹钟，日常起床提醒还继续被压着——正是
     // `reminder_sync.dart` 里那条规则要防的失败类。
     await teardownSession(ref);
@@ -188,16 +189,18 @@ class _SessionBody extends StatelessWidget {
   const _SessionBody({
     required this.session,
     required this.now,
-    required this.drawerOpen,
-    required this.onToggleDrawer,
+    required this.noiseOpen,
+    required this.onToggleNoise,
     required this.onFinish,
+    required this.onFinishHint,
   });
 
   final SleepSession session;
   final DateTime now;
-  final bool drawerOpen;
-  final VoidCallback onToggleDrawer;
+  final bool noiseOpen;
+  final VoidCallback onToggleNoise;
   final VoidCallback onFinish;
+  final VoidCallback onFinishHint;
 
   @override
   Widget build(BuildContext context) {
@@ -236,82 +239,60 @@ class _SessionBody extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 14),
-        // 展开设定抽屉时圆环让位；「入睡 ─── 闹钟」那一行则两种状态都留着。
-        if (!drawerOpen) ...[
-          Center(
-            child: WakeDial(
-              progress: session.progressAt(now),
-              label: session.elapsedLabelAt(now),
-              sublabel:
-                  overdue ? '已超过起床时间 ${session.overdueLabelAt(now)}' : '已入睡',
-              semanticLabel: overdue
-                  ? '已睡 ${session.elapsedLabelAt(now)}，'
-                      '已超过起床时间 ${session.overdueLabelAt(now)}'
-                  : '已睡 ${session.elapsedLabelAt(now)}',
-            ),
+        // 圆环始终在视野里：白噪音展开区在摘要条下方撑开，不让位。
+        Center(
+          child: WakeDial(
+            progress: session.progressAt(now),
+            label: session.elapsedLabelAt(now),
+            sublabel:
+                overdue ? '已超过起床时间 ${session.overdueLabelAt(now)}' : '已入睡',
+            semanticLabel: overdue
+                ? '已睡 ${session.elapsedLabelAt(now)}，'
+                    '已超过起床时间 ${session.overdueLabelAt(now)}'
+                : '已睡 ${session.elapsedLabelAt(now)}',
           ),
-          const SizedBox(height: 22),
-        ],
-        _BedWakeRow(session: session),
-        const SizedBox(height: 12),
-        if (!drawerOpen) ...[
-          _AlarmChip(session: session, now: now),
-          const SizedBox(height: 12),
-        ],
-        _SettingsSummary(
-          session: session,
-          open: drawerOpen,
-          onTap: onToggleDrawer,
         ),
-        if (drawerOpen) ...[
-          const SizedBox(height: 14),
-          SessionDrawer(session: session),
-        ],
         const SizedBox(height: 22),
-        _EndButton(onTap: onFinish),
+        _BedWakeRow(session: session),
+        const SizedBox(height: 22),
+        // 结束按钮紧跟圆环：它是这一页唯一的出口，也是拇指最顺的位置。
+        Center(
+          child: HoldToFinishButton(
+            onFinish: onFinish,
+            onHint: onFinishHint,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Center(
+          child: Text(
+            '按住不放',
+            style: TextStyle(fontSize: 12, color: tokens.textMuted),
+          ),
+        ),
+        const SizedBox(height: 24),
+        SessionSettingsSection(session: session, now: now),
+        const SizedBox(height: 16),
+        _NoiseSummaryBar(
+          session: session,
+          open: noiseOpen,
+          onTap: onToggleNoise,
+        ),
+        AnimatedSize(
+          duration: AppDurations.standard,
+          curve: AppMotion.standardCurve,
+          alignment: Alignment.topCenter,
+          child: noiseOpen
+              ? const Padding(
+                  padding: EdgeInsets.only(top: 14),
+                  child: SessionNoiseSection(),
+                )
+              : const SizedBox(width: double.infinity),
+        ),
       ],
     );
   }
 }
 
-/// 底部的「结束睡眠」。
-///
-/// 与详情页的「删除记录」同一观感：玻璃底 + `danger` 色的描边与文字。收合态与
-/// 展开态都在——结束会话不该藏在抽屉里。
-class _EndButton extends StatelessWidget {
-  const _EndButton({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AppTokens.of(context);
-    return GlassSurface(
-      borderRadius: BorderRadius.circular(AppRadii.panel),
-      borderColor: tokens.danger.withValues(alpha: 0.38),
-      semanticLabel: '结束睡眠',
-      onTap: onTap,
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          AppIcons.sun(size: 17, color: tokens.danger, strokeWidth: 1.9),
-          const SizedBox(width: 8),
-          Text(
-            '结束睡眠',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: tokens.danger,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 时长越界时的说明层。
 ///
 /// 只有两种操作会产生它：点了开始就立刻点结束，或者点了开始忘了结束、放了好几天。
 /// 两种都不该静默变成一条睡眠记录，所以这里**不落库**，让用户自己选。
@@ -505,92 +486,12 @@ class _TimeColumn extends StatelessWidget {
   }
 }
 
-/// 闹钟状态胶囊。开着报剩余时间，关着说明自然醒后手动结束。
-class _AlarmChip extends StatelessWidget {
-  const _AlarmChip({required this.session, required this.now});
-
-  final SleepSession session;
-  final DateTime now;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AppTokens.of(context);
-    final on = session.alarmEnabled;
-
-    // 剩余时长的口径只有模型一份（`remainingLabelAt`）：胶囊不再自己夹到 0，
-    // 否则同一屏上方日晷写「已超过起床时间 42m」、下方写「还有 0h 0m」——两句
-    // 打架，而这正是用户睡过头睁眼看手机的那一刻。已过起床时间时改为提示手动结束。
-    final remaining = session.remainingLabelAt(now);
-    final label = !on
-        ? '闹钟已关 · 自然醒后手动结束'
-        : remaining != null
-            ? '起床闹钟已开 · 还有 $remaining'
-            : '起床闹钟已过 · 请手动结束睡眠';
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: on ? tokens.accentSoft : tokens.bgMuted,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            children: [
-              AppIcons.timer(
-                size: 15,
-                color: on ? tokens.accent : tokens.textMuted,
-                strokeWidth: 1.8,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: on ? tokens.accent : tokens.textSecondary,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        if (on) ...[
-          const SizedBox(height: 8),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              AppIcons.volume(
-                  size: 13, color: tokens.textMuted, strokeWidth: 1.6),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  // 与抽屉里那一行引用同一份字面量——两边各写一遍，
-                  // 迟早有一处在该说话的时候不说。
-                  ReminderScheduler.wakeAlarmDeliveryNote,
-                  style: TextStyle(
-                    fontSize: 11,
-                    height: 1.45,
-                    color: tokens.textMuted,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-/// 收合态底部那条摘要，同时也是设定抽屉的把手。
+/// 白噪音摘要条，同时也是展开区的把手。
 ///
-/// **点它打开**，不做纯上拉手势——躺着的时候拖拽不好使（规格 §四）。
-/// 它始终留在页面上：展开后点同一条即可收起，脚下的「入睡 ─── 闹钟」不会跟着消失。
-class _SettingsSummary extends StatelessWidget {
-  const _SettingsSummary({
+/// **点它开合**，不做纯上拉手势——躺着的时候拖拽不好使（规格 §四）。
+/// 它始终留在页面上：展开后点同一条即可收起，脚下的圆环与常驻开关不会跟着消失。
+class _NoiseSummaryBar extends StatelessWidget {
+  const _NoiseSummaryBar({
     required this.session,
     required this.open,
     required this.onTap,
@@ -608,50 +509,41 @@ class _SettingsSummary extends StatelessWidget {
     return GlassSurface(
       borderRadius: BorderRadius.circular(AppRadii.panel),
       onTap: onTap,
-      semanticLabel: open ? '收起今晚的设定' : '展开今晚的设定',
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+      semanticLabel: open ? '收起白噪音设定' : '展开白噪音设定',
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
         children: [
-          // 抽屉把手。
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: tokens.borderStrong,
-              borderRadius: BorderRadius.circular(AppRadii.pill),
+          AppIcons.volume(size: 16, color: tokens.accent, strokeWidth: 1.7),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '白噪音 · 音量 $percent%',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: tokens.textPrimary,
+              ),
             ),
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              AppIcons.volume(size: 16, color: tokens.accent, strokeWidth: 1.7),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  '白噪音 · 音量 $percent%',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: tokens.textPrimary,
-                  ),
-                ),
-              ),
-              Text(
-                open ? '收起' : '调整',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: tokens.accent,
-                ),
-              ),
-              const SizedBox(width: 4),
-              (open ? AppIcons.chevronDown : AppIcons.chevronUp)(
-                size: 16,
-                color: tokens.textMuted,
-                strokeWidth: 2,
-              ),
-            ],
+          Text(
+            open ? '收起' : '更多',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: tokens.accent,
+            ),
+          ),
+          const SizedBox(width: 4),
+          // 同一个字形旋转 180°，展开与收起的过渡才连贯。
+          AnimatedRotation(
+            turns: open ? 0.5 : 0,
+            duration: AppDurations.springy,
+            curve: AppMotion.standardCurve,
+            child: AppIcons.chevronDown(
+              size: 16,
+              color: tokens.textMuted,
+              strokeWidth: 2,
+            ),
           ),
         ],
       ),

@@ -15,6 +15,7 @@ import 'package:night_sleep/core/theme/app_theme.dart';
 import 'package:night_sleep/core/widgets/ios_controls.dart';
 import 'package:night_sleep/features/log/presentation/log_new_page.dart';
 import 'package:night_sleep/features/session/presentation/sleep_session_page.dart';
+import 'package:night_sleep/features/session/presentation/widgets/hold_to_finish_button.dart';
 import 'package:night_sleep/features/sleep/data/noise_player.dart';
 import 'package:night_sleep/features/sleep/data/noise_synth.dart';
 import 'package:night_sleep/features/sleep/data/session_repository.dart';
@@ -169,7 +170,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// 按**语义标签**取抽屉里的开关，不靠它在树里的位置——
+  /// 按**语义标签**取设定区里的开关，不靠它在树里的位置——
   /// 位置一变（多一行、换个顺序）就会指到另一个开关上，而且不报错。
   Finder toggleLabeled(String label) => find.byWidgetPredicate(
         (widget) => widget is IosToggle && widget.semanticLabel == label,
@@ -200,6 +201,19 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// 按住「结束睡眠」到外圈圆环填满。
+  ///
+  /// **这里显式推够 1.6 秒，而不是用 `tap`。** 结束按钮按下即开始计时，`tap` 的
+  /// 按下—抬起间隔远不够填满圆环，走的是「没按满」那条路径。第一帧 `pump()` 也不能省
+  /// ——`AnimationController` 的起点是在 ticker 的第一次 tick 上记的。
+  Future<void> holdToFinish(WidgetTester tester) async {
+    final gesture = await tester.press(find.byType(HoldToFinishButton));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1600));
+    await gesture.up();
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('显示已睡时长与设定的起床时间', (tester) async {
     final start = DateTime(2026, 8, 30, 23, 14);
     await pumpSession(
@@ -214,7 +228,8 @@ void main() {
     expect(find.text('3h 42m'), findsOneWidget);
     // 「定了几点起」必须在收合态就看得见。
     expect(find.text('23:14'), findsOneWidget);
-    expect(find.text('07:00'), findsOneWidget);
+    expect(find.text('07:00'), findsNWidgets(2),
+        reason: '上方「入睡 ─── 闹钟」行与下方常驻设定行各一处');
   });
 
   testWidgets('超过起床时间后给出「已超过」而不是让弧溢出', (tester) async {
@@ -250,7 +265,8 @@ void main() {
     // 计划时长 = 23:14 → 次日 07:00 = 7h46m；已过 3h42m，剩 4h4m。
     // （设计稿里 236 行写「3h 42m」、242 行写「还有 3h 18m」，两个数自相矛盾；
     // 以算出来的为准。）
-    expect(find.text('起床闹钟已开 · 还有 4h 4m'), findsOneWidget);
+    // 收合态就必须看得见剩余量——闹钟那一行常驻在结束按钮下方。
+    expect(find.text('还有 4h 4m'), findsOneWidget);
     // 规格点名「这句话是功能的一部分」：逐字断言，不是「页面里大概有这么句」。
     expect(
       find.text('由系统通知投递；休眠模式下可能晚几分钟，强度不如系统闹钟。'),
@@ -270,7 +286,7 @@ void main() {
 
     expect(find.textContaining('已超过起床时间'), findsOneWidget,
         reason: '前提：日晷确实写着已超过');
-    expect(find.text('起床闹钟已过 · 请手动结束睡眠'), findsOneWidget);
+    expect(find.text('已过起床时间 · 请手动结束睡眠'), findsOneWidget);
     expect(find.textContaining('还有 0h'), findsNothing,
         reason: '两句打架：上方说已超过 42m，下方说还有 0h 0m');
     expect(find.textContaining('起床闹钟已开'), findsNothing);
@@ -287,7 +303,7 @@ void main() {
     );
 
     expect(find.text('09:05'), findsOneWidget);
-    expect(find.text('06:05'), findsOneWidget);
+    expect(find.text('06:05'), findsNWidgets(2));
     expect(find.text('9:5'), findsNothing);
     expect(find.text('6:5'), findsNothing);
   });
@@ -390,7 +406,7 @@ void main() {
     );
   });
 
-  testWidgets('点摘要条展开抽屉，四组设定都在', (tester) async {
+  testWidgets('设定开关常驻，点摘要条才展开白噪音区', (tester) async {
     final start = DateTime(2026, 8, 30, 23, 14);
     await pumpSession(
       tester,
@@ -398,18 +414,22 @@ void main() {
       now: start.add(const Duration(hours: 1)),
     );
 
-    expect(find.text('今晚的设定'), findsNothing, reason: '收合态不该看到抽屉内容');
-
-    await tester.tap(find.textContaining('白噪音'));
-    await tester.pumpAndSettle();
-
+    // 收合态：两个开关已经看得见，白噪音区还收着。
     expect(find.text('今晚的设定'), findsOneWidget);
     expect(find.text('起床闹钟'), findsOneWidget);
     expect(find.text('鼾声/梦话记录'), findsOneWidget);
-    expect(find.text('白噪音'), findsOneWidget);
+    expect(find.text('15m'), findsNothing, reason: '白噪音区应还收着');
+    expect(find.text('助眠音效'), findsNothing, reason: '白噪音区应还收着');
+
+    await tester.tap(find.textContaining('白噪音 · 音量'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('助眠音效'), findsOneWidget);
+    expect(find.text('15m'), findsOneWidget);
+    expect(find.textContaining('退到后台或锁屏后声音会停'), findsOneWidget);
   });
 
-  testWidgets('抽屉里的白噪音定时最长 60 分钟，没有「不限」与 90m', (tester) async {
+  testWidgets('展开区里的白噪音定时最长 60 分钟，没有「不限」与 90m', (tester) async {
     final start = DateTime(2026, 8, 30, 23, 14);
     await pumpSession(
       tester,
@@ -434,9 +454,8 @@ void main() {
       session: sessionAt(start),
       now: start.add(const Duration(hours: 1)),
     );
-    await tester.tap(find.textContaining('白噪音'));
-    await tester.pumpAndSettle();
 
+    // 开关常驻，标注也必须跟着常驻——它不在展开区里。
     expect(find.textContaining('尚未接入录音'), findsOneWidget);
   });
 
@@ -462,10 +481,8 @@ void main() {
       session: sessionAt(start),
       now: start.add(const Duration(hours: 1)),
     );
-    await tester.tap(find.textContaining('白噪音'));
-    await tester.pumpAndSettle();
 
-    // 按语义标签取，不数位置：抽屉里有两个开关，顺序一变 `.last` 就指错了对象。
+    // 按语义标签取，不数位置：常驻设定区有两个开关，顺序一变 `.last` 就指错了对象。
     await tester.tap(toggleLabeled('鼾声/梦话记录'));
     await tester.pumpAndSettle();
 
@@ -474,19 +491,22 @@ void main() {
         reason: '会话页与设置页必须共用 AppSettings 里同一个字段');
   });
 
-  testWidgets('抽屉里闹钟开着时，投递强度标注就在那一行', (tester) async {
+  testWidgets('闹钟开着时，投递强度标注就在那一行', (tester) async {
     final start = DateTime(2026, 8, 30, 23, 14);
     await pumpSession(
       tester,
       session: sessionAt(start, alarmEnabled: true),
       now: start.add(const Duration(hours: 1)),
     );
+
+    // 标注跟着「起床闹钟」那一行常驻，**只有一处**——展开前后都不该多出第二处。
+    expect(find.text(ReminderScheduler.wakeAlarmDeliveryNote), findsOneWidget);
+
     await tester.tap(find.textContaining('白噪音'));
     await tester.pumpAndSettle();
 
-    // 收合态由胶囊承担这条标注；展开后胶囊让位，标注必须改由抽屉里的闹钟行承担
-    // ——用户正是在那一行打开闹钟，标注不能恰好在那一刻消失。
-    expect(find.text(ReminderScheduler.wakeAlarmDeliveryNote), findsOneWidget);
+    expect(find.text(ReminderScheduler.wakeAlarmDeliveryNote), findsOneWidget,
+        reason: '展开白噪音区不该把标注复制一份');
   });
 
   testWidgets('闹钟开关被拒时回弹，且不写入会话的 alarmEnabled', (tester) async {
@@ -505,11 +525,9 @@ void main() {
       session: sessionAt(start),
       now: start.add(const Duration(hours: 1)),
     );
-    await tester.tap(find.textContaining('白噪音'));
-    await tester.pumpAndSettle();
 
     // NoopReminderScheduler.requestPermission() 返回 unsupported——这正是「平台
-    // 安排不了」那条分支，与设置页走的是同一个闸口。
+    // 安排不了」那条分支，与设置页走的是同一个闸口。开关常驻，不必先展开。
     await tester.tap(toggleLabeled('起床闹钟'));
     await tester.pumpAndSettle();
 
@@ -590,7 +608,7 @@ void main() {
         reason: '到点之后不能留下一个「在播」的假值');
   });
 
-  testWidgets('收起抽屉不会停掉正在播放的白噪音', (tester) async {
+  testWidgets('收起展开区不会停掉正在播放的白噪音', (tester) async {
     final player = _FakeNoisePlayer();
     final start = DateTime(2026, 8, 30, 23, 14);
     await database.saveActiveSession(
@@ -622,7 +640,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
 
     expect(player.calls, isNot(contains('stop')),
-        reason: '收起抽屉只是藏起面板，声音要继续响（使用方裁定）');
+        reason: '收起展开区只是藏起面板，声音要继续响（使用方裁定）');
     expect(
       (await database.activeSession())?.noiseId,
       'rain',
@@ -689,8 +707,7 @@ void main() {
       now: start.add(const Duration(hours: 7, minutes: 48)),
     );
 
-    await tester.tap(find.text('结束睡眠'));
-    await tester.pumpAndSettle();
+    await holdToFinish(tester);
 
     expect(find.text('昨晚睡得怎么样？'), findsOneWidget);
     expect(find.text('跳过'), findsOneWidget);
@@ -711,8 +728,7 @@ void main() {
       tester.element(find.byType(SleepSessionPage)),
     );
 
-    await tester.tap(find.text('结束睡眠'));
-    await tester.pumpAndSettle();
+    await holdToFinish(tester);
     await tester.tap(find.text('跳过'));
     await tester.pumpAndSettle();
 
@@ -724,7 +740,7 @@ void main() {
     expect(player.calls, contains('stop'), reason: '结束后必须停掉白噪音');
     // 收尾必须真的走完，而不是停在半路。
     expect(container.read(activeTabProvider), AppTab.log, reason: '应切到「回顾」');
-    expect(find.text('结束睡眠'), findsNothing, reason: '会话页应已离开');
+    expect(find.byType(HoldToFinishButton), findsNothing, reason: '会话页应已离开');
   });
 
   testWidgets('评了分：质量写进记录', (tester) async {
@@ -737,8 +753,7 @@ void main() {
       now: start.add(const Duration(hours: 7, minutes: 48)),
     );
 
-    await tester.tap(find.text('结束睡眠'));
-    await tester.pumpAndSettle();
+    await holdToFinish(tester);
     // 点第 5 颗星，**按语义标签点**。原先用 `find.byType(QualityStars)` 点的是
     // 组件包围盒的**中心**，落的是第 3 颗「一般」；而 `isNotNull` 分辨不出
     // 「用户点的那一档」与「任意一档」。
@@ -764,8 +779,7 @@ void main() {
       now: start,
     );
 
-    await tester.tap(find.text('结束睡眠'));
-    await tester.pumpAndSettle();
+    await holdToFinish(tester);
 
     // 守门最要紧的那条：**没有**走到评星——过了评星这一步就是落库。
     expect(find.text('昨晚睡得怎么样？'), findsNothing, reason: '时长越界时不该走到评星弹层');
@@ -790,8 +804,7 @@ void main() {
     final start = DateTime(2026, 8, 30, 23, 14);
     await pumpSession(tester, session: sessionAt(start), now: start);
 
-    await tester.tap(find.text('结束睡眠'));
-    await tester.pumpAndSettle();
+    await holdToFinish(tester);
     await tester.tap(find.text('手动补录某一晚'));
     await tester.pumpAndSettle();
 
@@ -809,8 +822,7 @@ void main() {
       now: start.add(const Duration(hours: 30)),
     );
 
-    await tester.tap(find.text('结束睡眠'));
-    await tester.pumpAndSettle();
+    await holdToFinish(tester);
 
     expect(find.text('昨晚睡得怎么样？'), findsNothing, reason: '时长越界时不该走到评星弹层');
     expect(find.textContaining('超过 24 小时'), findsOneWidget);
@@ -841,8 +853,7 @@ void main() {
       tester.element(find.byType(SleepSessionPage)),
     );
 
-    await tester.tap(find.text('结束睡眠'));
-    await tester.pumpAndSettle();
+    await holdToFinish(tester);
     await tester.tap(find.text('跳过'));
     await tester.pumpAndSettle();
 
@@ -850,7 +861,8 @@ void main() {
     expect(container.read(activeTabProvider), AppTab.log,
         reason: '收尾失败也要切到「回顾」');
     expect(container.read(toastProvider), isNotNull, reason: '收尾失败也要给出反馈');
-    expect(find.text('结束睡眠'), findsNothing, reason: '收尾失败也要离开会话页');
+    expect(find.byType(HoldToFinishButton), findsNothing,
+        reason: '收尾失败也要离开会话页');
   });
 
   testWidgets('丢弃这次会话：不写记录、会话消失、闹钟一并重排', (tester) async {
@@ -865,14 +877,13 @@ void main() {
       scheduler: scheduler,
     );
 
-    await tester.tap(find.text('结束睡眠'));
-    await tester.pumpAndSettle();
+    await holdToFinish(tester);
     await tester.tap(find.text('丢弃这次会话'));
     await tester.pumpAndSettle();
 
     expect(await database.allRecords(), isEmpty);
     expect(await database.activeSession(), isNull);
-    // 丢弃删的是同一行会话，而 9003 是抽屉里那个开关排的、那次调用同时让 9002
+    // 丢弃删的是同一行会话，而 9003 是设定区那个开关排的、那次调用同时让 9002
     // 让了位。不重排的话，一个已经不存在的会话会留着起床闹钟，日常起床提醒还
     // 继续被压着——正是 `reminder_sync.dart` 里那条规则要防的失败类。
     expect(scheduler.calls, contains('syncDaily'),
@@ -883,6 +894,49 @@ void main() {
     expect(player.calls, contains('stop'), reason: '丢弃后必须停掉白噪音');
     // UI 结果：说明层关掉、离开会话页（回到 `/`）。
     expect(find.text('丢弃这次会话'), findsNothing, reason: '说明层应已关闭');
-    expect(find.text('结束睡眠'), findsNothing, reason: '会话页应已离开');
+    expect(find.byType(HoldToFinishButton), findsNothing, reason: '会话页应已离开');
+  });
+
+  /// 按住确认的闸门：环没填满就松手，什么都不该发生。
+  testWidgets('没按满就松手不结束会话', (tester) async {
+    final start = DateTime(2026, 8, 30, 23, 14);
+    await pumpSession(
+      tester,
+      session: sessionAt(start),
+      now: start.add(const Duration(hours: 7, minutes: 48)),
+    );
+
+    final gesture = await tester.press(find.byType(HoldToFinishButton));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 700));
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(find.text('昨晚睡得怎么样？'), findsNothing, reason: '环没满却走到了评星，等于这道闸没起作用');
+    expect(await database.allRecords(), isEmpty);
+    expect(await database.activeSession(), isNotNull, reason: '会话仍在');
+    expect(find.byType(HoldToFinishButton), findsOneWidget, reason: '会话页还在');
+  });
+
+  testWidgets('短按结束按钮只给提示，不结束', (tester) async {
+    final start = DateTime(2026, 8, 30, 23, 14);
+    await pumpSession(
+      tester,
+      session: sessionAt(start),
+      now: start.add(const Duration(hours: 7, minutes: 48)),
+    );
+
+    await tester.tap(find.byType(HoldToFinishButton));
+    await tester.pumpAndSettle();
+
+    expect(await database.allRecords(), isEmpty);
+    expect(find.text('昨晚睡得怎么样？'), findsNothing);
+    // 测试树里没有 ToastOverlay（它活在外壳里），只能直接读 provider。
+    expect(
+      ProviderScope.containerOf(tester.element(find.byType(SleepSessionPage)))
+          .read(toastProvider),
+      contains('按住不放'),
+      reason: '短按必须告诉用户正确的操作方式',
+    );
   });
 }
