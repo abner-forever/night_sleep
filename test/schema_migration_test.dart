@@ -207,10 +207,14 @@ void main() {
     }
   }
 
-  /// 写出一份 v3 的库：一条有质量的记录、一条阶段、一条设置。
+  /// 写出一份 v3 的库：一条有质量的记录，外加它的阶段、声音片段与洞察，一条设置。
   ///
   /// 形态就是线上应用在 v4 到来之前留下的样子：`sleep_records.quality` 仍是
   /// `NOT NULL`，且还没有 `active_sessions` 表。
+  ///
+  /// **四类子表行都要写**（阶段 / 片段 / 洞察 / 设置）：v4 的 `alterTable` 是
+  /// 「建新表 → 拷数据 → 删旧表 → 改名」，重建的恰恰是这三张子表所引用的
+  /// `sleep_records`，最容易丢的就是子表数据。少写任何一类，对应的存活断言就是空的。
   ///
   /// 时间戳写成 **unix 秒**，与 [_epoch] 同一个口径——drift 的 `dateTime()` 在原生
   /// 执行器上按秒存，写微秒会被 `DateTime.fromMillisecondsSinceEpoch` 判成越界。
@@ -227,6 +231,18 @@ void main() {
         "INSERT INTO sleep_stage_segments (id, record_id, stage, start_at_utc, "
         "end_at_utc, source) VALUES ('v3-night-stage-0', 'v3-night', 'deep', "
         "1759000000000, 1759003600000, 'import')",
+      );
+      await v3.customStatement(
+        "INSERT INTO sound_clips (id, record_id, kind, started_at_utc, "
+        "duration_ms, analysis_status, source) VALUES "
+        "('v3-night-clip-0', 'v3-night', 'noise', 1759000000000, 1200, "
+        "'pending', 'recording')",
+      );
+      await v3.customStatement(
+        "INSERT INTO insights (id, record_id, kind, content, provider, model, "
+        "score, generated_at_utc, status) VALUES ('v3-night-insight', "
+        "'v3-night', 'record_summary', 'v3 时期写的洞察', 'demo', 'demo', 80, "
+        "1759000000000, 'ok')",
       );
       await v3.customStatement(
         "INSERT INTO app_settings (id, theme_mode, sleep_goal_minutes, "
@@ -526,7 +542,7 @@ void main() {
       expect(await userVersion(db), 4);
     });
 
-    test('v3 的记录、阶段、设置一行不动', () async {
+    test('v3 的记录、阶段、片段、洞察、设置一行不动', () async {
       await writeV3Database();
       final db = openCurrent();
       addTearDown(db.close);
@@ -538,10 +554,41 @@ void main() {
       expect(records.single.notes, 'v3 时期写的备注');
       expect(await db.stagesFor('v3-night'), hasLength(1));
 
+      // 片段与洞察：`alterTable` 重建的是它们引用的 `sleep_records`，行映射写错
+      // 就会留下记录、却丢掉这两类子表数据。规格 §十二与主规格 §9 都点名要验。
+      final clips = await db.allClipsByRecord();
+      expect(clips['v3-night'], hasLength(1),
+          reason: '重建 sleep_records 时丢掉了声音片段');
+      expect(clips['v3-night']!.single.id, 'v3-night-clip-0');
+      final insights = await db.allInsightsByRecord();
+      expect(insights['v3-night'], isNotNull,
+          reason: '重建 sleep_records 时丢掉了洞察');
+      expect(insights['v3-night']!.content, 'v3 时期写的洞察');
+
       final settings = await db.getSettings();
       expect(settings.themeMode, 'dark');
       expect(settings.sleepGoalMinutes, 450);
       expect(settings.wakeReminderMinutes, 420);
+    });
+
+    /// 迁移过的库**再打开一次**必须原样可用、且不重跑 v3→v4。
+    ///
+    /// 重跑会撞上 `createTable(activeSessions)` 的「表已存在」——那正是迁移写错时
+    /// 用户第二次打开应用就起不来的形态。v1→v3 那条已有同款用例，这里补上 v4 的。
+    test('v3 升级后的库再次打开不重跑迁移，子表原样', () async {
+      await writeV3Database();
+      final first = openCurrent();
+      await first.allRecords(); // 触发迁移
+      await first.close();
+
+      final second = openCurrent();
+      addTearDown(second.close);
+
+      expect((await second.allRecords()).single.id, 'v3-night');
+      expect(await second.stagesFor('v3-night'), hasLength(1));
+      expect((await second.allClipsByRecord())['v3-night'], hasLength(1));
+      expect((await second.allInsightsByRecord())['v3-night'], isNotNull);
+      expect(await second.getSettings(), isNotNull);
     });
 
     /// 表重建的要害：`quality` 的可空性**真的**放开了。
