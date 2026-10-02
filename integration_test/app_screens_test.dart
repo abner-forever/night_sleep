@@ -17,6 +17,11 @@ import 'package:night_sleep/main.dart' as app;
 ///
 /// It pauses rather than calling `binding.takeScreenshot`: that channel proved
 /// unreliable on this setup, while `simctl io screenshot` never missed.
+///
+/// **会话页（v3.2 起）不能用 `pumpAndSettle`。** 那一页挂着一个 60 秒循环的夜景
+/// 动画控制器，`pumpAndSettle` 永远等不到「没有动画」的那一刻，会直接 `timed out`。
+/// 走到会话页之后一律走 [settle] 里的显式推帧分支——判据是页面上有没有
+/// `HoldToFinishButton`——步进时长与原本的等待相当。
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
@@ -25,6 +30,15 @@ void main() {
   const hold = Duration(seconds: 5);
 
   Future<void> settle(WidgetTester tester) async {
+    // 先推一帧：刚触发的导航（比如点「开始睡眠」）要在这一帧之后才把目标页建出来，
+    // 会话页的判据才有意义。
+    await tester.pump();
+    // 会话页（v3.2 起）的背景是一个 60 秒循环的夜景动画，`pumpAndSettle` 在这里
+    // **永远收敛不了**，会 `timed out`。用显式推帧代替，步进时长与原本的等待相当。
+    if (find.byType(HoldToFinishButton).evaluate().isNotEmpty) {
+      await tester.pump(const Duration(milliseconds: 900));
+      return;
+    }
     try {
       await tester.pumpAndSettle(const Duration(seconds: 2));
     } catch (_) {
@@ -116,10 +130,10 @@ void main() {
     await settle(tester);
   }
 
-  /// 按住「结束睡眠」并显式推帧。
+  /// 长按「结束睡眠」并显式推帧。
   ///
   /// 不能只 `await Future.delayed`：这一轮实测下来，集成测试的 live binding 里
-  /// 动画只在**推帧**时前进，光等时钟过去，进度环会停在原地。
+  /// 动画只在**推帧**时前进，光等时钟过去，结束按钮的填充条会停在原地。
   Future<void> holdFinishButton(WidgetTester tester, int frames) async {
     final button = find.byType(HoldToFinishButton);
     await tester.ensureVisible(button);
@@ -209,19 +223,24 @@ void main() {
       await Future<void>.delayed(hold);
     });
 
-    // 按住不放、环扫到一半左右就松手（1.5 秒才满），拍进度环。
+    // 长按结束睡眠，填充条扫到一半左右就松手（1.5 秒才满）。
     await step(tester, 'session-hold', () async {
       await holdFinishButton(tester, 12);
       await Future<void>.delayed(hold);
     });
 
-    // 展开白噪音区：看高度动画之后的版式，以及自动滚进视野的效果。
+    // 打开白噪音底部弹窗：v3.2 起设置从页内展开区改成深色弹窗（八宫格 + 音量 + 定时）。
+    // 拍完必须收掉——它是模态弹窗，盖住结束按钮，后面那一步会按不中。
     await step(tester, 'session-noise', () async {
       await tapContaining(tester, '白噪音 · 音量');
       await Future<void>.delayed(hold);
+      if (find.text('完成').evaluate().isNotEmpty) {
+        await tester.tap(find.text('完成'));
+        await settle(tester);
+      }
     });
 
-    // 按住到底 → 评星弹层；跳过收尾，把首页还原成「开始睡眠」。
+    // 长按到底 → 评星弹层；跳过收尾，把首页还原成「开始睡眠」。
     await step(tester, 'session-finish', () async {
       await holdFinishButton(tester, 25);
       await Future<void>.delayed(hold);

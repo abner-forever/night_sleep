@@ -1,6 +1,6 @@
 # 夜深：Flutter 睡眠记录 App 项目规格说明书
 
-> 版本：3.1（2026-10-02）
+> 版本：3.2（2026-10-02）
 > 用途：本项目的实现与验收基准。
 > 设计原型：[Figma Make：睡眠记录 APP 设计](https://www.figma.com/make/hKbqp1qjtcNQmmiDtVvXpk/%E7%9D%A1%E7%9C%A0%E8%AE%B0%E5%BD%95APP%E8%AE%BE%E8%AE%A1)
 > 变更史见 [CHANGELOG.md](../../../CHANGELOG.md)
@@ -104,7 +104,7 @@
 | --- | --- | --- |
 | 首页 | 圆形睡眠盘（4 同心弧）、昨夜概览、近 7 日均时、助眠音效入口、最近记录卡 | 展示最近一晚及近期趋势；无记录时明确的新增入口。**v3.0 起主按钮位是「开始睡眠」**（有会话时换成「正在睡眠」卡，见偏差 #24） |
 | 回顾（原「记录」Tab） | 实时时长预览、日期/入睡/起床滚轮、1–5 星主观质量、四类事件开关、备注 | 「记录」Tab 改为「**回顾**」Tab（`AppTab.log` 的 id 不变、label 改）：对最近一条**真实**记录补充主观感受，可切换回顾哪一晚，**不改起止时刻**；手动录入降级为二级页 `/log/new`，入口在回顾页底部。演示记录不参与补充。见偏差 #23 |
-| 会话页（`/sleep/session`） | 原型无此页（本实现新增，见偏差 #24） | 推入式全屏页：日晷圆环（已过时长 ÷ 计划时长）、`入睡 ─── 闹钟` 行、起床闹钟开关、鼾声/梦话开关、白噪音（八宫格 + 音量 + 定时 15/30/45/60，默认 30）。**它不测量任何东西**；会话状态进 SQLite、跨重启存活；「收起」离开页面而会话继续跑（白噪音也随之继续响） |
+| 会话页（`/sleep/session`） | 原型无此页（本实现新增，见偏差 #24）；**v3.2 起照原型 `SleepView` 的「睡眠进行中」态重建**（偏差 #28–#34） | 推入式全屏页：夜景氛围（8 种场景动画）、月亮 + `HH:MM:SS` 实时计时、当前睡眠事件卡（开始睡眠 / 白噪音 / 起床闹钟 / 鼾声检测四行）、横向长按结束按钮；白噪音设置走深色底部弹窗（八宫格 + 音量 + 定时 15/30/45/60，默认 30）。整页常暗（不论应用主题）。**它不测量任何东西**；会话状态进 SQLite、跨重启存活；「收起」离开页面而会话继续跑（白噪音也随之继续响） |
 | 睡眠详情 | 时长盘、阶段柱状图与占比、声音事件卡（可展开）、洞察、备注 | 仅展示确有来源的区块；缺失区块显示解释性空状态；底部提供编辑与删除入口 |
 | 统计 | 7/14/30 天分段控件、时长柱状图（含 7h 目标线）、评分卡、四项汇总、梦话转录 | 平均值分母只计有记录的天数；无数据不显示虚假趋势 |
 | 设置 | 外观、目标、数据导入、提醒、声音监测、洞察服务、删除数据 | 设置持久化；未接入的功能必须标注，不得伪装可用；演示数据属于开发期功能，收进独立二级页 |
@@ -138,7 +138,8 @@
 | 就寝/起床提醒（原型只有装饰性开关） | `lib/core/platform/reminders.dart`（权限、时区与调度，含 `nextOccurrence` 的夏令时口径）、`lib/app/reminder_sync.dart`（启动全量重排与「偏好 → 计划」映射） |
 | 会话起床闹钟（一次性，原型无对应） | `ReminderScheduler.wakeAlarmId`（9003）与 `scheduleOnce`（`lib/core/platform/reminders.dart`，**不传** `matchDateTimeComponents`）；「有无会话 → 排/取消」在 `lib/app/reminder_sync.dart` 的 `syncSessionAlarm`；投递强度文案常量 `wakeAlarmDeliveryNote` |
 | 通知权限闸口（设置页与会话页共用） | `lib/app/reminder_permission.dart`（`ensureNotificationPermission`） |
-| 睡眠会话页 | `lib/features/session/presentation/sleep_session_page.dart`（路由 `/sleep/session`）；常驻设定区 `presentation/widgets/session_settings_section.dart`、白噪音展开区 `presentation/widgets/session_noise_section.dart`、长按结束按钮 `presentation/widgets/hold_to_finish_button.dart`、日晷圆环 `widgets/wake_dial.dart`、就地评星 `sheets/quality_rating_sheet.dart` |
+| 睡眠会话页 | `lib/features/session/presentation/sleep_session_page.dart`（路由 `/sleep/session`）；长按结束按钮 `presentation/widgets/hold_to_finish_button.dart`、就地评星 `sheets/quality_rating_sheet.dart`。**日晷圆环 `widgets/wake_dial.dart` 已删**（v3.2：圆环不再显示，只有这一页用它）；旧版式的 `widgets/session_settings_section.dart` / `widgets/session_noise_section.dart` 随之删除 |
+| 会话页夜景氛围与弹窗 | 页面局部令牌 `lib/features/session/presentation/night_style.dart`；场景表 `night_scene.dart`；背景 `widgets/night_backdrop.dart`；选择器 `widgets/night_scene_picker.dart`；月亮 `widgets/sleep_moon_mark.dart`；白噪音弹窗 `sheets/night_noise_sheet.dart`；事件卡 `widgets/session_events_card.dart`。**这一页不走 `AppTokens`**，理由见偏差 #32 |
 | 会话状态与仓库 | 领域模型 `lib/features/sleep/domain/sleep_session.dart`；读写 `lib/features/sleep/data/session_repository.dart`（`start` / `update` / `finish` / `discard`） |
 | 会话白噪音（比页面长命） | `lib/app/noise_session.dart`（`noiseSessionControllerProvider` 持有播放器与倒计时） |
 | 回顾页与手动补录（原型无对应） | `lib/features/log/presentation/review_page.dart`（换一晚选择器 `review_night_picker.dart`）、`log_new_page.dart`（`/log/new`） |
@@ -216,7 +217,7 @@
 
 ## 5. 数据模型与计算口径
 
-### 5.1 表结构（schema v4）
+### 5.1 表结构（schema v5）
 
 | 表 | 核心字段 | 约束 |
 | --- | --- | --- |
@@ -225,7 +226,7 @@
 | `SoundClips` | `id`、`recordId`、`kind`、`startedAtUtc`、`durationMs`、`localUri`、`transcript`、`analysis`、`analysisStatus`、`source` | 转录/分析可空；状态区分 pending / analysed / failed |
 | `Insights` | `id`、`recordId`、`kind`、`content`、`provider`、`model`、`score`、`generatedAtUtc`、`status` | `recordId` 外键级联删除（schema v3 起）；仅保存真实生成结果；失败状态不作有效结论 |
 | `AppSettings` | `themeMode`、`sleepGoalMinutes`、提醒开关与时间、`soundRecordingEnabled`、`onboarded`、`insightProvider`、`insightModel` | **不存 API Key** |
-| `ActiveSessions`（v4 新增） | `id`、`startAtUtc`、`timeZoneId`、`wakeMinutes`、`alarmEnabled`、`noiseId`、`noiseVolume`、`createdAt` | **单行表**，主键固定 `'active'`（沿用 `AppSettings` 的 `id = 'default'` 约定），于是「同时两个会话」在结构上不可能。**刻意不含 `soundRecordingEnabled`**：那是跨会话偏好，唯一一份在 `AppSettings` |
+| `ActiveSessions`（v4 新增；v5 加 `scene_id`） | `id`、`startAtUtc`、`timeZoneId`、`wakeMinutes`、`alarmEnabled`、`noiseId`、`noiseVolume`、`sceneId`（v5 新增，可空）、`createdAt` | **单行表**，主键固定 `'active'`（沿用 `AppSettings` 的 `id = 'default'` 约定），于是「同时两个会话」在结构上不可能。**刻意不含 `soundRecordingEnabled`**：那是跨会话偏好，唯一一份在 `AppSettings`。`sceneId` 存场景 id 字符串（与 `noiseId` 同一做法），`null` = 默认「流星夜」，读不到认识的 id 按默认处理 |
 
 **v2 → v3 迁移**：`Insights.recordId` 在 v2 里没有外键，`deleteDemoData()` 因此会留下
 `record_id` 指向已删记录的孤儿洞察行；重装演示数据时固定 id（`demo-N-insight`）与这些孤儿
@@ -246,6 +247,10 @@
 要等迁移跑完才打开），子表里存的 `record_id` 是文本值、重建前后不变，所以改名之后引用仍然
 成立——但这正是 v3 那次踩过坑的同一类位置（**顺序与开关状态**），必须有测试钉住：迁移后级联
 删除仍然生效、孤儿行为与 v3 一致。没有数据回填。
+
+**v4 → v5 迁移**：`onUpgrade` 新增 `if (from < 5)`，`active_sessions` 加一列**可空**的
+`scene_id TEXT`（drift 的 `addColumn`）。既有会话行的其余字段一个不差，`scene_id` 读出来是
+`null`（= 默认「流星夜」），写入新值再读回成功。可空列不需要重建表，比 v4 那次轻。
 
 ### 5.2 计算口径
 
@@ -268,7 +273,7 @@
 
 - **客户端：** Flutter / Dart；基线 `Flutter 3.47.5`（stable，Dart 3.13.4）。
 - **状态与路由：** Riverpod 管理状态（`sleepEntriesProvider` 是 UI 唯一数据源）；`go_router` 管理四个主入口与设置子页。
-- **本地存储：** Drift + SQLite，schema v4 带迁移，外键级联；演示数据与真实数据以 `source` 隔离。
+- **本地存储：** Drift + SQLite，schema v5 带迁移，外键级联；演示数据与真实数据以 `source` 隔离。
 - **分层：** `features/<feature>/presentation|domain|data`；主题、路由、数据库、平台服务在 `core/`。Widget 不直接读写数据库——`SleepRepository` 一次性组装 `SleepEntry` 聚合（3 条批量查询，非 N+1）。
 - **自适应：** 按可用宽度决定布局（断点 768px），非硬编码设备类型。
 - **图标：** `flutter_svg` 渲染原型原始 SVG path，不替换为近似系统图标。
@@ -327,6 +332,13 @@
 | 25 | 原型没有闹钟（提醒开关是纯装饰，见偏差 #19） | 起床闹钟接真实本地通知（新 id 9003，**一次性**排定，与日常重复提醒共用调度器但不同 API），iOS **请求** `timeSensitive`（但工程缺配套的 Time Sensitive Notifications entitlement，按当前产物该级别会被系统降级）、Android 用 `inexactAllowWhileIdle`，界面注明强度不如系统闹钟 | 与 #19 同一条理由：一个写着「开」却不会响的开关是规格书禁止的。不用 `critical` / 精确闹钟权限是**刻意的取舍**，且必须写在界面上，否则用户会以为它和系统闹钟一样强。**未验证**：真机到点投递未实测；`timeSensitive` 因缺 entitlement 当前并不能穿透专注模式（见 README「验证记录」）。 |
 | 26 | 原型的主观质量是 1–5 的必填档，无「未评分」态；记录表单默认选中「良好」 | `quality` 改为**可空**（schema v4 重建表放开 `NOT NULL`）。表单初始**无选中**；不选就不写质量，记录**没有评分**（`scoreSource` 为 `none`），统计的平均分把它排除。会话结束时就地评一次星，可跳过 | 「默认选中良好」是应用替用户说了一句他没说过的话，并且让 `estimateScore` 里 35 分权重的质量项凭空拿到 17.5 分。这条与偏差 #3「不显示读不到的余额」、#7「开关不得声称没有的能力」同源：**没有的东西就显示为没有**。代价是一次表重建，回归方法见 §5.1 与 §9 的迁移行。 |
 | 27 | 原型的声音片段是演示数据，波形是每条硬编码的同一条 38 柱形状（见偏差 #2、#13） | **plan B 起改写真录音**：会话期间按振幅切片，一条片段一个文件进 `SoundClips`；片段**不自动分类**，由用户听过之后标注；`kind` 初值 `noise`，界面显示为「待标注」。振幅序列即该片段的**实测包络**，可以画真实波形。**当前（plan A）尚未落地** | 用户要求真实录音。不自动分类是因为项目没有、也没有验证过任何分类模型，M3 第 3 条明令此时只提供回放与手动标注。**#2 的规则不变、结论变了**：以前真实录音没有包络所以不画形状，现在包络是测出来的，就可以画——「没有测量就不画」这条一字未改。 |
+| 28 | 原型的「睡眠进行中」态**没有任何退出入口**——它是个占满全屏的模态，只有「长按结束睡眠」一条路 | 左上角保留**「收起」胶囊**（沿用原型 setup 态 `sleep-navigation-back` 的样式），`pop()` 回应用而**会话继续跑** | 我们的会话是持久化实体，收起后还在跑（首页显示「正在睡眠」卡）。照搬模态就等于砍掉「收起」这条既有能力：用户想边睡边看别的，只能结束会话 |
+| 29 | 未选白噪音时，「当前睡眠事件」卡里那一行**整个不渲染** | 那一行**常驻**，未选时副标题「未开启」，整行可点开白噪音设置弹窗 | 原型把白噪音设在 setup 态，事件行只是回显；我们没有 setup 态，设置入口就在这一行上。按原型隐藏它 = 新用户永远打不开白噪音设置 |
+| 30 | 「起床闹钟」那一行只是展示（`07:30 起床闹钟` + 状态字），改时刻在 setup 态 | 那一行保留**开关**与**可点的时刻胶囊**（点开滚轮弹层改起床时间） | 同上：没有 setup 态。会话中改不了闹钟是能力倒退，而且闹钟是真实本地通知，睡前躺下时正是最需要能改的时刻 |
+| 31 | 「鼾声检测」行右侧是一个**状态点**，副标题写「正在聆听睡眠声音」 | 右侧仍是**开关**，副标题维持「尚未接入录音，开关只保存偏好。」 | plan A 没接录音（偏差 #7 是产品红线）。「正在聆听」是一句当场就假的话——状态点没有任何真实状态可显示，只能显示一个我们并不具备的能力 |
+| 32 | 原型是一份全局 `index.css`，`.sleep-mode` 的暗色变量与 `.glass` 等材质同处一层，改一处全站跟着变 | 会话页的材质与调色板收进**页面局部**的 `night_style.dart`，`AppTokens` 一个字节不动 | 新原型的最终生效层把全站换成了扁平原生风（`.glass` 不再模糊/描边/投影、底色改 `#f4f5f8`、主按钮改纯色）。本轮范围**只到会话页**（使用方裁定），把它塞进 `AppTokens` 会连带改掉首页/回顾/统计/设置四页的观感。约定不破：**一个概念仍只有一处**，只是这一处落在这一页 |
+| 33 | 原型的白噪音事件行有**三态**：未开启 / 播放中 / 已停止 | 「当前睡眠事件」卡里的白噪音行只有**两态**（未开启 / 播放中），刻意不做「已停止」 | 控制器的 `noiseId` 语义就是「选中**并正在播放**」——冷启动对账正是靠这条语义清掉假值。于是「播完」与「从未选过」在界面上本就不可区分，再画一个「已停止」就是在显示一个我们并未追踪的状态。同源于偏差 #3 / #7：**没有的东西就显示为没有** |
+| 34 | 原型激活态的 `.sleep-events` 有 `backdrop-filter: blur(18px)` | 「当前睡眠事件」卡**不叠 `backdrop-filter`**，用半透明深色底 + 描边 | 这一页底下是每帧重绘的整屏动画背景，卡片上再叠一层 `backdrop-filter` 会让该区域**每帧重新模糊**；而这一页要整夜挂着，代价不划算。这是带着理由的取舍，不是漏做。观感未在真机核对（见 README「验证记录」） |
 
 ## 9. 测试与验收矩阵
 
@@ -376,8 +388,18 @@
 | Widget | 回顾页：默认最近一条真实记录；只有演示数据时不可补充并说明；无记录空状态；记录头可换一晚且**演示记录不出现**；未评分的记录星级一颗都不选中；保存写回**同一条 id**、不改起止时刻、**不清空已有阶段** | ✅ `test/review_page_test.dart`（10 条） |
 | Widget | 首页：无会话时主按钮是「开始睡眠」；有会话时显示「正在睡眠」卡且可回到会话页；`LogPage` 恒以 `Subpage` 呈现（Tab 分支已删）、保存后 `pop()`、回顾页底部入口真的落在 `/log/new` | ✅ `test/pages_widget_test.dart` |
 | 单元/配置 | 显示名：iOS plist 的 `CFBundleDisplayName` 为 `夜深`；macOS plist 有该键；web 的 `title`、`apple-mobile-web-app-title`、manifest 的 `name` / `short_name` 均为 `夜深`；且 `PRODUCT_NAME` / `CFBundleName` **仍为 `night_sleep`**（反向护栏，防误伤构建路径） | ✅ `test/app_display_name_test.dart`（5 条） |
+| 数据迁移 | v4 → v5：`active_sessions` 加 `scene_id` 可空列；既有会话行其余字段一个不差；写入 `null` 成功；重复打开不重跑 | ✅ `test/schema_migration_test.dart` |
+| 数据 | 场景持久化：选中场景写进 `active_sessions.scene_id`；重开会话读回同一个 id；库里是不认识的 id 时按默认「流星夜」处理（不抛）；`discard` / `finish` 后新一轮会话回到默认 | ✅ `test/session_repository_test.dart` |
+| 单元 | `SleepSession.elapsedClockAt`：`00:00:00` 起步、跨小时、跨午夜、超 24 小时不回绕 | ✅ `test/sleep_session_test.dart` |
+| 单元 | 夜景几何纯函数：八套场景底色、光晕、星点、**流星只在 `meteor` / `moon` / `galaxy` 三场景可见**（订正本节旧稿） | ✅ `test/night_scene_test.dart`、`test/night_backdrop_test.dart`（16 条） |
+| 单元 | 月亮标记：SVG path / 渐变逐字取自原型、**丢弃 `<filter>` 后不打印 unhandled element**、轨道光晕近似层在位 | ✅ `test/sleep_moon_mark_test.dart`（6 条） |
+| Widget | 会话页夜景：选择器列出且**只有 8 种**场景、点选写回会话行、再进页面仍是它；`MediaQuery.disableAnimations` 为真时背景**停表**（变异验证） | ✅ `test/session_night_widgets_test.dart` |
+| Widget | 会话页事件卡：白噪音行**常驻**、未选时显示「未开启」且整行可点开底部弹窗；**只有两态、不存在「已停止」**（偏差 #33）；弹窗定时只有 15/30/45/60、无「整晚」 | ✅ `test/sleep_session_page_test.dart` |
+| Widget | 会话页：中央显示 `HH:MM:SS` 秒表；鼾声行「尚未接入录音，开关只保存偏好。」**逐字在位**（产品红线）；「收起」常驻可点且 pop 后会话仍在；起床闹钟行既有开关也有可点时刻胶囊 | ✅ `test/sleep_session_page_test.dart` |
+| Widget | 会话页**常暗**：应用主题为**浅色**时，会话页内读到的 `Theme.of(context).brightness` 仍是 `dark`（防有人删掉页面自套的 `Theme`） | ✅ `test/sleep_session_page_test.dart`（「浅色主题下会话页仍然是深色」） |
+| Widget | 长按结束：横向胶囊、按住满 1.5s 触发、未满松手不结束、滑开作废、短按只提示；**开启「减弱动态效果」时 1.5 秒守卫仍按真实时长计时**（`AnimationBehavior.preserve`，属 bug 修复回归） | ✅ `test/hold_to_finish_button_test.dart`（6 条） |
 | 集成/真机 | iOS/Android/macOS 核心流程；通知权限；锁屏录音与中断 | macOS 构建、iOS 模拟器构建已验证；**真机、通知投递与分享面板未验证** |
-| 视觉检查 | 对照 Figma Make 四页在手机/宽屏、浅色/深色核对层级、间距、字体与安全区 | **部分**：v2.5 的巡检覆盖了四个一级页与详情/音效面板；v2.6 那一版追加确认了顶部渐变顶到物理顶端后硬分界消失（iPhone 16 Pro 模拟器，浅色/深色各一遍）。**v2.6 其余新增/改动的界面（自绘确认弹窗、垃圾桶图标、禁用按钮的页内提示、关于卡片）没有做目视核对**，只有几何/结构断言。v2.7 的标签条浮起量同样**只有几何断言**（`test/tab_bar_inset_test.dart`），没有截图核对；v2.8 的底部模糊带已在 2026-09-29 补做目视核对（iPhone 16 Pro 模拟器；浅色看过首页滚动后 / 统计页 / 睡眠详情与助眠音效弹层，**深色仅首页静置态**）：带子顶边（离屏幕底 121pt）无硬边（离带顶约 20pt 的标题处有效 wash 约 9%，越靠屏底越重）、方向为「下重上轻」（越靠近屏幕底越实）、胶囊下半部未发闷（深色下 `bgNavbar` 76% 填充主导）。**仍未逐页逐屏核对，深色覆盖面只有首页**；证据图见 `screenshots/v2.8-*.png` |
+| 视觉检查 | 对照 Figma Make 四页在手机/宽屏、浅色/深色核对层级、间距、字体与安全区 | **部分**：v2.5 的巡检覆盖了四个一级页与详情/音效面板；v2.6 那一版追加确认了顶部渐变顶到物理顶端后硬分界消失（iPhone 16 Pro 模拟器，浅色/深色各一遍）。**v2.6 其余新增/改动的界面（自绘确认弹窗、垃圾桶图标、禁用按钮的页内提示、关于卡片）没有做目视核对**，只有几何/结构断言。v2.7 的标签条浮起量同样**只有几何断言**（`test/tab_bar_inset_test.dart`），没有截图核对；v2.8 的底部模糊带已在 2026-09-29 补做目视核对（iPhone 16 Pro 模拟器；浅色看过首页滚动后 / 统计页 / 睡眠详情与助眠音效弹层，**深色仅首页静置态**）：带子顶边（离屏幕底 121pt）无硬边（离带顶约 20pt 的标题处有效 wash 约 9%，越靠屏底越重）、方向为「下重上轻」（越靠近屏幕底越实）、胶囊下半部未发闷（深色下 `bgNavbar` 76% 填充主导）。**仍未逐页逐屏核对，深色覆盖面只有首页**；证据图见 `screenshots/v2.8-*.png`。**v3.2 的会话页夜景（八套场景动画 + 月亮）只有几何/结构断言，未目视核对**：动画观感、真机帧率与耗电，以及 `flutter_svg` 丢弃 `<filter>` 后月亮外发光近似层的实际观感，均需人工核对，见 README「验证记录」 |
 
 通过构建不等于录音后台能力、小米数据接入或 AI 服务已完成。
 
