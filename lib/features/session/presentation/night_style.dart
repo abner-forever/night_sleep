@@ -53,6 +53,20 @@ abstract final class NightStyle {
   static const selectedStroke = Color(0xB8AEBEFF); // rgba(174,190,255,.72)
   static const selectedGlow = Color(0x2E7A8FEB); // rgba(122,143,235,.18)
 
+  // ── 场景选择器 ──────────────────────────────────────────────────────────
+  /// 激活态场景选择器的外框：`.sleep-active .sleep-scene-picker-compact`
+  /// 的 `border: 1px solid rgba(255,255,255,.08)`。
+  static const pickerStroke = Color(0x14FFFFFF); // rgba(255,255,255,.08)
+  /// 未选中的预览卡描边：`.sleep-scene-preview` 的
+  /// `border: 1px solid rgba(255,255,255,.09)`。
+  ///
+  /// 与 `cardStroke`（`.sleep-option-card`）**同值但不同规则**——原型里这两条
+  /// 各写各的，将来谁改了卡片描边不该带着预览卡一起漂，故不合并。
+  static const previewStroke = Color(0x17FFFFFF); // rgba(255,255,255,.09)
+  /// 预览卡上的光点：`.sleep-scene-preview i` 的
+  /// `background: rgba(255,255,255,.75)`。
+  static const previewDot = Color(0xBFFFFFFF); // rgba(255,255,255,.75)
+
   // ── 顶部胶囊与结束按钮 ───────────────────────────────────────────────────
   static const glassStroke = Color(0x1CFFFFFF); // rgba(255,255,255,.11)
   static const glassFill = Color(0x11FFFFFF); // rgba(255,255,255,.065)
