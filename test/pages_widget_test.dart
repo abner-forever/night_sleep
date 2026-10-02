@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sleep/app/app.dart';
+import 'package:night_sleep/app/app_shell.dart';
 import 'package:night_sleep/core/database/app_database.dart';
 import 'package:night_sleep/core/theme/app_theme.dart';
 import 'package:night_sleep/core/theme/app_tokens.dart';
@@ -12,6 +13,7 @@ import 'package:night_sleep/core/widgets/glass_surface.dart';
 import 'package:night_sleep/core/widgets/ios_controls.dart';
 import 'package:night_sleep/core/widgets/top_fade.dart';
 import 'package:night_sleep/features/home/presentation/home_page.dart';
+import 'package:night_sleep/features/compass/presentation/compass_page.dart';
 import 'package:night_sleep/features/log/presentation/log_page.dart';
 import 'package:night_sleep/features/settings/presentation/demo_data_page.dart';
 import 'package:night_sleep/features/settings/presentation/export_page.dart';
@@ -372,6 +374,36 @@ void main() {
   });
 
   group('设置页', () {
+    testWidgets('罗盘入口打开二级页，返回后仍在设置页', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            databaseProvider.overrideWithValue(database),
+            settingsProvider.overrideWith((ref) => Stream.value(settings())),
+            sleepEntriesProvider.overrideWith((ref) => const []),
+            activeTabProvider.overrideWith((ref) => AppTab.settings),
+          ],
+          child: const NightSleepApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('罗盘'), 200,
+          scrollable: find.byType(Scrollable).first);
+      await tester.tap(find.text('罗盘'));
+      await tester.pumpAndSettle();
+      expect(find.byType(CompassPage), findsOneWidget);
+      expect(find.byType(AppShell), findsNothing);
+      expect(find.text('天池罗盘'), findsOneWidget);
+      await tester.tap(find.text('返回'));
+      await tester.pumpAndSettle();
+      expect(find.byType(CompassPage), findsNothing);
+      expect(find.byType(SettingsPage), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
     testWidgets('分组齐全，未接入的能力有明确说明', (tester) async {
       await pumpPage(tester, const SettingsPage());
 

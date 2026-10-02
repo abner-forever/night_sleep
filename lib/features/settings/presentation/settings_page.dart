@@ -333,6 +333,59 @@ class SettingsPage extends ConsumerWidget {
         ),
         const SizedBox(height: 22),
 
+        const SectionHeader('工具'),
+        IosListGroup(
+          onTap: () => context.go('/settings/compass'),
+          semanticLabel: '罗盘',
+          children: [
+            IosListItem(
+              haptic: false,
+              child: Row(
+                children: [
+                  ListIconBadge(
+                    background: tokens.accentSoft,
+                    child: Text(
+                      '✦',
+                      style: TextStyle(fontSize: 18, color: tokens.accent),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '罗盘',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: tokens.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '使用手机传感器判断当前方位',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: tokens.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  AppIcons.chevronRight(
+                    size: 18,
+                    color: tokens.textMuted,
+                    strokeWidth: 2,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 22),
+
         // ── Data import ────────────────────────────────────────────────────
         const SectionHeader('睡眠数据导入'),
         IosListGroup(

@@ -7,6 +7,7 @@ import '../core/database/app_database.dart';
 import '../core/theme/app_theme.dart';
 import '../core/theme/app_tokens.dart';
 import '../core/widgets/atmosphere.dart';
+import '../features/compass/presentation/compass_page.dart';
 import '../features/home/presentation/home_page.dart';
 import '../features/log/presentation/log_edit_page.dart';
 import '../features/log/presentation/log_page.dart';
@@ -58,6 +59,10 @@ final _router = GoRouter(
         GoRoute(
           path: 'settings/demo',
           builder: (context, state) => const DemoDataPage(),
+        ),
+        GoRoute(
+          path: 'settings/compass',
+          builder: (context, state) => const CompassPage(),
         ),
         // The night is handed over as `extra` rather than looked up again: the
         // list it came from is already in memory, and editing is about the
