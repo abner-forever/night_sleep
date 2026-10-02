@@ -46,6 +46,9 @@ abstract final class NightStyle {
   /// `.sleep-event-state`（「记录中」「已设置」）。
   static const stateInk = Color(0xFF9FAFEF);
 
+  /// `.sleep-alarm-time`（可点的起床时刻胶囊）的文字色：`color: #bdc9ff`。
+  static const alarmTimeInk = Color(0xFFBDC9FF);
+
   /// `.sleep-scene-choice.is-selected` 的文字色。
   static const selectedInk = Color(0xFFC4D0FF);
 
