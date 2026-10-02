@@ -4,7 +4,8 @@
 `docs/superpowers/specs/2026-09-28-night-sleep-design.md` 第 2 章的
 Figma Make 原型**最终生效层**实现：iOS 玻璃材质、悬浮胶囊标签条 / 侧边栏自适应导航、
 自定义描边图标集、滚轮选择器、浅色/深色主题、离线睡眠记录与 7/14/30 天统计、
-数据导出（CSV / JSON）与就寝/起床本地通知提醒。
+睡前「开始睡眠」会话与「回顾」补感受、数据导出（CSV / JSON）与就寝/起床本地通知提醒。
+应用显示名为「夜深」（iOS / macOS / Web）。
 
 ## 环境要求
 
@@ -52,34 +53,51 @@ export FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
 
 ```text
 lib/
-  app/                 应用入口、导航外壳、标签状态、提示条
+  app/                 应用入口、导航外壳、标签状态、提示条；会话白噪音控制器
+                       (noise_session.dart)、启动提醒重排、通知权限闸口
   core/
     config/            构建开关（演示数据）
-    database/          Drift schema v3 与迁移
-    platform/          触觉反馈
+    database/          Drift schema v4 与迁移
+    platform/          触觉反馈、就寝/起床提醒与会话闹钟调度
     theme/             设计令牌与 ThemeData
     widgets/           玻璃材质、iOS 控件、弹层、二级页外壳、滚轮、图标、图表基础件
   features/
-    home/              首页
-    log/               记录（新增与编辑共用同一表单）
+    home/              首页（开始睡眠 / 正在睡眠卡）
+    log/               回顾页、换一晚选择器、手动补录页、编辑表单（共用 LogPage）
+    session/           睡眠会话页、设定抽屉、日晷圆环、就地评星
     stats/             统计
     settings/          设置与四个子页（数据导入、数据导出、洞察配置、演示数据）
     onboarding/        首次引导
     sleep/
-      domain/          记录聚合、阶段、声音、评分、统计口径、时间窗口
-      data/            仓库（行 → 聚合）与演示种子
+      domain/          记录聚合、阶段、声音、评分、统计口径、时间窗口、会话模型
+      data/            仓库（行 → 聚合）、会话仓库、演示种子
       presentation/    睡眠盘、评分环、阶段图、详情弹层、声音卡、助眠音效弹层
-test/                  领域计算测试
+test/                  领域计算与页面测试
 ```
 
 ## 当前实现范围
 
 - **设计系统**：完整令牌（`app_tokens.dart`）、玻璃材质、iOS 开关/分段控件/列表组、底部弹层、
   滚轮选择器、自绘描边图标集（原型图标逐字用原 SVG path；垃圾桶为 v2.6 新增，见下）。
+- **应用显示名**（v3.0）：iOS / macOS / Web 三处均显示「夜深」（`CFBundleDisplayName` /
+  `title` / manifest），而决定构建产物路径的 `PRODUCT_NAME` / `CFBundleName` 仍是
+  `night_sleep`——改成中文会让 macOS 的 `.app` 包名与可执行文件名变成中文。见
+  `docs/superpowers/specs/2026-09-30-sleep-session-design.md` §一（应用显示名）与
+  `test/app_display_name_test.dart`。
 - **首页**：圆形睡眠盘（4 同心弧，首次进入自绘动画）、昨夜概览、7 日均时、助眠音效入口、
-  最近记录卡（阶段色带 + 图例）。
-- **记录**：实时时长预览（随滚轮变化重绘）、日期/入睡/起床滚轮、1–5 星质量、四类事件开关、
-  备注；时长由起止时间派生并校验 `0 < 时长 ≤ 24h`。
+  最近记录卡（阶段色带 + 图例）。主按钮位是「**开始睡眠**」；有会话在跑时换成「**正在睡眠**」
+  卡（点它回到会话页）。**卡片上的已睡时长是 build 快照，停在首页不会自动跳动**（只有会话页
+  每秒 tick）。
+- **睡眠会话**（v3.0）：首页「开始睡眠」→ 推入式全屏会话页（`/sleep/session`）。日晷圆环画
+  「已过时长 ÷ 计划时长」、`入睡 ─── 闹钟` 行常驻、点摘要条展开设定抽屉（起床闹钟 + 鼾声/梦话
+  开关 + 白噪音八宫格/音量/定时 15/30/45/60）。会话状态进 SQLite（`ActiveSessions` 单行表），
+  跨重启存活；「收起」离开页面而**会话与白噪音继续跑**。「结束睡眠」就地评一次星（可跳过），
+  一个事务里写记录（`source = 'session'`）并删会话行；时长不在 `(0, 24h]` 内**不落库**，让用户
+  选手动补录或丢弃。**它不测量任何东西**——两个时刻来自用户按下的按钮，起床时间来自设定。
+- **回顾**（v3.0，取代原「记录」Tab）：对最近一条**真实**记录补充主观感受（质量、四类事件、
+  备注），记录头可点开选择器换一晚，**不改起止时刻**。演示记录不参与补充。**手动补录降级为
+  二级页 `/log/new`**（入口在回顾页底部）：实时时长预览、日期/入睡/起床滚轮、1–5 星质量、
+  四类事件开关、备注；时长由起止时间派生并校验 `0 < 时长 ≤ 24h`（**不选质量就不写质量**）。
 - **顶部渐变**：一级页面滚动超过 12px 后，顶部浮出 144px 的 `blur(14px)` 渐变带
   （宽屏和弹层打开时自动停用），与设计的 `.ios-top-fade` 一致；带顶到**屏幕物理顶端**
   （状态栏那段也参与模糊，不再有硬分界），滚动超 12px 后 320ms 淡入上移。
@@ -130,24 +148,36 @@ test/                  领域计算测试
   权限为 `denied` 时给出「去系统设置」入口；启动时若发现偏好为真而权限已是 `denied`
   （用户在系统设置里撤销过），把偏好写回 `false`。Android 用 `inexactAllowWhileIdle`
   （刻意不申请精确闹钟权限）。
+- **会话起床闹钟**（v3.0）：新 id `9003`，走 `scheduleOnce`（**不传**
+  `matchDateTimeComponents`，**一次性**而非每天重复），排定时刻复用 `nextOccurrence` 的
+  夏令时口径。会话活跃且闹钟开启时，**日常起床提醒 `9002` 让位**（就寝提醒 `9001` 不受影响）；
+  会话结束/丢弃后 `9002` 按偏好排回。iOS / macOS 用 `interruptionLevel: timeSensitive`，
+  Android 用 `inexactAllowWhileIdle`。界面上如实标注「由系统通知投递；休眠模式下可能晚几分钟，
+  强度不如系统闹钟」——收合态胶囊与抽屉里的闹钟行**共用同一份字面量**
+  （`ReminderScheduler.wakeAlarmDeliveryNote`）。权限闸口 `ensureNotificationPermission`
+  与设置页共用。**真机到点投递未验证**（见「验证记录」）。
 - **应用图标**：由 `assets/branding/app-icon.svg` 生成，`tool/generate_app_icons.dart` 一次
   产出 iOS 15 张 + macOS 7 张。**v2.9 起是两条渲染路径**：iOS 满幅直角、无 alpha 通道（色型 2，
   由系统套遮罩）；macOS 按 Apple 图标网格烘焙圆角与留白（实体 824×824、四边留白 100、半径 185.4）
   并加投影，**保留 alpha**（色型 6）——因为 macOS **不套遮罩**，圆角得写在文件里。回归断言见
   `test/app_icons_asset_test.dart`，偏差见规格 #16。
-- **数据**：SQLite（Drift）schema v3，含阶段、声音片段、洞察三张新表与 v1→v2→v3 迁移；
-  外键级联删除；仓库用 3 条批量查询组装聚合。v3 给 `Insights.recordId` 补上 `ON DELETE CASCADE`
-  外键（此前没有，`deleteDemoData` 会留下孤儿洞察行，重装演示数据时主键冲突、异常还被静默吞掉），
-  迁移**先清孤儿再重建表**，因此升级会**自动修好已在现场损坏的库**。
+- **数据**：SQLite（Drift）schema **v4**，含阶段、声音片段、洞察、会话（`ActiveSessions`
+  单行表）四张新表与 v1→v2→v3→v4 迁移；外键级联删除；仓库用 3 条批量查询组装聚合。
+  v3 给 `Insights.recordId` 补上 `ON DELETE CASCADE` 外键（此前没有，`deleteDemoData` 会留下
+  孤儿洞察行，重装演示数据时主键冲突、异常还被静默吞掉），迁移**先清孤儿再重建表**，因此升级
+  会**自动修好已在现场损坏的库**。v4 建会话表，并把 `SleepRecords.quality` 改为**可空**
+  （会话评星可跳过 → 质量能表示「未评分」）——`alterTable` 重建了有子表引用的 `sleepRecords`，
+  迁移后子表外键仍级联（有测试钉住）。
 
 ## 未实现（不得视为已完成）
 
 | 能力 | 现状 |
 | --- | --- |
-| 夜间录音 / 鼾声梦话检测 | 未接入。设置开关只保存偏好，**录音本身仍未实现**，界面已注明 |
+| 夜间录音 / 鼾声梦话检测 | **未接入（plan B 才做）**。设置页与会话页那个开关**只保存偏好**，**录音本身仍未实现**，界面已如实注明「尚未接入录音，开关只保存偏好」。**不测量任何东西** |
+| 白噪音的后台播放 / 锁屏控制 | 未接入。会话白噪音在**收起页面后仍继续响**（播放器提到 app 级），但退到后台或锁屏后声音会停，界面已如实标注 |
 | 小米手环数据导入 | 未接入。需真实导出样本或官方接口文档，导入按钮禁用并说明原因 |
 | AI 洞察服务 | 未接入。服务商/模型选择可持久化；API Key 仅存内存，安全存储未接入；余额查询未接入 |
-| Android 平台 | 平台目录未生成（`.metadata` 只有 ios / macos / web）。接入时需补 `RECEIVE_BOOT_COMPLETED` 权限与 `ScheduledNotificationReceiver` / `ScheduledNotificationBootReceiver` 两个 receiver，否则设备重启后提醒不再重排 |
+| Android 平台 | 平台目录未生成（`.metadata` 只有 ios / macos / web）。接入时需补 `RECEIVE_BOOT_COMPLETED` 权限与 `ScheduledNotificationReceiver` / `ScheduledNotificationBootReceiver` 两个 receiver（否则设备重启后提醒不再重排），以及录音的 `RECORD_AUDIO` 权限与 `FOREGROUND_SERVICE_MICROPHONE` 前台服务（后台录音，plan B） |
 
 ## 真机安装（需要你自己做的一步）
 
@@ -191,9 +221,11 @@ flutter drive \
   -d $DEV
 ```
 
-覆盖：首页（未滚动/已滚动）、记录、统计（7 天与 30 天）、设置、三个二级页
+覆盖：首页（未滚动/已滚动）、回顾、统计（7 天与 30 天）、设置、三个二级页
 （数据导入、洞察服务配置、演示数据；**导出页不在巡检脚本内**）、
 睡眠详情（含展开的声音卡）、助眠音效面板。`integration_test/` 不参与 `flutter test`。
+（会话页与手动补录页**不在**巡检脚本内。v3.0 把脚本里的「记录」改成了「回顾」，
+但**本轮没有重跑 `flutter drive`**——见「验证记录」的未验证项。）
 
 三点实测到的注意：
 
@@ -235,11 +267,22 @@ Bundle ID、Android application ID、签名和发布账号保持 Flutter 默认�
 
 ## 验证记录
 
-本机环境：macOS 14.8.9（23J631，Intel），Flutter 3.47.5 stable。最近一次复跑：**2026-09-29**。
+本机环境：macOS 14.8.9（23J631，Intel），Flutter 3.47.5 stable。
 
-- `dart format --set-exit-if-changed .` → 无改动（84 文件，0 changed）
+**v3.0（2026-10-02：会话 + 回顾 + 起床闹钟 + 显示名）最近一次复跑：**
+
+- `dart format --set-exit-if-changed .` → 无改动
 - `flutter analyze` → **No issues found**
-- `flutter test` → **238/238 通过**（本轮从 176 起，逐步增至 216，终审修复波再补 1 至 217：
+- `flutter test` → **332/332 通过**。本轮新增/补测（未逐条列举，完整场景见规格第 9 章）：
+  v3→v4 迁移 5（`test/schema_migration_test.dart`，含「重建后 `quality` 可空」「既有行值原样」
+  「子表外键仍级联」）、会话领域 12（`test/sleep_session_test.dart`）、会话仓库 16
+  （`test/session_repository_test.dart`，含 `finish` 不写阶段、时长守门、冷启动恢复）、
+  会话页 widget 27（`test/sleep_session_page_test.dart`，含诚实文案在位、闹钟被拒回弹、
+  白噪音收起/离开页面仍继续）、回顾页 10（`test/review_page_test.dart`）、
+  会话闹钟（`test/reminder_scheduler_test.dart` 的起床闹钟组、`test/reminder_sync_test.dart`
+  的会话闹钟组 6）、显示名 5（`test/app_display_name_test.dart`）；首页与手动补录页的改动
+  落在 `test/pages_widget_test.dart`。**多数新断言做了变异验证**（拆掉实现会真的变红）。
+- 上一版（v2.9，2026-09-29）复跑记录：**238/238 通过**（当时从 176 起，逐步增至 216，终审修复波再补 1 至 217：
   schema v3 迁移 6（含 `record_id` 为空的洞察存活分支）、
   演示数据重装与幂等 2、冷启动播种兜底 4、图标取色 4、顶部渐变与安全区/错误分支留白 3、
   关于卡片居中与版本号 2、自绘确认弹窗 7（另有演示数据页的确认 1，落在 `pages_widget_test`）、
@@ -300,6 +343,19 @@ Bundle ID、Android application ID、签名和发布账号保持 Flutter 默认�
     `screenshots/v2.8-light-stats.png`（浅色统计页，最底部「平均时长」只剩残影）、
     `screenshots/v2.8-dark-home.png`（深色首页，胶囊下方洗到接近黑）。
 - **未验证（不得视为已完成）**：
+  - **v3.0 新增的未验证项**（逐条不得当成已完成）：
+    - **起床闹钟是否真的到点投递**：Dart 侧的调度契约（`scheduleOnce` 不重复、9003 不被
+      `sync` 抹掉、`_resume` 映射）由测试钉住，但**「到点真的响了」需真机确认**——与下一条
+      通知投递是同一类问题
+    - **`timeSensitive` 是否真的穿透专注模式**：iOS / macOS 用了
+      `interruptionLevel: timeSensitive`，但**没有在真机上开专注模式实测过**
+    - **宽屏（macOS 侧边栏）下的会话页与回顾页**：会话页是推入式全屏页，**没有在宽屏下逐屏
+      核对版式**（不能默认窄屏版式拉伸后可用）
+    - **Dock / 桌面显示名的实际观感**：`Info.plist` 的 `CFBundleDisplayName` 改成了「夜深」，
+      但 plist 改了不等于系统重读了缓存；**没有人看过 Dock / 桌面实际画出来的名字**
+    - **`integration_test/` 的「记录 → 回顾」改动没有跑过 `flutter drive`**：该目录不参与
+      `flutter test`，本轮的「记录 Tab → 回顾」改名与相关巡检脚本改动**只做了静态检查**，
+      需要人工跑一次 `flutter drive`（见「界面截图巡检」）确认巡检仍能走通
   - **通知投递**：没有真机 / 模拟器人工确认过「到点了真的会响」。Dart 侧的调度契约
     被测试钉住，但通知是否真的投递、前台是否展示、时区是否选对，都仍需人工确认
   - **系统分享面板**：导出经 `share_plus` 交付，面板的实际弹出与去向选择**没有实测过**；

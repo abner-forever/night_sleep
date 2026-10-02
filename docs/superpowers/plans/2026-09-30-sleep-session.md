@@ -3013,9 +3013,6 @@ class _QualityRatingSheetState extends State<_QualityRatingSheet> {
 
 ```dart
   Future<void> _finish(SleepSession session) async {
-
-```dart
-  Future<void> _finish(SleepSession session) async {
     final now = widget.now ?? DateTime.now();
     final rejection = validateSessionDuration(now.toUtc().difference(session.startAtUtc));
 

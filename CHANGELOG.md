@@ -3,6 +3,59 @@
 本文件记录「夜深」项目规格的版本变更。规格正文见
 [docs/superpowers/specs/2026-09-28-night-sleep-design.md](docs/superpowers/specs/2026-09-28-night-sleep-design.md)。
 
+## 3.0（2026-09-30）
+
+睡前那一刻是唯一还带着真实信息的时刻。这一版把**采集起点**从「早晨回忆」挪到「睡前按一下」：
+新增「开始睡眠」与会话页；「记录」Tab 改为「回顾」Tab（醒来后补感受）；手动录入降级为二级页；
+起床闹钟接真实本地通知；应用显示名统一为「夜深」。对应规格 schema **v3 → v4**、偏差 #23–#27。
+
+**显示名。** iOS / macOS / Web 三处都显示「夜深」（`CFBundleDisplayName` / `title` / manifest）。
+`PRODUCT_NAME` 与 `CFBundleName` 保持 `night_sleep` 不动——它们决定 macOS 的 `.app` 包名与
+可执行文件名，改成中文会把构建产物路径也变成中文。Dock、菜单栏、iOS 桌面读的都是
+`CFBundleDisplayName`，改它就够。回归见 `test/app_display_name_test.dart`（5 条，含「构建路径
+相关的名字仍是 `night_sleep`」的反向护栏）。
+
+**会话。** 首页「开始睡眠」→ 推入式全屏会话页（`/sleep/session`）。日晷圆环画「已过时长 ÷
+计划时长」，两个数都来自用户自己按下的时刻与设定的闹钟——**它不测量任何东西**。会话状态进新的
+**单行表** `ActiveSessions`（主键固定 `'active'`，于是「同时两个会话」在结构上不可能），跨重启
+存活。结束时**一个事务**里写记录（`source = 'session'`）并删会话行，就地评一次星（可跳过 =
+质量留空）；时长不在 `(0, 24h]` 内**不落库**，让用户选手动补录或丢弃。白噪音（八宫格 + 音量 +
+定时 15/30/45/60）的播放器提到了 **app 级**——收起抽屉乃至离开会话页都继续响。
+
+**回顾。** `AppTab.log` 的 id 不变、label 从「记录」改为「回顾」：对最近一条**真实**记录补充
+主观感受，记录头可点开选择器换一晚，**不改起止时刻**。手动录入降级为 `/log/new`（入口在回顾页
+底部）——能力没消失，只是不再占标签位。**顺带修掉一处旧的默认值**：表单不再默认选中「良好」，
+不选就不写质量（偏差 #26）。这需要把 `SleepRecords.quality` 改为**可空**，即 schema v4 的
+`alterTable` 重建 `sleep_records`（本项目第一次重建一张有子表引用它的表，迁移后外键级联由测试
+钉住）。
+
+**起床闹钟。** 新 id `9003`，`scheduleOnce` **一次性**排定（不传 `matchDateTimeComponents`，
+与每天重复的日常提醒是不同 API）。会话活跃且闹钟开启时**日常起床提醒 `9002` 让位**（就寝提醒
+`9001` 不受影响），会话结束后按偏好排回；推导只有 `syncSessionAlarm` 一处。iOS / macOS 用
+`interruptionLevel: timeSensitive`，Android 用 `inexactAllowWhileIdle`（刻意不申请精确闹钟权限、
+不用需 Apple 特批的 `critical`）。界面如实标注「由系统通知投递；休眠模式下可能晚几分钟，强度
+不如系统闹钟」——收合态胶囊与抽屉里的闹钟行共用同一份字面量。
+
+**两处诚实的边界（不得当成已完成）：**
+
+1. **会话不测量任何东西。** 没有阶段、没有鼾声判定、没有质量推断——两个时刻来自按钮，起床
+   时间来自设定。会话产生的记录与手动记录一样，**没有睡眠阶段**。
+2. **录音仍未接入，开关只存偏好。** 「鼾声/梦话记录」在设置页与会话页写的是同一个字段
+   （`AppSettings.soundRecordingEnabled`，会话表刻意没有同名列），但**录音本身没有实现**，
+   界面仍如实标注「尚未接入录音，开关只保存偏好」（偏差 #7 在夜间录音落地前仍然有效）。
+   夜间录音（以及它需要的麦克风权限、后台录音、切片）排成独立的 plan B。
+
+**未验证**（详见 README「验证记录」）：起床闹钟**真机到点投递**与 `timeSensitive` **穿透专注
+模式**都未实测；宽屏（macOS 侧边栏）下的会话页/回顾页版式未经核对；Dock / 桌面显示名的实际
+观感未确认；`integration_test/` 的「记录 → 回顾」改名**没有跑过 `flutter drive`**（该目录不
+参与 `flutter test`）。
+
+回归方法：`test/app_display_name_test.dart`（显示名）、`test/schema_migration_test.dart`
+（v3→v4）、`test/session_repository_test.dart` / `test/sleep_session_test.dart`（会话领域与
+仓库）、`test/sleep_session_page_test.dart`（会话页）、`test/review_page_test.dart`（回顾页）、
+`test/reminder_scheduler_test.dart` / `test/reminder_sync_test.dart`（起床闹钟）。本轮
+`flutter test` **332/332 通过**，`flutter analyze` **No issues found**。
+
 ## 2.9（2026-09-29）
 
 用户实机上报：**macOS Dock 里的图标是直角方块，没有圆角**。查下来不是「图标没做」——图标文件、
