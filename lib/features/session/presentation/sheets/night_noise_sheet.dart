@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/noise_session.dart';
+import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/app_tokens.dart';
 import '../../../../core/widgets/app_icons.dart';
 import '../../../sleep/presentation/widgets/noise_controls.dart';
@@ -15,8 +16,8 @@ import '../night_style.dart';
 /// `Material`（`showGeneralDialog` 不像 `showDialog` 那样替路由包 `Material`，
 /// 缺了它每个 `Text` 都会落到黄色双下划线的错误样式）。
 ///
-/// 宫格 / 音量 / 时长 chip 三块**复用共享组件**：调用方把整页包在
-/// `Theme(AppTheme.dark())` 里，它们照常从 `AppTokens` 取深色值，不抄第二份。
+/// 宫格 / 音量 / 时长 chip 三块**复用共享组件**：它们从 `AppTokens` 取色，
+/// 所以 `pageBuilder` 里显式再包一层 `Theme(AppTheme.dark(), …)`，不抄第二份色值。
 Future<void> showNightNoiseSheet(BuildContext context) {
   return showGeneralDialog<void>(
     context: context,
@@ -34,8 +35,12 @@ Future<void> showNightNoiseSheet(BuildContext context) {
         child: FadeTransition(opacity: curve, child: child),
       );
     },
+    // `showGeneralDialog` 默认 `useRootNavigator: true`，弹窗路由挂在 **root
+    // navigator** 下，**继承不到会话页那层 `Theme(AppTheme.dark())`**。浅色应用主题
+    // 下，外框仍走 `NightStyle` 是深的，但宫格 / 音量 / 时长 chip 这些共享控件会从
+    // 应用主题取到浅色令牌，深浅拼在一张面板上。所以这里显式再包一层深色 Theme。
     pageBuilder: (context, animation, secondaryAnimation) =>
-        const _NightNoiseSheet(),
+        Theme(data: AppTheme.dark(), child: const _NightNoiseSheet()),
   );
 }
 

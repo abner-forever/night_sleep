@@ -310,12 +310,13 @@ Bundle ID、Android application ID、签名和发布账号保持 Flutter 默认�
 - `dart format .` → 只有 `test/pages_widget_test.dart` 有**既存**的格式漂移（不属于本轮改动，
   已 `git checkout` 还原、未提交）；本轮改动的文件本身无需格式化
 - `flutter analyze` → **No issues found**
-- `flutter test` → **398/398 通过**（v3.0 那次的 337 之后，v3.1 与 v3.2 累计新增 61 条）。本轮
+- `flutter test` → **399/399 通过**（v3.0 那次的 337 之后，v3.1 与 v3.2 累计新增 62 条）。本轮
   新增/补测：夜景几何 19（`test/night_backdrop_test.dart` 16 + `test/night_scene_test.dart` 3，
   含「流星只在 `meteor` / `moon` / `galaxy` 三场景可见」这条**订正**）、月亮标记 6
   （`test/sleep_moon_mark_test.dart`，含「丢弃 `<filter>` 后不打印 unhandled element」）、
-  会话页夜景 widget 6（`test/session_night_widgets_test.dart`：8 种场景、`disableAnimations`
-  停表、弹窗九宫格与四档时长）、长按按钮 6（`test/hold_to_finish_button_test.dart`，含
+  会话页夜景 widget 7（`test/session_night_widgets_test.dart`：8 种场景、`disableAnimations`
+  停表、弹窗九宫格与四档时长、**浅色应用主题下弹窗内仍是深色令牌**）、长按按钮 6
+  （`test/hold_to_finish_button_test.dart`，含
   「**开启「减弱动态效果」时 1.5 秒守卫仍按真实时长计时**」这条**行为修复**的回归）、
   v4→v5 迁移 4（`test/schema_migration_test.dart` 的 `v4 → v5` 组）、场景持久化
   （`test/session_repository_test.dart`）与 `SleepSession.elapsedClockAt`
@@ -447,9 +448,12 @@ Bundle ID、Android application ID、签名和发布账号保持 Flutter 默认�
       v3.0 那条「记录 → 回顾」未跑 `flutter drive` 是同一类
     - **事件卡不叠 `backdrop-filter`（偏差 #34）的观感**：这是为整夜挂着省算力的取舍，实际
       读起来是否仍与原型接近，未目视核对
-    - **白噪音弹窗与评星弹窗在浅色应用主题下仍是浅色面板**（已知不一致）：这两块走 `AppSheet`、
-      取应用主题，会话页其余部分是页面自套的深色主题，所以浅色主题下会看到一次深浅跳变。本轮
-      **刻意不动**（见会话规格 §十三）
+    - **`_RejectedSheet`（时长越界说明层）与评星弹窗在浅色应用主题下仍是浅色面板**（已知不一致）：
+      这两块走 `AppSheet`、取**应用主题**，而会话页其余部分是页面自套的 `Theme(AppTheme.dark())`，
+      所以浅色主题下会看到一次深浅跳变。本轮**刻意不动**：`AppSheet` 的外观是共享组件的职责，
+      改它等于给全站换肤（与偏差 #32 同一理由）。见会话规格 §十三。
+      （**白噪音弹窗不在此列**：它走 `showGeneralDialog` + `NightStyle`，并在 `pageBuilder` 里
+      显式又包了一层 `Theme(AppTheme.dark())`，浅色主题下也是深色面板。）
   - **通知投递**：没有真机 / 模拟器人工确认过「到点了真的会响」。Dart 侧的调度契约
     被测试钉住，但通知是否真的投递、前台是否展示、时区是否选对，都仍需人工确认
   - **系统分享面板**：导出经 `share_plus` 交付，面板的实际弹出与去向选择**没有实测过**；

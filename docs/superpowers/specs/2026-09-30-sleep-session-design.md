@@ -1066,6 +1066,12 @@ plan B 独有：
   给这一页用会得到一块浅色面板浮在夜景上。改为 `showGeneralDialog` 自绘，
   照 `lib/core/widgets/confirm_dialog.dart` 的既有先例，并**显式补 `Material` 祖先**
   （否则所有 `Text` 落到黄色双下划线错误样式——那条坑 `confirm_dialog.dart` 的注释里记着）。
+- **弹窗还要自己再包一层 `Theme(AppTheme.dark())`**（执行期 v3.2 补的缺陷修复）：
+  `showGeneralDialog` 默认 `useRootNavigator: true`，弹窗路由挂在 **root navigator** 下，
+  **继承不到会话页那层 `Theme(AppTheme.dark())`**。外框走 `NightStyle` 是深的，但宫格 / 音量 /
+  时长 chip 这些共享控件从应用主题令牌取色——浅色应用主题下会变浅、深浅拼在一张面板上。
+  所以在 `pageBuilder` 里显式再包一层深色 Theme。回归用例：浅色应用主题下推起弹窗，断言
+  弹窗内 `Theme.of(context).brightness` 仍是 `dark`（摘掉那层 Theme 必红）。
 - 播放器仍是 `noiseSessionControllerProvider`，生命周期**一字不改**：关掉弹窗、收起页面、
   离开会话页都继续响；停它只有定时到点、取消选择、会话结束/丢弃三条路。
 - 「剩余 Xm」与失败文案照旧显示在弹窗里。

@@ -35,9 +35,13 @@ class _SheetFakeNoisePlayer extends NoisePlayer {
 }
 
 /// 把弹窗推起来。走真实数据库 + 真实 ProviderScope，只是时钟冻住。
+///
+/// [appTheme] 默认深色（会话页实际情形）；传 `AppTheme.light()` 用来验「弹窗
+/// 走到 root navigator、继承不到会话页那层 Theme」时的令牌归属。
 Future<void> pumpNoiseSheet(
   WidgetTester tester, {
   NoisePlayer? player,
+  ThemeData? appTheme,
 }) async {
   tester.view.physicalSize = const Size(430, 932);
   tester.view.devicePixelRatio = 1.0;
@@ -62,7 +66,7 @@ Future<void> pumpNoiseSheet(
             .overrideWithValue(player ?? _SheetFakeNoisePlayer()),
       ],
       child: MaterialApp(
-        theme: AppTheme.dark(),
+        theme: appTheme ?? AppTheme.dark(),
         home: Builder(
           builder: (context) => Scaffold(
             body: Center(
@@ -204,5 +208,17 @@ void main() {
     expect(find.text('白噪音设置'), findsNothing);
     // 关掉弹窗**不**停声音——播放器挂在 app 级的控制器上，生命周期比这层弹窗长。
     expect(player.calls.where((c) => c == 'stop'), isEmpty);
+  });
+
+  testWidgets('浅色应用主题下，弹窗内的共享控件仍是深色令牌', (tester) async {
+    // 回归：`showGeneralDialog` 默认 `useRootNavigator: true`，弹窗路由挂在 root
+    // navigator 下，**继承不到会话页那层 `Theme(AppTheme.dark())`**。外框走
+    // `NightStyle` 是深的，但宫格 / 音量 / 时长 chip 这些共享控件从应用主题令牌取色
+    // ——不显式再包一层深色 Theme，浅色主题下它们会变浅，深浅拼在一张面板上。
+    // 既有用例把 `MaterialApp.theme` 直接设成 `AppTheme.dark()`，正好盖不出这条。
+    await pumpNoiseSheet(tester, appTheme: AppTheme.light());
+
+    final context = tester.element(find.text('白噪音设置'));
+    expect(Theme.of(context).brightness, Brightness.dark);
   });
 }
