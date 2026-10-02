@@ -5,6 +5,20 @@ import 'package:night_sleep/core/widgets/app_icons.dart';
 import 'package:night_sleep/features/session/presentation/widgets/sleep_moon_mark.dart';
 
 void main() {
+  /// 月亮当前的纵向偏移。`SleepMoonOrbit` 用 `Transform.translate` 包住月亮，
+  /// 直接把它读回来——比截图比对便宜，也比「有没有排帧」这种代理指标准。
+  double moonOffset(WidgetTester tester) {
+    final transform = tester.widget<Transform>(
+      find
+          .ancestor(
+            of: find.byType(SleepMoonMark),
+            matching: find.byType(Transform),
+          )
+          .first,
+    );
+    return transform.transform.getTranslation().y;
+  }
+
   testWidgets('月亮标记能渲染且不抛异常', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(home: Center(child: SleepMoonMark())),
@@ -45,6 +59,40 @@ void main() {
     expect(tester.takeException(), isNull);
     // 两个都是真的画出来了，而不是返回了一个空盒子。
     expect(find.byType(SvgPicture), findsNWidgets(2));
+  });
+
+  testWidgets('live 由 false 翻成 true 之后月亮真的动起来', (tester) async {
+    // **不使用 pumpAndSettle**：live 之后是循环表，永远不 settle（见计划头部
+    // Global Constraints）。全程显式 pump()，跑完由测试框架拆掉树。
+    Widget tree({required bool live}) => MaterialApp(
+          home: Center(child: SleepMoonOrbit(live: live)),
+        );
+
+    await tester.pumpWidget(tree(live: false));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(moonOffset(tester), 0, reason: '未激活时不该浮动');
+
+    // 同一个元素位置重建，只把 live 翻成 true：State 被复用，
+    // `didChangeDependencies` 不会再跑，必须靠 `didUpdateWidget` 接住。
+    await tester.pumpWidget(tree(live: true));
+    await tester.pump(); // 先跑一帧让 ticker 记下起始时间戳
+    await tester.pump(const Duration(milliseconds: 1250));
+    expect(moonOffset(tester), isNot(0), reason: 'live 翻真后月亮该动起来');
+  });
+
+  testWidgets('升降一整轮是 5 秒', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: Center(child: SleepMoonOrbit(live: true))),
+    );
+    await tester.pump(); // 先跑一帧让 ticker 记下起始时间戳
+
+    await tester.pump(const Duration(milliseconds: 2500));
+    expect(moonOffset(tester), lessThanOrEqualTo(-6), reason: '2.5 秒升到顶（-7）');
+
+    await tester.pump(const Duration(milliseconds: 2500));
+    expect(moonOffset(tester), greaterThanOrEqualTo(-0.5),
+        reason: '再 2.5 秒落回原点');
   });
 
   test('svgFor 把 currentColor 换成了给定颜色', () {

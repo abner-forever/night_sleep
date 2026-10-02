@@ -11,7 +11,8 @@ import '../night_style.dart';
 /// 近似——原型自己的 `.sleep-moon-orbit::before/::after` 也各画了一圈光晕，
 /// 所以这里近似的是同一层东西，不是凭空补一个形状。
 ///
-/// 轨道光晕与月亮的**呼吸**动画都在 [SleepMoonOrbit] 里，本组件只管月亮本身。
+/// 月亮的**上下浮动**动画与轨道光晕都在 [SleepMoonOrbit] 里，本组件只管月亮本身
+/// （没有缩放或透明度那一层）。
 const String sleepMoonSvg = '''
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="14 0 120 120">
   <defs>
@@ -98,16 +99,33 @@ class _SleepMoonOrbitState extends State<SleepMoonOrbit>
     duration: const Duration(seconds: 5),
   );
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // 减弱动态效果时停表。循环动画会让 `pumpAndSettle()` 永不收敛，测试夹具因此
-    // 一律把 `disableAnimations` 打开（见计划头部的 Global Constraints）。
+  /// `live` 为真且没开减弱动态效果 → 起表；否则 → 停表。
+  ///
+  /// 减弱动态效果时停表既是无障碍要求（对应原型 CSS 的
+  /// `@media (prefers-reduced-motion: reduce)`），也是测试能收敛的前提：
+  /// 循环动画会让 `pumpAndSettle()` 永不收敛（见计划头部的 Global Constraints）。
+  void _sync() {
     if (widget.live && !NightStyle.reduceMotion(context)) {
-      if (!_float.isAnimating) _float.repeat(reverse: true);
+      if (!_float.isAnimating) _float.repeat();
     } else {
       _float.stop();
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 覆盖 MediaQuery（减弱动态效果）变化这一路。
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(SleepMoonOrbit oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 父组件在同一个元素位置重建、只把 `live` 从 false 翻成 true 时，
+    // `didChangeDependencies` 不会再跑（State 被复用、依赖没变），只有这里能接住，
+    // 否则月亮会静默地不浮动。
+    _sync();
   }
 
   @override
@@ -122,8 +140,16 @@ class _SleepMoonOrbitState extends State<SleepMoonOrbit>
     return AnimatedBuilder(
       animation: _float,
       builder: (context, child) => Transform.translate(
-        // `sleepFloat { 50% { transform: translateY(-7px) } }`，往返。
-        offset: Offset(0, -7 * Curves.easeInOut.transform(_float.value)),
+        // 原型 `@keyframes sleepFloat { 50% { transform: translateY(-7px) } }`
+        // 配 `5s infinite`，**没有 alternate**：5 秒是「升到顶再落下」的一整轮，
+        // 不是往返两轮。把 0→1 折成三角波（0→1→0）再套缓动，正好对上。
+        offset: Offset(
+          0,
+          -7 *
+              Curves.easeInOut.transform(
+                1 - (2 * _float.value - 1).abs(),
+              ),
+        ),
         child: child,
       ),
       child: Container(
