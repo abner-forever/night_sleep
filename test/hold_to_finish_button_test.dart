@@ -9,12 +9,22 @@ void main() {
     required VoidCallback onFinish,
     VoidCallback? onHint,
   }) async {
+    tester.view.physicalSize = const Size(430, 932);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    // **不要**在这里开 `disableAnimations`：`AnimationController` 在减弱动态效果下
+    // 会把时长压到 5%，1.5 秒的按住会缩成 75ms，「没按满就松手」与「滑开作废」
+    // 两条用例会假红。进度动画本来就是有限时长、会自己收敛的，不需要那条设置。
+
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.dark(),
         home: Scaffold(
           body: Center(
-            child: HoldToFinishButton(onFinish: onFinish, onHint: onHint),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: HoldToFinishButton(onFinish: onFinish, onHint: onHint),
+            ),
           ),
         ),
       ),
@@ -97,5 +107,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(finished, 0, reason: '手指滑开了就该作废，躺着翻身蹭到也能反悔');
+  });
+
+  testWidgets('按钮是全宽的横向胶囊，不是圆形', (tester) async {
+    await pumpButton(tester, onFinish: () {});
+
+    final size = tester.getSize(find.byType(HoldToFinishButton));
+    expect(size.width, greaterThan(size.height * 3),
+        reason: '原型那个按钮是全宽胶囊；退回圆形会在这里变红');
   });
 }

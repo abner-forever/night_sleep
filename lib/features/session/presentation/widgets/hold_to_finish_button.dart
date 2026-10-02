@@ -1,42 +1,38 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../../../../core/platform/haptics.dart';
-import '../../../../core/theme/app_tokens.dart';
 import '../../../../core/widgets/app_icons.dart';
-import '../../../../core/widgets/glass_surface.dart';
+import '../night_style.dart';
 
-/// 「结束睡眠」：按住不放，外圈进度环扫满才生效。
+/// 「长按结束睡眠」：全宽横向胶囊，按住时填充条从左扫到右。
 ///
 /// **为什么不是点击 + 确认弹窗**：结束睡眠是躺下之后才会做的动作，误触代价高，
-/// 需要一道闸；但确认弹窗把「停」和「收尾」拆成两个接连的弹窗，而按住确认把它
-/// 压回一个动作（规格 §四「结束：按住 1.5 秒」）。
+/// 需要一道闸；而确认弹窗把「停」和「收尾」拆成两个接连的弹窗，按住确认把它压回
+/// 一个动作（规格 §四、§16.6）。
 ///
 /// **进度按下即开始**：用 [Listener] 的原始指针事件驱动，不走
-/// `GestureDetector.onLongPressStart`——后者要等 500ms 的长按超时才触发，按住
-/// 之后要愣一下才动。原始指针事件不进手势竞技场，因此嵌在滚动视图里也不会与
-/// 滚动手势抢。
+/// `GestureDetector.onLongPressStart`——后者要等 500ms 的长按超时才触发，按住之后
+/// 要愣一下才动。原始指针事件不进手势竞技场，因此嵌在滚动视图里也不会与滚动手势抢。
+///
+/// 形态换成原型 `.sleep-hold-button` 的横向胶囊（全宽、min-height 56、圆角 18），
+/// 但**按住时长仍是 1.5 秒**——原型是 1.6 秒，那 0.1 秒是本项目 v3.1 的产品裁定，
+/// 且已有测试钉住，不为此改动。
 class HoldToFinishButton extends StatefulWidget {
   const HoldToFinishButton({
     super.key,
     required this.onFinish,
     this.onHint,
     this.holdDuration = const Duration(milliseconds: 1500),
-    this.size = 104,
   });
 
-  /// 环扫满之后调一次。
+  /// 填充条扫满之后调一次。
   final VoidCallback onFinish;
 
   /// 短按（没按满就抬手）时调一次，用来提示「按住不放」。
   final VoidCallback? onHint;
 
-  /// 环扫满所需时长。
+  /// 填充条扫满所需时长。
   final Duration holdDuration;
-
-  /// 含外圈的直径。
-  final double size;
 
   @override
   State<HoldToFinishButton> createState() => _HoldToFinishButtonState();
@@ -44,9 +40,6 @@ class HoldToFinishButton extends StatefulWidget {
 
 class _HoldToFinishButtonState extends State<HoldToFinishButton>
     with SingleTickerProviderStateMixin {
-  static const _stroke = 3.5;
-  static const _gap = 6.0;
-
   /// 松手时进度低于这个值就当作「短按」，而不是「按到一半反悔」。
   static const _tapThreshold = 0.2;
 
@@ -81,7 +74,7 @@ class _HoldToFinishButtonState extends State<HoldToFinishButton>
   void _onStatus(AnimationStatus status) {
     if (status != AnimationStatus.completed) return;
     _fired = true;
-    // 先复位：评星那一步可以跳过、弹层也可以直接关掉，按钮不该卡在满圈。
+    // 先复位：评星那一步可以跳过、弹层也可以直接关掉，按钮不该卡在满格。
     _progress.value = 0;
     // 动画状态回调跑在 transient 回调阶段，push 路由挪到帧尾更稳。
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -121,12 +114,9 @@ class _HoldToFinishButtonState extends State<HoldToFinishButton>
 
   @override
   Widget build(BuildContext context) {
-    final tokens = AppTokens.of(context);
-    final inner = widget.size - 2 * (_stroke + _gap);
-
     return Semantics(
       label: '结束睡眠',
-      hint: '按住不放，圆环填满即结束',
+      hint: '按住不放，填充条扫满即结束',
       button: true,
       onTap: _hint,
       onLongPress: widget.onFinish,
@@ -138,113 +128,67 @@ class _HoldToFinishButtonState extends State<HoldToFinishButton>
           _downAt = null;
           _progress.reverse();
         },
-        child: AnimatedBuilder(
-          animation: _progress,
-          builder: (context, child) => SizedBox(
-            width: widget.size,
-            height: widget.size,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                CustomPaint(
-                  size: Size.square(widget.size),
-                  painter: _HoldRingPainter(
-                    progress: _progress.value,
-                    color: tokens.danger,
-                    trackColor: tokens.bgMuted,
-                    stroke: _stroke,
-                  ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedBuilder(
+              animation: _progress,
+              builder: (context, child) => Container(
+                constraints: const BoxConstraints(
+                  minHeight: NightStyle.holdButtonMinHeight,
+                  minWidth: double.infinity,
                 ),
-                // 按下时轻微收缩，与全 App 的按压缩放同一口径。
-                Transform.scale(
-                  scale: 1 - 0.03 * _progress.value,
-                  child: child,
+                decoration: BoxDecoration(
+                  color: NightStyle.glassFill,
+                  borderRadius:
+                      BorderRadius.circular(NightStyle.holdButtonRadius),
+                  border: Border.all(color: NightStyle.glassStroke),
                 ),
-              ],
-            ),
-          ),
-          child: GlassSurface(
-            borderRadius: BorderRadius.circular(inner / 2),
-            expandWidth: false,
-            padding: EdgeInsets.zero,
-            borderColor: tokens.danger.withValues(alpha: 0.38),
-            child: SizedBox(
-              width: inner,
-              height: inner,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  AppIcons.sun(
-                      size: 18, color: tokens.danger, strokeWidth: 1.9),
-                  const SizedBox(height: 6),
-                  Text(
-                    '结束',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: tokens.danger,
+                clipBehavior: Clip.antiAlias,
+                child: Stack(
+                  children: [
+                    // `.sleep-hold-fill`：`transform: scaleX(0)` 起、`origin: left`。
+                    Positioned.fill(
+                      child: FractionallySizedBox(
+                        alignment: Alignment.centerLeft,
+                        widthFactor: _progress.value,
+                        child: const ColoredBox(color: NightStyle.holdFill),
+                      ),
                     ),
-                  ),
-                ],
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 17),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          AppIcons.holdEnd(
+                            size: 20,
+                            color: NightStyle.holdInk,
+                            strokeWidth: 1.65,
+                          ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            '长按结束睡眠',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: NightStyle.holdInk,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
+            const SizedBox(height: 9),
+            const Text(
+              '持续按住，避免误触',
+              style: TextStyle(fontSize: 10, color: NightStyle.textFaint),
+            ),
+          ],
         ),
       ),
     );
   }
-}
-
-/// 外圈那条进度弧。画法与 `wake_dial.dart` 的 `_DialPainter` 同款：
-/// 从 12 点起顺时针，`StrokeCap.round`。
-class _HoldRingPainter extends CustomPainter {
-  const _HoldRingPainter({
-    required this.progress,
-    required this.color,
-    required this.trackColor,
-    required this.stroke,
-  });
-
-  final double progress;
-  final Color color;
-  final Color trackColor;
-  final double stroke;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final centre = Offset(size.width / 2, size.height / 2);
-    final radius = (size.width - stroke) / 2;
-    final rect = Rect.fromCircle(center: centre, radius: radius);
-
-    canvas.drawCircle(
-      centre,
-      radius,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = stroke
-        ..color = trackColor,
-    );
-
-    if (progress <= 0) return;
-
-    canvas.drawArc(
-      rect,
-      -math.pi / 2,
-      2 * math.pi * progress.clamp(0.0, 1.0),
-      false,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = stroke
-        ..strokeCap = StrokeCap.round
-        ..color = color,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_HoldRingPainter oldDelegate) =>
-      oldDelegate.progress != progress ||
-      oldDelegate.color != color ||
-      oldDelegate.trackColor != trackColor ||
-      oldDelegate.stroke != stroke;
 }
