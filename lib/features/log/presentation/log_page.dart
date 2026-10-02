@@ -19,6 +19,7 @@ import '../../sleep/domain/sleep_entry.dart';
 import '../../sleep/domain/sleep_quality.dart';
 import '../../sleep/domain/sleep_score.dart';
 import '../../sleep/domain/sleep_window.dart';
+import '../../sleep/presentation/widgets/event_tiles.dart';
 import '../../sleep/presentation/widgets/moon_arc.dart';
 import '../../sleep/presentation/widgets/quality_rating.dart';
 import '../../sleep/presentation/widgets/stage_style.dart';
@@ -313,64 +314,9 @@ class _LogPageState extends ConsumerState<LogPage> {
 
       // ── Events ─────────────────────────────────────────────────────────
       const SectionHeader('睡眠事件'),
-      Row(
-        children: [
-          Expanded(
-            child: _EventTile(
-              label: '打鼾',
-              icon: (color) =>
-                  AppIcons.snore(size: 18, color: color, strokeWidth: 1.5),
-              color: tokens.accentBlue,
-              selected: _events.snore,
-              onTap: () => setState(
-                () => _events = _events.copyWith(snore: !_events.snore),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _EventTile(
-              label: '说梦话',
-              icon: (color) =>
-                  AppIcons.bubble(size: 18, color: color, strokeWidth: 1.5),
-              color: tokens.accentViolet,
-              selected: _events.talk,
-              onTap: () => setState(
-                () => _events = _events.copyWith(talk: !_events.talk),
-              ),
-            ),
-          ),
-        ],
-      ),
-      const SizedBox(height: 8),
-      Row(
-        children: [
-          Expanded(
-            child: _EventTile(
-              label: '辗转难眠',
-              icon: (color) =>
-                  AppIcons.sparkle(size: 18, color: color, strokeWidth: 1.5),
-              color: tokens.caution,
-              selected: _events.restless,
-              onTap: () => setState(
-                () => _events = _events.copyWith(restless: !_events.restless),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _EventTile(
-              label: '噩梦',
-              icon: (color) =>
-                  AppIcons.moon(size: 18, color: color, strokeWidth: 1.5),
-              color: tokens.danger,
-              selected: _events.nightmare,
-              onTap: () => setState(
-                () => _events = _events.copyWith(nightmare: !_events.nightmare),
-              ),
-            ),
-          ),
-        ],
+      EventTileGrid(
+        events: _events,
+        onChanged: (events) => setState(() => _events = events),
       ),
       const SizedBox(height: 18),
 
@@ -490,60 +436,6 @@ class _FieldRow extends StatelessWidget {
           const SizedBox(width: 6),
           AppIcons.chevronRight(
               size: 16, color: tokens.borderStrong, strokeWidth: 2),
-        ],
-      ),
-    );
-  }
-}
-
-class _EventTile extends StatelessWidget {
-  const _EventTile({
-    required this.label,
-    required this.icon,
-    required this.color,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-
-  /// 在这里现场构建，而不是外面造好再传进来。颜色是在构造 `SvgPicture.string`
-  /// 的那一刻就被烤进 SVG 文本的，事后再套一层 `IconTheme` 改不动它——这就是
-  /// 原先那次尝试毫无作用、每个 tile 在深色模式下都是黑色的原因。
-  final Widget Function(Color color) icon;
-  final Color color;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AppTokens.of(context);
-
-    return GlassSurface(
-      borderRadius: BorderRadius.circular(AppRadii.panel),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      tint: selected
-          ? Color.alphaBlend(color.withValues(alpha: 0.11), tokens.bgCard)
-          : null,
-      borderColor: selected ? color.withValues(alpha: 0.38) : null,
-      onTap: () {
-        AppHaptics.select();
-        onTap();
-      },
-      child: Row(
-        children: [
-          icon(selected ? color : tokens.textMuted),
-          const SizedBox(width: 10),
-          Flexible(
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: selected ? color : tokens.textSecondary,
-              ),
-            ),
-          ),
         ],
       ),
     );

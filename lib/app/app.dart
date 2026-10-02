@@ -9,7 +9,7 @@ import '../core/theme/app_tokens.dart';
 import '../core/widgets/atmosphere.dart';
 import '../features/home/presentation/home_page.dart';
 import '../features/log/presentation/log_edit_page.dart';
-import '../features/log/presentation/log_page.dart';
+import '../features/log/presentation/review_page.dart';
 import '../features/onboarding/presentation/onboarding_overlay.dart';
 import '../features/settings/presentation/demo_data_page.dart';
 import '../features/settings/presentation/export_page.dart';
@@ -204,7 +204,7 @@ class _TabContent extends StatelessWidget {
               onOpenNoise: onOpenNoise,
               onStartSleep: onStartSleep,
             ),
-          AppTab.log => const LogPage(),
+          AppTab.log => const ReviewPage(),
           AppTab.stats => const StatsPage(),
           AppTab.settings => const SettingsPage(),
         },

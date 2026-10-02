@@ -107,8 +107,8 @@ void main() {
       await Future<void>.delayed(hold);
     });
 
-    await step('log', () async {
-      await tapText(tester, '记录');
+    await step('review', () async {
+      await tapText(tester, '回顾');
       await Future<void>.delayed(hold);
     });
 

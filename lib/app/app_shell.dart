@@ -13,7 +13,7 @@ import '../core/widgets/top_fade.dart';
 /// The four primary destinations. Order matches the prototype's `NAV`.
 enum AppTab {
   home('home', '首页'),
-  log('log', '记录'),
+  log('log', '回顾'),
   stats('stats', '统计'),
   settings('settings', '设置');
 
