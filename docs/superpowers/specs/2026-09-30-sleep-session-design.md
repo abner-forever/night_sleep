@@ -59,8 +59,10 @@
 | `web/manifest.json` · `name` / `short_name` | `night_sleep` | `夜深` |
 
 **`PRODUCT_NAME` 保持 `night_sleep` 不动。** 它决定 macOS 的 `.app` 包名与可执行文件名——
-改成中文会让构建产物路径变成中文，并顺着 `EXECUTABLE_NAME` 影响一串构建设置。而 Dock、
-菜单栏与 iOS 桌面读的都是 `CFBundleDisplayName`，改它就够了。
+改成中文会让构建产物路径变成中文，并顺着 `EXECUTABLE_NAME` 影响一串构建设置。
+**Dock 与 iOS 桌面读的是 `CFBundleDisplayName`（已改）；macOS 菜单栏读的是
+`CFBundleName`（工程里仍是 `night_sleep`），可能仍显示英文名，待人工核对。**
+（此前的初稿把菜单栏也算作读 `CFBundleDisplayName`，与已知事实不符，已订正。）
 
 iOS 的 `CFBundleName` 也保持 `night_sleep`：它是对内的短名（有 15 字节上限），
 不显示给用户。
@@ -338,11 +340,16 @@ plan B 起它是真的录音开关，还要处理与白噪音的互斥、麦克�
 - `reconcileReminders` 扩展为：除了既有的 `reminderPlanFrom(settings)`，再读一次活跃会话，
   按「有没有会话 + `alarmEnabled`」决定排还是取消 9003。
 
-  **已知差异，待裁定：** 本文初稿把「权限」列为这里的第三个输入，实现里只看
-  「有没有会话 + `alarmEnabled`」（`lib/app/reminder_sync.dart` 的 `syncSessionAlarm`）。
-  设计流程下这一点被 `alarmEnabled` 兜住——权限被拒不会写入 `true`，正常路径走不到缺口；
-  只有「会话仍活跃时，用户事后到系统设置里撤销了通知权限」这一种情形会落到缺口
-  （闹钟会被排上、但投不出去）。**这是未决项，不要当成已实现。**
+  **已修（终审）：** 本文初稿把「权限」列为这里的第三个输入。原实现只看
+  「有没有会话 + `alarmEnabled`」，缺口比初稿描述的宽——除了「会话仍活跃时用户
+  事后到系统设置里撤销了通知权限」，还有**调度器压根没就绪**这一种：某次冷启动
+  `initialize()` 失败（例如取不到可用时区）时 `permission()` 返回 `unsupported`，
+  而 `LocalReminderScheduler.scheduleOnce` 在 `!_ready` 时静默 no-op，于是 9003 被
+  **静默排不上**，库里 `alarmEnabled` 仍是 `true`、界面照旧显示「起床闹钟已开 ·
+  还有 X」——正是一句谎。现在 `syncSessionAlarm` 把「能不能排」纳入推导：只有
+  `scheduler.permission() != unsupported` 才排 9003，否则只取消它。**不动偏好**——
+  理由与 `reconcileReminders` 的 `unsupported` 分支相同：那可能只是一次偶发的
+  初始化失败。见 §十五 B。
 
   这仍然是那条**同一个生命周期**原则：调度内容从数据库推导，不额外维护一份内存状态。
   启动路径与设置路径共用一份映射函数，两处各写一遍就会出现「开关开着却不响」。
@@ -381,7 +388,7 @@ plan B 起它是真的录音开关，还要处理与白噪音的互斥、麦克�
 
 | 平台 | 做法 | 为什么不是更强的做法 |
 | --- | --- | --- |
-| iOS / macOS | `interruptionLevel: timeSensitive`，可穿透专注模式 | `critical` 需要 Apple 单独批准一项 entitlement，本项目没有 |
+| iOS / macOS | **请求** `interruptionLevel: timeSensitive`；但工程里**没有**配套的 Time Sensitive Notifications entitlement（`ios/` 下没有任何 `.entitlements`，`macos/Runner/*.entitlements` 也没有 `com.apple.developer.usernotifications.time-sensitive`），按 Apple 的规则该级别会被系统降级，**「可穿透专注模式」当前不成立** | `critical` 需要 Apple 单独批准一项 entitlement，本项目没有；`timeSensitive` 要真正生效，需加 entitlement 并在 App ID 上开启该能力，且要真机实测 |
 | Android | `inexactAllowWhileIdle` | 精确闹钟要么多一个 `SCHEDULE_EXACT_ALARM` 授权流程，要么用需要上架审核的 `USE_EXACT_ALARM` |
 
 界面上如实写着：**「由系统通知投递；休眠模式下可能晚几分钟，强度不如系统闹钟。」**
@@ -744,7 +751,11 @@ id 是标签条取实心图标的键（`filledTabGlyph(tab.id, …)`），改它
 
 - **通知是否真的到点投递**：本机没有真机验证过（这是项目既有的未验证项，本次不改变）。
   Dart 侧的调度契约由测试钉住，但「到点真的响了」仍需人工确认。
-- **`timeSensitive` 是否真的穿透了专注模式**：需要在真机上开一个专注模式实测。
+- **`timeSensitive` 当前并不会穿透专注模式**：代码请求了该级别，但工程里没有配套的
+  Time Sensitive Notifications entitlement（`ios/` 无 `.entitlements`，
+  `macos/Runner/*.entitlements` 无 `com.apple.developer.usernotifications.time-sensitive`），
+  按 Apple 的规则会被系统降级。解锁需要：加 entitlement、在 App ID 上开启该能力，
+  并真机开专注模式实测。
 - **白噪音的后台/锁屏播放**：本次不实现，界面已如实标注。
 - **Dock / 桌面显示名的实际观感**：plist 改了不等于系统重新读了缓存，需要在人工确认后
   才把这条划掉（与偏差 #16 的 Dock 图标是同一类问题）。
@@ -800,12 +811,13 @@ plan B 独有：
 | # | 规格原文 | 实现 | 说明 |
 | --- | --- | --- | --- |
 | A | §三 第2条：结束后记录 `stages` 传**空 list** | `SessionRepository.finish()` **不经过** `SleepRepository.save()`，事务里直接 `saveRecord` + 删会话行，**没有 `stages` 参数** | 「会话不产生阶段」的意图仍在，机制换成「这条写入路径不碰阶段表」；代码注释与测试钉住。见 §三 |
-| B | §五 接法：9003 排/取消的输入是「有无会话 + `alarmEnabled` + **权限**」 | 只看「有无会话 + `alarmEnabled`」 | **已知差异，待裁定**。正常路径被 `alarmEnabled` 兜住；只有「事后撤销权限」落到缺口。见 §五 |
+| B | §五 接法：9003 排/取消的输入是「有无会话 + `alarmEnabled` + **权限**」 | 输入是「有无会话 + `alarmEnabled` + **`scheduler.permission() != unsupported`**」 | **已修（终审）**。原实现只看前两项，缺口比初稿描述的宽：`initialize()` 失败（调度器没就绪）时 9003 静默排不上，界面却仍显示「已开」。现在不能排就只取消 9003，不动偏好。见 §五 |
 | C | §十：白噪音定时一行是「文案：最长 60 分钟」 | 只有**约束**（15/30/45/60 四颗 chip、无「不限」），**没有该句文案** | 见 §十的落成补记 |
 | D | §四 收合态草图：用 ⏰ / ⓘ 字形 | `AppIcons.timer` / `AppIcons.volume` | `AppIcons` 里没有 info 字形，是被迫换的 |
 | E | §四 收合态草图：闹钟胶囊「还有 3h 18m」 | 「还有 4h 4m」 | 草图数字与实算值矛盾（start 23:14、闹钟 07:00、已过 3h42m → 剩余 4h4m），已订正 |
 | F | 本计划原文：**无新公开 API** | 新增 `homeNowProvider`（`Provider<DateTime Function()>`） | 首页「现在」的测试接缝，见 §九 |
 | G | §九 未提 | 「正在睡眠」卡的已睡时长是 **build 快照**，停在首页不自动跳动 | 只有会话页有每秒 tick，见 §九 |
+| H | §五 强度表：`interruptionLevel: timeSensitive`「可穿透专注模式」 | 代码**请求**了 `timeSensitive`，但工程里没有配套的 Time Sensitive Notifications entitlement（`ios/` 下无 `.entitlements`，`macos/Runner/*.entitlements` 无该键），按 Apple 规则该级别会被系统降级 | **已知偏差（未解锁）**。要真正生效，需加 entitlement、在 App ID 上开启该能力，并真机实测；本轮**刻意不改 Xcode 工程**（本机无法验证 iOS 构建，改坏了更糟）。见 §五、§十三、README |
 
 ### 15.2 已知未收尾的小项（**不得视为已完成**）
 

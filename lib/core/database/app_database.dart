@@ -25,7 +25,7 @@ class SleepRecords extends Table {
   TextColumn get notes => text().withDefault(const Constant(''))();
   TextColumn get tagsJson => text().withDefault(const Constant('[]'))();
 
-  /// `manual`, `import`, or `demo`.
+  /// 取值：`manual`、`import`、`demo`，或由睡眠会话结束写入的 `session`。
   TextColumn get source => text().withDefault(const Constant('manual'))();
 
   // Self-reported disturbances. Stored because the on-device score is derived

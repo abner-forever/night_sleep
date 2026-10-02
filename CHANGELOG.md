@@ -9,10 +9,11 @@
 新增「开始睡眠」与会话页；「记录」Tab 改为「回顾」Tab（醒来后补感受）；手动录入降级为二级页；
 起床闹钟接真实本地通知；应用显示名统一为「夜深」。对应规格 schema **v3 → v4**、偏差 #23–#27。
 
-**显示名。** iOS / macOS / Web 三处都显示「夜深」（`CFBundleDisplayName` / `title` / manifest）。
-`PRODUCT_NAME` 与 `CFBundleName` 保持 `night_sleep` 不动——它们决定 macOS 的 `.app` 包名与
-可执行文件名，改成中文会把构建产物路径也变成中文。Dock、菜单栏、iOS 桌面读的都是
-`CFBundleDisplayName`，改它就够。回归见 `test/app_display_name_test.dart`（5 条，含「构建路径
+**显示名。** iOS / macOS / Web 三处都**配置**为「夜深」（`CFBundleDisplayName` / `title` /
+manifest）。`PRODUCT_NAME` 与 `CFBundleName` 保持 `night_sleep` 不动——它们决定 macOS 的
+`.app` 包名与可执行文件名，改成中文会把构建产物路径也变成中文。**Dock 与 iOS 桌面读的是
+`CFBundleDisplayName`（已改）；macOS 菜单栏读的是 `CFBundleName`（仍为 `night_sleep`），
+可能仍显示英文名，待人工核对。** 回归见 `test/app_display_name_test.dart`（5 条，含「构建路径
 相关的名字仍是 `night_sleep`」的反向护栏）。
 
 **会话。** 首页「开始睡眠」→ 推入式全屏会话页（`/sleep/session`）。日晷圆环画「已过时长 ÷
@@ -31,10 +32,13 @@
 
 **起床闹钟。** 新 id `9003`，`scheduleOnce` **一次性**排定（不传 `matchDateTimeComponents`，
 与每天重复的日常提醒是不同 API）。会话活跃且闹钟开启时**日常起床提醒 `9002` 让位**（就寝提醒
-`9001` 不受影响），会话结束后按偏好排回；推导只有 `syncSessionAlarm` 一处。iOS / macOS 用
-`interruptionLevel: timeSensitive`，Android 用 `inexactAllowWhileIdle`（刻意不申请精确闹钟权限、
-不用需 Apple 特批的 `critical`）。界面如实标注「由系统通知投递；休眠模式下可能晚几分钟，强度
-不如系统闹钟」——收合态胶囊与抽屉里的闹钟行共用同一份字面量。
+`9001` 不受影响），会话结束后按偏好排回；推导只有 `syncSessionAlarm` 一处，且**调度器
+没就绪（`permission()` 为 `unsupported`）时不排 9003**，免得界面写着「已开」却不会响。
+iOS / macOS **请求** `interruptionLevel: timeSensitive`（**但工程里没有配套的 Time Sensitive
+Notifications entitlement，按当前产物该级别会被系统降级、穿不了专注模式**），Android 用
+`inexactAllowWhileIdle`（刻意不申请精确闹钟权限、不用需 Apple 特批的 `critical`）。界面如实
+标注「由系统通知投递；休眠模式下可能晚几分钟，强度不如系统闹钟」——收合态胶囊与抽屉里的闹钟
+行共用同一份字面量。
 
 **两处诚实的边界（不得当成已完成）：**
 
@@ -45,10 +49,11 @@
    界面仍如实标注「尚未接入录音，开关只保存偏好」（偏差 #7 在夜间录音落地前仍然有效）。
    夜间录音（以及它需要的麦克风权限、后台录音、切片）排成独立的 plan B。
 
-**未验证**（详见 README「验证记录」）：起床闹钟**真机到点投递**与 `timeSensitive` **穿透专注
-模式**都未实测；宽屏（macOS 侧边栏）下的会话页/回顾页版式未经核对；Dock / 桌面显示名的实际
-观感未确认；`integration_test/` 的「记录 → 回顾」改名**没有跑过 `flutter drive`**（该目录不
-参与 `flutter test`）。
+**未验证**（详见 README「验证记录」）：起床闹钟**真机到点投递**未实测；`timeSensitive`
+因缺 Time Sensitive Notifications entitlement，**当前并不能穿透专注模式**（需加 entitlement
+并在 App ID 上开启该能力）；宽屏（macOS 侧边栏）下的会话页/回顾页版式未经核对；Dock / 桌面
+显示名的实际观感未确认，且 **macOS 菜单栏可能仍显示 `night_sleep`**；`integration_test/` 的
+「记录 → 回顾」改名**没有跑过 `flutter drive`**（该目录不参与 `flutter test`）。
 
 回归方法：`test/app_display_name_test.dart`（显示名）、`test/schema_migration_test.dart`
 （v3→v4）、`test/session_repository_test.dart` / `test/sleep_session_test.dart`（会话领域与

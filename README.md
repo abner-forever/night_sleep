@@ -79,9 +79,11 @@ test/                  领域计算与页面测试
 
 - **设计系统**：完整令牌（`app_tokens.dart`）、玻璃材质、iOS 开关/分段控件/列表组、底部弹层、
   滚轮选择器、自绘描边图标集（原型图标逐字用原 SVG path；垃圾桶为 v2.6 新增，见下）。
-- **应用显示名**（v3.0）：iOS / macOS / Web 三处均显示「夜深」（`CFBundleDisplayName` /
+- **应用显示名**（v3.0）：iOS / macOS / Web 三处均**配置**为「夜深」（`CFBundleDisplayName` /
   `title` / manifest），而决定构建产物路径的 `PRODUCT_NAME` / `CFBundleName` 仍是
-  `night_sleep`——改成中文会让 macOS 的 `.app` 包名与可执行文件名变成中文。见
+  `night_sleep`——改成中文会让 macOS 的 `.app` 包名与可执行文件名变成中文。
+  **Dock 与 iOS 桌面读 `CFBundleDisplayName`（已改）；macOS 菜单栏读的是 `CFBundleName`
+  （仍为 `night_sleep`），可能仍显示英文名，待人工核对。** 见
   `docs/superpowers/specs/2026-09-30-sleep-session-design.md` §一（应用显示名）与
   `test/app_display_name_test.dart`。
 - **首页**：圆形睡眠盘（4 同心弧，首次进入自绘动画）、昨夜概览、7 日均时、助眠音效入口、
@@ -151,8 +153,10 @@ test/                  领域计算与页面测试
 - **会话起床闹钟**（v3.0）：新 id `9003`，走 `scheduleOnce`（**不传**
   `matchDateTimeComponents`，**一次性**而非每天重复），排定时刻复用 `nextOccurrence` 的
   夏令时口径。会话活跃且闹钟开启时，**日常起床提醒 `9002` 让位**（就寝提醒 `9001` 不受影响）；
-  会话结束/丢弃后 `9002` 按偏好排回。iOS / macOS 用 `interruptionLevel: timeSensitive`，
-  Android 用 `inexactAllowWhileIdle`。界面上如实标注「由系统通知投递；休眠模式下可能晚几分钟，
+  会话结束/丢弃后 `9002` 按偏好排回。iOS / macOS **请求** `interruptionLevel: timeSensitive`
+  （**工程里没有配套的 Time Sensitive Notifications entitlement，按当前产物该级别会被系统
+  降级、穿不了专注模式**——见「未验证」），Android 用 `inexactAllowWhileIdle`。
+  界面上如实标注「由系统通知投递；休眠模式下可能晚几分钟，
   强度不如系统闹钟」——收合态胶囊与抽屉里的闹钟行**共用同一份字面量**
   （`ReminderScheduler.wakeAlarmDeliveryNote`）。权限闸口 `ensureNotificationPermission`
   与设置页共用。**真机到点投递未验证**（见「验证记录」）。
@@ -269,19 +273,23 @@ Bundle ID、Android application ID、签名和发布账号保持 Flutter 默认�
 
 本机环境：macOS 14.8.9（23J631，Intel），Flutter 3.47.5 stable。
 
-**v3.0（2026-10-02：会话 + 回顾 + 起床闹钟 + 显示名）最近一次复跑：**
+**v3.0（2026-10-02：会话 + 回顾 + 起床闹钟 + 显示名）终审修复后最近一次复跑：**
 
 - `dart format --set-exit-if-changed .` → 无改动
 - `flutter analyze` → **No issues found**
-- `flutter test` → **332/332 通过**。本轮新增/补测（未逐条列举，完整场景见规格第 9 章）：
-  v3→v4 迁移 5（`test/schema_migration_test.dart`，含「重建后 `quality` 可空」「既有行值原样」
-  「子表外键仍级联」）、会话领域 12（`test/sleep_session_test.dart`）、会话仓库 16
+- `flutter test` → **337/337 通过**。本轮新增/补测（未逐条列举，完整场景见规格第 9 章）：
+  v3→v4 迁移 6（`test/schema_migration_test.dart`，含「重建后 `quality` 可空」
+  「既有记录/阶段/片段/洞察/设置一行不动」「子表外键仍级联」「再次打开不重跑」）、
+  会话领域 13（`test/sleep_session_test.dart`）、会话仓库 16
   （`test/session_repository_test.dart`，含 `finish` 不写阶段、时长守门、冷启动恢复）、
-  会话页 widget 27（`test/sleep_session_page_test.dart`，含诚实文案在位、闹钟被拒回弹、
-  白噪音收起/离开页面仍继续）、回顾页 10（`test/review_page_test.dart`）、
-  会话闹钟（`test/reminder_scheduler_test.dart` 的起床闹钟组、`test/reminder_sync_test.dart`
-  的会话闹钟组 6）、显示名 5（`test/app_display_name_test.dart`）；首页与手动补录页的改动
-  落在 `test/pages_widget_test.dart`。**多数新断言做了变异验证**（拆掉实现会真的变红）。
+  会话页 widget 28（`test/sleep_session_page_test.dart`，含诚实文案在位、闹钟被拒回弹、
+  白噪音收起/离开页面仍继续、闹钟胶囊已过起床时间不再说「还有 0h 0m」）、
+  回顾页 10（`test/review_page_test.dart`）、会话闹钟（`test/reminder_scheduler_test.dart`
+  的起床闹钟组、`test/reminder_sync_test.dart` 的会话闹钟组 7，含「调度器没就绪时不排
+  9003」）、显示名 5（`test/app_display_name_test.dart`）；首页与手动补录页的改动落在
+  `test/pages_widget_test.dart`。终审修复波另补「删除全部本地数据」的收尾断言
+  （`test/reminder_settings_test.dart`：残留会话被清、9002/9003 重新推导、白噪音停掉）。
+  **新断言逐条做了变异验证**（拆掉实现会真的变红）。
 - 上一版（v2.9，2026-09-29）复跑记录：**238/238 通过**（当时从 176 起，逐步增至 216，终审修复波再补 1 至 217：
   schema v3 迁移 6（含 `record_id` 为空的洞察存活分支）、
   演示数据重装与幂等 2、冷启动播种兜底 4、图标取色 4、顶部渐变与安全区/错误分支留白 3、
@@ -347,12 +355,18 @@ Bundle ID、Android application ID、签名和发布账号保持 Flutter 默认�
     - **起床闹钟是否真的到点投递**：Dart 侧的调度契约（`scheduleOnce` 不重复、9003 不被
       `sync` 抹掉、`_resume` 映射）由测试钉住，但**「到点真的响了」需真机确认**——与下一条
       通知投递是同一类问题
-    - **`timeSensitive` 是否真的穿透专注模式**：iOS / macOS 用了
-      `interruptionLevel: timeSensitive`，但**没有在真机上开专注模式实测过**
+    - **`timeSensitive` 当前并不会穿透专注模式**：iOS / macOS **请求**了
+      `interruptionLevel: timeSensitive`，但工程里没有配套的 Time Sensitive
+      Notifications entitlement（`ios/` 下没有任何 `.entitlements`，
+      `macos/Runner/*.entitlements` 也没有
+      `com.apple.developer.usernotifications.time-sensitive`），按 Apple 的规则该级别会被
+      系统降级。**解锁需要**：加 entitlement、在 App ID 上开启该能力，并真机开专注模式实测
     - **宽屏（macOS 侧边栏）下的会话页与回顾页**：会话页是推入式全屏页，**没有在宽屏下逐屏
       核对版式**（不能默认窄屏版式拉伸后可用）
-    - **Dock / 桌面显示名的实际观感**：`Info.plist` 的 `CFBundleDisplayName` 改成了「夜深」，
-      但 plist 改了不等于系统重读了缓存；**没有人看过 Dock / 桌面实际画出来的名字**
+    - **Dock / 桌面 / 菜单栏显示名的实际观感**：`CFBundleDisplayName` 改成了「夜深」，
+      但 plist 改了不等于系统重读了缓存；**没有人看过 Dock / 桌面实际画出来的名字**。
+      另外 **macOS 菜单栏读的是 `CFBundleName`（工程里仍是 `night_sleep`），可能仍显示英文名**，
+      需人工核对（`PRODUCT_NAME` 与构建路径不受影响）
     - **`integration_test/` 的「记录 → 回顾」改动没有跑过 `flutter drive`**：该目录不参与
       `flutter test`，本轮的「记录 Tab → 回顾」改名与相关巡检脚本改动**只做了静态检查**，
       需要人工跑一次 `flutter drive`（见「界面截图巡检」）确认巡检仍能走通

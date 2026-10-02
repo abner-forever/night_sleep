@@ -53,7 +53,8 @@ class SleepEntry {
   final String notes;
   final List<String> tags;
 
-  /// `manual` for hand-logged nights, `import` for device data.
+  /// 取值：`manual`（手动补录）、`import`（设备导入）、`demo`（内置示例），
+  /// 或由睡眠会话结束写入的 `session`。
   final String source;
 
   /// Disturbances the user flagged while logging. Persisted because they are
