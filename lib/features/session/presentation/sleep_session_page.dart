@@ -278,9 +278,10 @@ class _StatusHeader extends StatelessWidget {
               ],
             ),
           ),
-          // 右侧留一块与左侧胶囊等宽的空白，标题才真的居中（原型用
-          // `.sleep-header-spacer { width: 48px }` 达到同一效果）。
-          const SizedBox(width: 62),
+          // 右侧留一块空白，与左侧「收起」胶囊的 minWidth 等宽，中间的
+          // 「睡眠进行中」才真的落在整行正中——少了这块占位，Expanded 里的
+          // 标题会整体偏左（原型用 `.sleep-header-spacer` 达到同一效果）。
+          const SizedBox(width: 56),
         ],
       ),
     );

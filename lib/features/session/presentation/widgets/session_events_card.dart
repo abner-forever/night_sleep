@@ -349,7 +349,16 @@ class _EventRow extends StatelessWidget {
         AppHaptics.tap();
         onTap!();
       },
-      child: row,
+      // 可点的行必须自报「按钮」，否则读屏用户只能听见一串静态文字、激活不了它
+      // （白噪音那一行是白噪音设置弹窗的唯一入口）。标签把标题与副标题合起来念。
+      // `excludeSemantics` 不能省：行内的标题 / 副标题 / 状态字会各自再生成一份
+      // 语义，不排掉的话这一行会被念两三遍。
+      child: Semantics(
+        button: true,
+        label: '$title，$subtitle',
+        excludeSemantics: true,
+        child: row,
+      ),
     );
   }
 }

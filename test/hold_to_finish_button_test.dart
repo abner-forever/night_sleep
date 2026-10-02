@@ -100,6 +100,32 @@ void main() {
     expect(hints, 1, reason: '短按要告诉用户「按住不放」才有效');
   });
 
+  testWidgets('按满触发后指针被取消，再短按仍给提示', (tester) async {
+    var finished = 0;
+    var hints = 0;
+    await pumpButton(
+      tester,
+      onFinish: () => finished++,
+      onHint: () => hints++,
+    );
+
+    // 先按满：触发一次结束，内部把 `_fired` 置真（还在按着，等抬手收尾）。
+    final full = await pressAndHold(tester, const Duration(milliseconds: 1600));
+    expect(finished, 1);
+    await tester.pumpAndSettle();
+
+    // 指针不是正常抬起，而是被系统取消（来电、手势被别的识别器夺走）。
+    await full.cancel();
+    await tester.pumpAndSettle();
+
+    // 取消路径必须已经把 `_fired` 复位：紧接着的短按仍要给出「按住不放」的提示，
+    // 否则这次短按会被当成上一轮触发的收尾而静默吞掉。
+    await tester.tap(find.byType(HoldToFinishButton));
+    await tester.pumpAndSettle();
+
+    expect(hints, 1, reason: '取消后不复位 `_fired`，下一次短按会被吞掉、不给提示');
+  });
+
   testWidgets('按住后滑开再松手不结束', (tester) async {
     var finished = 0;
     await pumpButton(tester, onFinish: () => finished++);

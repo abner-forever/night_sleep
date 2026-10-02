@@ -136,6 +136,10 @@ class _HoldToFinishButtonState extends State<HoldToFinishButton>
         onPointerMove: _onMove,
         onPointerUp: (_) => _onUp(),
         onPointerCancel: (_) {
+          // 与 `_onUp` 同款收尾：指针被系统取消（来电、手势被夺走）同样可能发生在
+          // 「已按满触发」之后。这里不复位 `_fired` 的话，下一次短按会被当成那次
+          // 触发的收尾而吞掉——既不给「按住不放」的提示，填充条也可能停在非零。
+          _fired = false;
           _downAt = null;
           _progress.reverse();
         },

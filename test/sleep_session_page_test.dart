@@ -253,7 +253,7 @@ void main() {
     expect(find.text('07:00 起床闹钟'), findsOneWidget);
   });
 
-  testWidgets('超过起床时间后在闹钟行给出「已超过」', (tester) async {
+  testWidgets('超过起床时间后在闹钟行给出「已超过」与手动结束的指令', (tester) async {
     final start = DateTime(2026, 8, 30, 23, 14);
     await pumpSession(
       tester,
@@ -262,9 +262,12 @@ void main() {
     );
 
     expect(find.textContaining('已超过起床时间'), findsOneWidget);
+    // 睡过头那一刻睁眼看手机时最关键的半句是「怎么办」：只报「已超过」而不给
+    // 动作指令，用户不知道该做什么。逐字钉住这半句，别让它随版式一起漂走。
+    expect(find.textContaining('请手动结束睡眠'), findsOneWidget);
   });
 
-  testWidgets('闹钟关着时胶囊说自然醒后手动结束', (tester) async {
+  testWidgets('闹钟关着时那一行说「本次睡眠不设闹钟」', (tester) async {
     final start = DateTime(2026, 8, 30, 23, 14);
     await pumpSession(
       tester,
