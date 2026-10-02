@@ -135,7 +135,7 @@ class _SessionEventsCardState extends ConsumerState<SessionEventsCard> {
         borderRadius: BorderRadius.circular(NightStyle.cardRadius),
         border: Border.all(color: NightStyle.cardStroke),
       ),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -174,16 +174,20 @@ class _SessionEventsCardState extends ConsumerState<SessionEventsCard> {
           // ── 白噪音 ────────────────────────────────────────────────────
           //
           // 常驻可点：原型在没选声音时把这一行整个藏掉，那会把设置入口一起藏掉
-          // （见规格偏差 #29）。未选时副标题写「未开启」，整行照常可点。
+          // （见规格偏差 #29）。未选时右侧状态字写「未开启」，整行照常可点。
+          //
+          // 右侧只有两态（未开启 / 播放中）：控制器的 `_activeId` 语义是「选中**并正在
+          // 播放**」（冷启动对账正是靠这条语义清掉「库里写着在播、其实没声」的假值），
+          // 所以 `isPlaying == false` ⟹ `activeId == null`，「播完」与「从未选过」在界面上
+          // 本就不可区分。这是**刻意的偏离**，不是漏做——Task 11 会把它写进规格。
           _EventRow(
             icon: AppIcons.music(
                 size: 18, color: NightStyle.iconInk, strokeWidth: 1.5),
             title: noise.activeOption?.label ?? '白噪音',
             subtitle: _noiseSubtitle(noise),
             onTap: () => showNightNoiseSheet(context),
-            trailing: noise.isPlaying
-                ? const _SoundWave()
-                : _StateText(noise.activeId == null ? '未开启' : '已停止'),
+            trailing:
+                noise.isPlaying ? const _SoundWave() : const _StateText('未开启'),
           ),
 
           // ── 起床闹钟 ──────────────────────────────────────────────────
@@ -229,6 +233,8 @@ class _SessionEventsCardState extends ConsumerState<SessionEventsCard> {
             // plan A 阶段录音还没接入，如实标注。plan B 落地时删掉这句，
             // 换成真实状态（规格 §六）。这行字是产品红线，一个字都不许改。
             subtitle: '尚未接入录音，开关只保存偏好。',
+            // 最后一行不画分隔线（原型 `.sleep-event-row:last-child`）。
+            isLast: true,
             trailing: IosToggle(
               value: _recordingEnabled,
               semanticLabel: '鼾声/梦话记录',
@@ -240,13 +246,12 @@ class _SessionEventsCardState extends ConsumerState<SessionEventsCard> {
     );
   }
 
+  /// 副标题同样只有两态，理由与右侧状态字一致（见 build 里白噪音那一行的注释）：
+  /// 「播完」与「从未选过」不可区分，所以没有「已停止播放」这一句。
   String _noiseSubtitle(NoiseSessionController noise) {
     final option = noise.activeOption;
     if (option == null) return '点这里选择助眠声音';
     final percent = (noise.volume * 100).round();
-    if (!noise.isPlaying) {
-      return '已按设定时长停止播放 · 音量 $percent%';
-    }
     return '以 $percent% 音量播放 ${noise.timerMinutes} 分钟';
   }
 
@@ -259,7 +264,9 @@ class _SessionEventsCardState extends ConsumerState<SessionEventsCard> {
 ///
 /// 尺寸逐条取自 `.sleep-event-row` / `.sleep-event-icon`：行高 61、间距 11、
 /// 图标底板 34×34 圆角 12、底色 `rgba(126,145,233,.12)`、分隔线
-/// `rgba(255,255,255,.065)`（最后一行没有）。
+/// `rgba(255,255,255,.065)`。分隔线只画在相邻两行**之间**：`isLast` 为真时不画
+/// （原型 `.sleep-event-row:last-child { border-bottom: 0; }`），否则鼾声那行下面会多
+/// 一条游离的线。
 class _EventRow extends StatelessWidget {
   const _EventRow({
     required this.icon,
@@ -267,6 +274,7 @@ class _EventRow extends StatelessWidget {
     required this.subtitle,
     required this.trailing,
     this.onTap,
+    this.isLast = false,
   });
 
   /// 直接给一个 `Widget` 而不是构造器：「开始睡眠」「记录中」那几行本来能写成
@@ -278,13 +286,18 @@ class _EventRow extends StatelessWidget {
   final Widget trailing;
   final VoidCallback? onTap;
 
+  /// 是不是这一组的最后一行。为真时不画底部分隔线。
+  final bool isLast;
+
   @override
   Widget build(BuildContext context) {
     final row = Container(
       constraints:
           const BoxConstraints(minHeight: NightStyle.eventRowMinHeight),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: NightStyle.rowDivider)),
+      decoration: BoxDecoration(
+        border: isLast
+            ? null
+            : const Border(bottom: BorderSide(color: NightStyle.rowDivider)),
       ),
       child: Row(
         children: [
