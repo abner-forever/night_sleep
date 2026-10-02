@@ -74,6 +74,24 @@ class SleepSession {
     return '${total ~/ 60}h ${total % 60}m';
   }
 
+  /// 已睡时长的**钟表读法** `HH:MM:SS`，供会话页中央那个大数字用。
+  ///
+  /// 与 [elapsedLabelAt]（`3h 42m`）并存而不是合并：首页「正在睡眠 · 已睡 3h42m」
+  /// 卡要的是粗读，会话页那一屏要的是每秒都在动的秒表——两处本来就该有不同的读法。
+  ///
+  /// **小时不封顶、不回绕**：原型 `formatElapsed` 就是这么算的，而且回绕会把
+  /// 「忘了结束、放了两天」这件明显的异常藏成一个正常的 00:00。
+  String elapsedClockAt(DateTime now) {
+    final total = elapsedAt(now).inSeconds;
+    if (total <= 0) return '00:00:00';
+    final hours = total ~/ 3600;
+    final minutes = (total % 3600) ~/ 60;
+    final seconds = total % 60;
+    return '${hours.toString().padLeft(2, '0')}:'
+        '${minutes.toString().padLeft(2, '0')}:'
+        '${seconds.toString().padLeft(2, '0')}';
+  }
+
   /// 超出起床时间多久，用于「已超过起床时间 42m」。
   String overdueLabelAt(DateTime now) {
     final over = elapsedAt(now) - plannedDuration;

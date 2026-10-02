@@ -97,4 +97,63 @@ void main() {
       );
     });
   });
+
+  group('elapsedClockAt', () {
+    test('从 00:00:00 起算，时分秒都补零', () {
+      final start = DateTime(2026, 8, 30, 23, 14);
+      final session = SleepSession(
+        startAtUtc: start.toUtc(),
+        timeZoneId: 'UTC',
+        wakeMinutes: 7 * 60,
+        alarmEnabled: false,
+        createdAtUtc: start.toUtc(),
+      );
+
+      expect(session.elapsedClockAt(start), '00:00:00');
+      expect(
+        session
+            .elapsedClockAt(start.add(const Duration(hours: 3, minutes: 42))),
+        '03:42:00',
+      );
+      expect(
+        session.elapsedClockAt(
+            start.add(const Duration(hours: 3, minutes: 42, seconds: 7))),
+        '03:42:07',
+      );
+    });
+
+    test('超过 24 小时不回绕——小时一直往上加', () {
+      final start = DateTime(2026, 8, 30, 23, 14);
+      final session = SleepSession(
+        startAtUtc: start.toUtc(),
+        timeZoneId: 'UTC',
+        wakeMinutes: 7 * 60,
+        alarmEnabled: false,
+        createdAtUtc: start.toUtc(),
+      );
+
+      // 「忘了结束、放了两天」是会真的发生的；读数该如实说 48 小时，
+      // 而不是像钟表一样回绕成 00:00——回绕会把一个明显的异常藏起来。
+      expect(
+        session.elapsedClockAt(start.add(const Duration(hours: 48))),
+        '48:00:00',
+      );
+    });
+
+    test('负时长夹到零，不出现负号', () {
+      final start = DateTime(2026, 8, 30, 23, 14);
+      final session = SleepSession(
+        startAtUtc: start.toUtc(),
+        timeZoneId: 'UTC',
+        wakeMinutes: 7 * 60,
+        alarmEnabled: false,
+        createdAtUtc: start.toUtc(),
+      );
+
+      expect(
+        session.elapsedClockAt(start.subtract(const Duration(minutes: 5))),
+        '00:00:00',
+      );
+    });
+  });
 }
