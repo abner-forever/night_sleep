@@ -58,8 +58,8 @@ Notifications entitlement，按当前产物该级别会被系统降级、穿不�
 回归方法：`test/app_display_name_test.dart`（显示名）、`test/schema_migration_test.dart`
 （v3→v4）、`test/session_repository_test.dart` / `test/sleep_session_test.dart`（会话领域与
 仓库）、`test/sleep_session_page_test.dart`（会话页）、`test/review_page_test.dart`（回顾页）、
-`test/reminder_scheduler_test.dart` / `test/reminder_sync_test.dart`（起床闹钟）。本轮
-`flutter test` **332/332 通过**，`flutter analyze` **No issues found**。
+`test/reminder_scheduler_test.dart` / `test/reminder_sync_test.dart`（起床闹钟）。合并前的
+最后一遍 `flutter test` **337/337 通过**，`flutter analyze` **No issues found**。
 
 ## 2.9（2026-09-29）
 
