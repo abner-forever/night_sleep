@@ -353,7 +353,10 @@ void main() {
     await tester.tap(find.text('收起'));
     await tester.pumpAndSettle();
 
-    expect(find.text('正在睡眠'), findsNothing, reason: '收起就是离开会话页');
+    // 首页在会话进行中也会显示「正在睡眠」卡（Task 8），所以不能再靠这两个字
+    // 判断在不在会话页——改用只有会话页才有的「收起」，并确认回到了首页。
+    expect(find.text('收起'), findsNothing, reason: '收起就是离开会话页');
+    expect(find.text('睡眠概览'), findsOneWidget, reason: '收起应回到首页');
     expect(
       await SleepRepository(database).loadAll(),
       isEmpty,

@@ -7,6 +7,7 @@ import 'package:night_sleep/app/app.dart';
 import 'package:night_sleep/core/database/app_database.dart';
 import 'package:night_sleep/core/theme/app_theme.dart';
 import 'package:night_sleep/core/theme/app_tokens.dart';
+import 'package:night_sleep/core/widgets/app_basics.dart';
 import 'package:night_sleep/core/widgets/app_icons.dart';
 import 'package:night_sleep/core/widgets/glass_surface.dart';
 import 'package:night_sleep/core/widgets/ios_controls.dart';
@@ -19,13 +20,17 @@ import 'package:night_sleep/features/settings/presentation/insight_config_page.d
 import 'package:night_sleep/features/settings/presentation/settings_page.dart';
 import 'package:night_sleep/features/settings/presentation/sleep_import_page.dart';
 import 'package:night_sleep/features/sleep/data/demo_seed.dart';
+import 'package:night_sleep/features/sleep/data/session_repository.dart';
 import 'package:night_sleep/features/sleep/data/sleep_repository.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_entry.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_quality.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_score.dart';
+import 'package:night_sleep/features/sleep/domain/sleep_session.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_stage.dart';
 import 'package:night_sleep/features/stats/presentation/stats_page.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+
+void _noop() {}
 
 /// Widget tests for the four primary pages.
 ///
@@ -84,6 +89,8 @@ void main() {
     List<SleepEntry> entries = const [],
     AppSetting? appSettings,
     Size surface = const Size(430, 2600),
+    SleepSession? activeSession,
+    DateTime? clock,
   }) async {
     tester.view.physicalSize = surface;
     tester.view.devicePixelRatio = 1.0;
@@ -97,6 +104,11 @@ void main() {
           settingsProvider.overrideWith(
             (ref) => Stream.value(appSettings ?? settings()),
           ),
+          // 会话也走 provider 覆盖：真订阅 `activeSessionWatchProvider` 会留下
+          // pending timer（见文件头的说明）。默认 null = 没有会话在跑。
+          activeSessionProvider.overrideWith((ref) => activeSession),
+          // 冻住「现在」，好让「已睡 3h 42m」这类读数与跑测试的日期无关。
+          if (clock != null) homeNowProvider.overrideWithValue(() => clock),
         ],
         child: MaterialApp(theme: AppTheme.light(), home: home),
       ),
@@ -112,6 +124,8 @@ void main() {
     List<SleepEntry> entries = const [],
     AppSetting? appSettings,
     Size surface = const Size(430, 2600),
+    SleepSession? activeSession,
+    DateTime? clock,
   }) {
     return pumpWithOverrides(
       tester,
@@ -119,6 +133,8 @@ void main() {
       entries: entries,
       appSettings: appSettings,
       surface: surface,
+      activeSession: activeSession,
+      clock: clock,
     );
   }
 
@@ -154,11 +170,13 @@ void main() {
     );
   }
 
-  Widget home() => HomePage(
+  /// 首页。`onStartSleep` 按需接线——「点开始会写入会话行」那条用例传一个真的
+  /// 调 `SessionRepository.start()` 的回调，其余用例不需要它真的做事。
+  Widget home({VoidCallback onStartSleep = _noop}) => HomePage(
         animateRing: false,
         onRingConsumed: () {},
         onOpenNoise: () {},
-        onRecordNow: () {},
+        onStartSleep: onStartSleep,
       );
 
   group('首页', () {
@@ -167,7 +185,8 @@ void main() {
 
       expect(find.text('睡眠概览'), findsOneWidget);
       expect(find.text('还没有睡眠记录'), findsOneWidget);
-      expect(find.text('记录第一晚'), findsOneWidget);
+      // 主按钮与空状态行动按钮都落到同一个「开始睡眠」。
+      expect(find.text('开始睡眠'), findsWidgets);
       // Nothing fabricated without data.
       expect(find.text('昨夜睡眠'), findsNothing);
       expect(find.text('近 7 日均时'), findsNothing);
@@ -221,20 +240,55 @@ void main() {
       expect(find.textContaining('正在显示演示数据'), findsOneWidget);
     });
 
-    testWidgets('主操作按钮回调正确', (tester) async {
-      var tapped = false;
+    testWidgets('没有会话时主按钮是「开始睡眠」', (tester) async {
+      await pumpPage(tester, home(), activeSession: null);
+
+      // 主按钮那一个是 `PrimaryAction`：钉住「是这一颗」，而不是「页面上有这两个字」。
+      expect(find.widgetWithText(PrimaryAction, '开始睡眠'), findsOneWidget);
+      expect(find.text('记录昨夜睡眠'), findsNothing);
+    });
+
+    testWidgets('空状态的行动按钮也是「开始睡眠」', (tester) async {
+      await pumpPage(tester, home(), activeSession: null);
+
+      expect(find.text('记录第一晚'), findsNothing);
+      expect(find.widgetWithText(EmptyState, '开始睡眠'), findsOneWidget);
+    });
+
+    testWidgets('有会话时显示「正在睡眠」卡并可回到会话页', (tester) async {
+      final start = DateTime(2026, 8, 30, 23, 14);
       await pumpPage(
         tester,
-        HomePage(
-          animateRing: false,
-          onRingConsumed: () {},
-          onOpenNoise: () {},
-          onRecordNow: () => tapped = true,
+        home(),
+        activeSession: SleepSession(
+          startAtUtc: start.toUtc(),
+          timeZoneId: 'UTC',
+          wakeMinutes: 7 * 60,
+          alarmEnabled: false,
+          createdAtUtc: start.toUtc(),
         ),
+        clock: start.add(const Duration(hours: 3, minutes: 42)),
       );
-      await tester.tap(find.text('记录昨夜睡眠'));
-      await tester.pump();
-      expect(tapped, isTrue);
+
+      expect(find.text('正在睡眠'), findsOneWidget);
+      // 收紧过：只断言「已睡」二字的话，时长算错也照样通过；这里钉住具体读数。
+      expect(find.text('已睡 3h 42m'), findsOneWidget);
+      expect(find.text('开始睡眠'), findsNothing, reason: '会话在跑时不该再给开始按钮');
+    });
+
+    testWidgets('点「开始睡眠」会写入会话行', (tester) async {
+      await pumpPage(
+        tester,
+        home(
+          onStartSleep: () => SessionRepository(database).start(),
+        ),
+        activeSession: null,
+      );
+
+      await tester.tap(find.text('开始睡眠').first);
+      await tester.pumpAndSettle();
+
+      expect(await database.activeSession(), isNotNull);
     });
   });
 
@@ -651,6 +705,9 @@ void main() {
               (ref) => Future<List<SleepEntry>>.error(StateError('数据库打不开')),
             ),
             settingsProvider.overrideWith((ref) => Stream.value(settings())),
+            // 首页即使走错误分支也会 `ref.watch(activeSessionProvider)`，不覆盖
+            // 它会真订阅 drift 的流，在测试拆树时留下 pending timer。
+            activeSessionProvider.overrideWith((ref) => null),
           ],
           child:
               MaterialApp(theme: AppTheme.light(), home: Scaffold(body: page)),

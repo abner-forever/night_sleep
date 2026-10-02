@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../app/app_shell.dart';
 import '../../../core/config/app_config.dart';
@@ -8,13 +9,25 @@ import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_basics.dart';
 import '../../../core/widgets/app_icons.dart';
 import '../../../core/widgets/glass_surface.dart';
+import '../../sleep/data/session_repository.dart';
 import '../../sleep/data/sleep_repository.dart';
 import '../../sleep/domain/sleep_entry.dart';
+import '../../sleep/domain/sleep_session.dart';
 import '../../sleep/domain/sleep_stage.dart';
 import '../../sleep/presentation/sheets/detail_sheet.dart';
 import '../../sleep/presentation/widgets/moon_arc.dart';
 import '../../sleep/presentation/widgets/stage_chart.dart';
 import '../../sleep/presentation/widgets/stage_style.dart';
+
+/// 「现在」的读取接缝。
+///
+/// 默认现读系统时钟；测试把它冻住，好让「已睡 3h 42m」这类读数不随运行测试的
+/// 日期漂移——与 `SleepSessionPage.now` 是同一条规则，只是首页是 `ConsumerWidget`，
+/// 没有 state 可以放这个字段。
+///
+/// 返回**函数**而不是时刻：`Provider<DateTime>` 会缓存第一次读到的值，卡片上的
+/// 时长就永远停在应用启动那一刻。每次 build 现读一次才是对的。
+final homeNowProvider = Provider<DateTime Function()>((ref) => DateTime.now);
 
 /// Home — sleep overview, the night just gone, and the recent history.
 class HomePage extends ConsumerWidget {
@@ -23,17 +36,21 @@ class HomePage extends ConsumerWidget {
     required this.animateRing,
     required this.onRingConsumed,
     required this.onOpenNoise,
-    required this.onRecordNow,
+    required this.onStartSleep,
   });
 
   final bool animateRing;
   final VoidCallback onRingConsumed;
   final VoidCallback onOpenNoise;
-  final VoidCallback onRecordNow;
+
+  /// 开始一个新会话：写入会话行并推入会话页。没有会话时主按钮走它。
+  final VoidCallback onStartSleep;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final entries = ref.watch(sleepEntriesProvider);
+    final session = ref.watch(activeSessionProvider).valueOrNull;
+    final now = ref.watch(homeNowProvider)();
 
     // 外壳不再兜底留白，状态栏留白由页面自己补（见 [pageTopInset]），
     // 所以加载与错误分支也要和数据分支的 ListView 用同一套顶部与横向留白。
@@ -59,10 +76,12 @@ class HomePage extends ConsumerWidget {
       ),
       data: (records) => _HomeContent(
         records: records,
+        session: session,
+        now: now,
         animateRing: animateRing,
         onRingConsumed: onRingConsumed,
         onOpenNoise: onOpenNoise,
-        onRecordNow: onRecordNow,
+        onStartSleep: onStartSleep,
       ),
     );
   }
@@ -71,17 +90,21 @@ class HomePage extends ConsumerWidget {
 class _HomeContent extends StatelessWidget {
   const _HomeContent({
     required this.records,
+    required this.session,
+    required this.now,
     required this.animateRing,
     required this.onRingConsumed,
     required this.onOpenNoise,
-    required this.onRecordNow,
+    required this.onStartSleep,
   });
 
   final List<SleepEntry> records;
+  final SleepSession? session;
+  final DateTime now;
   final bool animateRing;
   final VoidCallback onRingConsumed;
   final VoidCallback onOpenNoise;
-  final VoidCallback onRecordNow;
+  final VoidCallback onStartSleep;
 
   /// Localised `9月27日 星期日`, built by hand so the app does not need to load
   /// the zh_CN date-locale tables at startup.
@@ -117,7 +140,7 @@ class _HomeContent extends StatelessWidget {
         pageBottomInset(context),
       ),
       children: [
-        PageHeading(eyebrow: _todayLine(DateTime.now()), title: '睡眠概览'),
+        PageHeading(eyebrow: _todayLine(now), title: '睡眠概览'),
         const SizedBox(height: 18),
         if (hasDemoData) ...[
           const _DemoBadge(),
@@ -127,21 +150,30 @@ class _HomeContent extends StatelessWidget {
           _HeroCard(entry: today, animateRing: animateRing),
           const SizedBox(height: 18),
         ],
-        PrimaryAction(
-          label: '记录昨夜睡眠',
-          subtitle: '用一分钟，建立属于你的睡眠规律',
-          trailing: AppIcons.pen(size: 20, color: Colors.white, strokeWidth: 2),
-          onTap: onRecordNow,
-        ),
-        if (records.isEmpty) ...[
+        // 会话在跑时不再给「开始睡眠」——那会开出第二个会话。主按钮位换成
+        // 一张「正在睡眠」卡，点它回到会话页。
+        if (session != null)
+          _ActiveSessionCard(session: session!, now: now)
+        else
+          PrimaryAction(
+            label: '开始睡眠',
+            subtitle: '定好闹钟与白噪音，记录今晚',
+            trailing:
+                AppIcons.moon(size: 20, color: Colors.white, strokeWidth: 2),
+            onTap: onStartSleep,
+          ),
+        // 会话进行中就不再摆空状态：它那句「开始睡眠」的号召和上面那张卡
+        // 是互相打架的（卡片正说明会话已经在跑），而记录为空是会话刚开始
+        // 时的常态。
+        if (records.isEmpty && session == null) ...[
           const SizedBox(height: 18),
           EmptyState(
             icon:
                 AppIcons.moon(size: 30, color: tokens.accent, strokeWidth: 1.6),
             title: '还没有睡眠记录',
             body: '记下你的第一晚，明早回来就能看到时长、评分与趋势。',
-            actionLabel: '记录第一晚',
-            onAction: onRecordNow,
+            actionLabel: '开始睡眠',
+            onAction: onStartSleep,
           ),
         ],
         if (records.isNotEmpty) ...[
@@ -259,6 +291,74 @@ class _HomeContent extends StatelessWidget {
           ],
         ],
       ],
+    );
+  }
+}
+
+/// 会话进行中时占住首页主按钮位的那张卡。
+///
+/// 它替代「开始睡眠」而不是并排放在一起：会话在跑时再给一个开始按钮，等于
+/// 允许同时开出两个。卡片本身没有新能力——圆环画的是「已过时长 ÷ 计划时长」，
+/// 两个数都是推导的，点它只是回到会话页。
+class _ActiveSessionCard extends StatelessWidget {
+  const _ActiveSessionCard({required this.session, required this.now});
+
+  final SleepSession session;
+  final DateTime now;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppTokens.of(context);
+    final elapsed = session.elapsedLabelAt(now);
+
+    return GlassSurface(
+      borderRadius: BorderRadius.circular(AppRadii.panel),
+      padding: const EdgeInsets.all(18),
+      onTap: () => context.push('/sleep/session'),
+      semanticLabel: '正在睡眠，已睡 $elapsed，回到会话页',
+      child: Row(
+        children: [
+          SizedBox(
+            width: 44,
+            height: 44,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                CircularProgressIndicator(
+                  value: session.progressAt(now),
+                  strokeWidth: 3,
+                  backgroundColor: tokens.border,
+                  valueColor: AlwaysStoppedAnimation<Color>(tokens.accent),
+                ),
+                AppIcons.moon(size: 18, color: tokens.accent, strokeWidth: 1.8),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '正在睡眠',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: tokens.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '已睡 $elapsed',
+                  style: TextStyle(fontSize: 13, color: tokens.textMuted),
+                ),
+              ],
+            ),
+          ),
+          AppIcons.chevronRight(
+              size: 18, color: tokens.textMuted, strokeWidth: 2),
+        ],
+      ),
     );
   }
 }

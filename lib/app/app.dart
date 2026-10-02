@@ -17,6 +17,7 @@ import '../features/settings/presentation/insight_config_page.dart';
 import '../features/settings/presentation/settings_page.dart';
 import '../features/settings/presentation/sleep_import_page.dart';
 import '../features/session/presentation/sleep_session_page.dart';
+import '../features/sleep/data/session_repository.dart';
 import '../features/sleep/presentation/sheets/noise_sheet.dart';
 import '../features/stats/presentation/stats_page.dart';
 import 'app_shell.dart';
@@ -118,7 +119,15 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
     showNoiseSheet(context);
   }
 
-  void _goToLog() => _selectTab(AppTab.log);
+  /// 开始一个会话：写入会话行，再推入会话页。
+  ///
+  /// 先 `await` 落库再推入——会话页读的是 `activeSessionProvider`，行还没写完就
+  /// 推过去，会先闪一下「没有正在进行的睡眠」再跳变。本地写够快，这点等待值。
+  Future<void> _startSleep(BuildContext context, WidgetRef ref) async {
+    await ref.read(sessionRepositoryProvider).start();
+    if (!context.mounted) return;
+    context.push('/sleep/session');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -144,7 +153,7 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
                   ringHasPlayed: _ringHasPlayed,
                   onRingConsumed: () => _ringHasPlayed = true,
                   onOpenNoise: _openNoiseSheet,
-                  onRecordNow: _goToLog,
+                  onStartSleep: () => _startSleep(context, ref),
                 ),
               ),
             ),
@@ -171,14 +180,14 @@ class _TabContent extends StatelessWidget {
     required this.ringHasPlayed,
     required this.onRingConsumed,
     required this.onOpenNoise,
-    required this.onRecordNow,
+    required this.onStartSleep,
   });
 
   final AppTab tab;
   final bool ringHasPlayed;
   final VoidCallback onRingConsumed;
   final VoidCallback onOpenNoise;
-  final VoidCallback onRecordNow;
+  final VoidCallback onStartSleep;
 
   @override
   Widget build(BuildContext context) {
@@ -193,7 +202,7 @@ class _TabContent extends StatelessWidget {
               animateRing: !ringHasPlayed,
               onRingConsumed: onRingConsumed,
               onOpenNoise: onOpenNoise,
-              onRecordNow: onRecordNow,
+              onStartSleep: onStartSleep,
             ),
           AppTab.log => const LogPage(),
           AppTab.stats => const StatsPage(),
