@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:night_sleep/app/app.dart';
 import 'package:night_sleep/app/app_shell.dart';
 import 'package:night_sleep/core/database/app_database.dart';
@@ -531,10 +532,16 @@ void main() {
             settingsProvider.overrideWith((ref) => Stream.value(settings())),
             sleepEntriesProvider.overrideWith((ref) => const []),
             activeTabProvider.overrideWith((ref) => AppTab.settings),
+            activeSessionProvider.overrideWith((ref) => null),
           ],
           child: const NightSleepApp(),
         ),
       );
+      await tester.pumpAndSettle();
+      // 应用路由是共享实例，前一个路由测试可能仍停在手动补录页。
+      final router = tester.widget<MaterialApp>(find.byType(MaterialApp))
+          .routerConfig! as GoRouter;
+      router.go('/');
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(find.text('罗盘'), 200,
           scrollable: find.byType(Scrollable).first);
