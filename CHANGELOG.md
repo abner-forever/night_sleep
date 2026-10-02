@@ -20,9 +20,25 @@
 带 `AnimatedSize` 高度动画，箭头旋转；**展开时圆环、结束按钮与常驻开关都不动**（旧版展开即藏起
 圆环）。`SessionDrawer` 随之拆成 `SessionSettingsSection` 与 `SessionNoiseSection`。
 
+**展开后自动滚进视野。** 摘要条本来就在页面底部，展开区又在它下方——第一轮实现点了「更多」
+只看到箭头翻了个面，内容整块在屏幕外（模拟器上目视实测：定时那排 chip 落在 1112.5，屏幕高 932）。
+现在等高度动画走完再 `animateTo(maxScrollExtent)`。这条是**目视验证抓出来的**：默认那块 2000 高的
+测试视口把整页一次渲染完，widget 测试根本看不见屏幕外的问题；新的回归用例因此必须传真实手机尺寸
+（`pumpSession(size:)`），摘掉 `_revealNoise()` 会让它变红（已变异验证）。
+
+**会话页补进常驻界面巡检**（`integration_test/app_screens_test.dart`）：收合态、按住时的进度环、
+展开的白噪音区、按住到底后的评星弹层。踩到的坑记在 README——集成测试的 live binding 里动画只在
+推帧时前进，`Future.delayed` 等不出进度。
+
+顺带修了巡检**两步既有的连带失守**：`goBack` 在没有上一页时调裸 `pop()`，把最后一页弹掉，
+go_router 随即断言 `currentConfiguration.isNotEmpty` 并弄坏整棵树，后面每一步都报「找不到」。
+现在改成 `popUntil(isFirst)` + `goHome`，一步失败只赔一步。会话页那几步因此放在首页步骤之后
+（趁状态干净时走）——末尾按住结束会话，首页也就还原了。
+
 不变量一个没动：空状态、时长守门 `(0, 24h]` 不落库、就地评星、丢弃、收起、白噪音生命周期
 （收起展开区乃至离开会话页都继续响）。回归测试见 `test/sleep_session_page_test.dart`（新增
-「没按满就松手不结束会话」「短按结束按钮只给提示」两条）与 `test/hold_to_finish_button_test.dart`。
+「没按满就松手不结束会话」「短按结束按钮只给提示」「展开白噪音区会自动把它滚进视野」三条）
+与 `test/hold_to_finish_button_test.dart`。
 
 ## 3.0（2026-09-30）
 
