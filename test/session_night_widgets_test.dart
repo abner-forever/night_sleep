@@ -1,7 +1,85 @@
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:night_sleep/app/noise_session.dart';
+import 'package:night_sleep/core/database/app_database.dart';
+import 'package:night_sleep/core/theme/app_theme.dart';
 import 'package:night_sleep/features/session/presentation/night_scene.dart';
+import 'package:night_sleep/features/session/presentation/sheets/night_noise_sheet.dart';
 import 'package:night_sleep/features/session/presentation/widgets/night_scene_picker.dart';
+import 'package:night_sleep/features/sleep/data/noise_player.dart';
+import 'package:night_sleep/features/sleep/data/noise_synth.dart';
+import 'package:night_sleep/features/sleep/data/session_repository.dart';
+import 'package:night_sleep/features/sleep/presentation/widgets/noise_controls.dart';
+
+/// 记下每一次播放器调用的假实现（与 `sleep_session_page_test.dart` 里那份同款）。
+class _SheetFakeNoisePlayer extends NoisePlayer {
+  final List<String> calls = [];
+
+  @override
+  Future<void> play(NoiseKind kind, {required double volume}) async {
+    calls.add('play:${kind.id}:${volume.toStringAsFixed(2)}');
+  }
+
+  @override
+  Future<void> setVolume(double volume) async {
+    calls.add('volume:${volume.toStringAsFixed(2)}');
+  }
+
+  @override
+  Future<void> stop() async => calls.add('stop');
+
+  @override
+  Future<void> dispose() async => calls.add('dispose');
+}
+
+/// 把弹窗推起来。走真实数据库 + 真实 ProviderScope，只是时钟冻住。
+Future<void> pumpNoiseSheet(
+  WidgetTester tester, {
+  NoisePlayer? player,
+}) async {
+  tester.view.physicalSize = const Size(430, 932);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+
+  final database = AppDatabase(NativeDatabase.memory());
+  addTearDown(database.close);
+  await database.saveActiveSession(
+    ActiveSessionsCompanion.insert(
+      id: SessionRepository.sessionId,
+      startAtUtc: DateTime.utc(2026, 8, 30, 23, 14),
+      wakeMinutes: 7 * 60,
+      createdAt: DateTime.utc(2026, 8, 30, 23, 14),
+    ),
+  );
+
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        databaseProvider.overrideWithValue(database),
+        noisePlayerProvider
+            .overrideWithValue(player ?? _SheetFakeNoisePlayer()),
+      ],
+      child: MaterialApp(
+        theme: AppTheme.dark(),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: TextButton(
+                onPressed: () => showNightNoiseSheet(context),
+                child: const Text('打开'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('打开'));
+  await tester.pumpAndSettle();
+}
 
 void main() {
   Future<void> pumpPicker(
@@ -92,5 +170,39 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(picked, [NightScene.rain]);
+  });
+
+  testWidgets('弹窗里有九宫格、音量、四个时长档，没有「整晚」', (tester) async {
+    await pumpNoiseSheet(tester);
+
+    expect(find.text('白噪音设置'), findsOneWidget);
+    expect(find.text('关闭'), findsOneWidget);
+    for (final option in kNoiseOptions) {
+      expect(find.text(option.label), findsOneWidget);
+    }
+    // 产品红线：会话里的白噪音必须有上限，列表里不存在「整晚」。
+    expect(find.textContaining('整晚'), findsNothing);
+    expect(find.textContaining('不限'), findsNothing);
+    for (final minutes in NoiseSessionController.timerChoices) {
+      expect(find.text('${minutes}m'), findsOneWidget);
+    }
+    // 后台播放的如实标注要跟到弹窗里（规格 §十）。
+    expect(find.textContaining('退到后台或锁屏后声音会停'), findsOneWidget);
+  });
+
+  testWidgets('点「完成」关掉弹窗，白噪音继续响', (tester) async {
+    final player = _SheetFakeNoisePlayer();
+    await pumpNoiseSheet(tester, player: player);
+
+    await tester.tap(find.text('雨声'));
+    await tester.pumpAndSettle();
+    expect(player.calls, contains('play:rain:0.50'));
+
+    await tester.tap(find.text('完成'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('白噪音设置'), findsNothing);
+    // 关掉弹窗**不**停声音——播放器挂在 app 级的控制器上，生命周期比这层弹窗长。
+    expect(player.calls.where((c) => c == 'stop'), isEmpty);
   });
 }
