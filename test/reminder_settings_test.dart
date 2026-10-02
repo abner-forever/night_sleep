@@ -7,13 +7,35 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sleep/app/app.dart';
 import 'package:night_sleep/app/app_toast.dart';
+import 'package:night_sleep/app/noise_session.dart';
 import 'package:night_sleep/core/database/app_database.dart';
 import 'package:night_sleep/core/platform/reminders.dart';
 import 'package:night_sleep/core/theme/app_theme.dart';
 import 'package:night_sleep/core/widgets/ios_controls.dart';
 import 'package:night_sleep/core/widgets/wheel_picker.dart';
 import 'package:night_sleep/features/settings/presentation/settings_page.dart';
+import 'package:night_sleep/features/sleep/data/noise_player.dart';
+import 'package:night_sleep/features/sleep/data/noise_synth.dart';
 import 'package:night_sleep/features/sleep/data/sleep_repository.dart';
+
+/// 只记「有没有被要求停掉」的假播放器。
+///
+/// 「删除全部本地数据」的收尾要停白噪音；真播放器会碰平台通道，测试里必须换掉。
+class _FakeNoisePlayer extends NoisePlayer {
+  final List<String> calls = [];
+
+  @override
+  Future<void> play(NoiseKind kind, {required double volume}) async {}
+
+  @override
+  Future<void> setVolume(double volume) async {}
+
+  @override
+  Future<void> stop() async => calls.add('stop');
+
+  @override
+  Future<void> dispose() async {}
+}
 
 class _FakeScheduler extends ReminderScheduler {
   _FakeScheduler({
@@ -117,7 +139,10 @@ void main() {
 
   /// [SettingsPage] 是标签页，真机上确实活在壳的 Scaffold 里，所以这里给一个。
   Future<void> pumpSettings(
-      WidgetTester tester, ReminderScheduler scheduler) async {
+    WidgetTester tester,
+    ReminderScheduler scheduler, {
+    NoisePlayer? player,
+  }) async {
     tester.view.physicalSize = const Size(430, 3000);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -129,6 +154,7 @@ void main() {
           sleepEntriesProvider.overrideWith((ref) => const []),
           settingsProvider.overrideWith((ref) => settingsStream.stream),
           reminderSchedulerProvider.overrideWithValue(scheduler),
+          if (player != null) noisePlayerProvider.overrideWithValue(player),
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
@@ -326,5 +352,43 @@ void main() {
         reason: '「取消」必须整条丢弃草稿：滚了轮再取消也不得落库');
     expect(scheduler.lastSynced?.bedtimeMinutes, planBefore?.bedtimeMinutes,
         reason: '没确认就不该重排，否则用户放弃的那个时刻照样会响');
+  });
+
+  /// 「删除全部本地数据」必须与结束/丢弃会话**共用同一套收尾**。
+  ///
+  /// 少了它，可达路径是：开始会话 → 开起床闹钟 → 收起会话页 → 设置里删除全部
+  /// 本地数据。`active_sessions` 行被删了，但系统里的 9003 没人撤、被压着的
+  /// 9002 也没人排回来——第二天早上 07:00 仍会弹「该起床了」，日常起床提醒要等到
+  /// 下次冷启动才恢复。把 `_confirmDeleteAll` 里那次 `teardownSession` 删掉，
+  /// 这条必须变红。
+  testWidgets('删除全部本地数据：残留会话被清、闹钟与白噪音一并收尾', (tester) async {
+    await database.saveActiveSession(
+      ActiveSessionsCompanion.insert(
+        id: 'active',
+        startAtUtc: DateTime.utc(2026, 8, 30, 15, 14),
+        wakeMinutes: SettingsPage.defaultWakeMinutes,
+        alarmEnabled: const Value(true),
+        createdAt: DateTime.utc(2026, 8, 30, 15, 14),
+      ),
+    );
+
+    final scheduler = _FakeScheduler(grants: true);
+    final player = _FakeNoisePlayer();
+    await pumpSettings(tester, scheduler, player: player);
+
+    await tester.scrollUntilVisible(find.text('删除全部本地数据'), 300);
+    await tester.tap(find.text('删除全部本地数据'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+
+    expect(await database.activeSession(), isNull, reason: '前提：会话行确实被清掉了');
+    // 少了收尾，这两个 cancel 一个都不会发生：库里已经没有会话，9003 却仍排在
+    // 系统里，第二天早上照样弹「该起床了」；9002 也继续被压着。
+    expect(scheduler.calls, contains('cancel:9003'),
+        reason: '残留的会话闹钟必须被撤掉，否则第二天早上仍会响');
+    expect(scheduler.calls, contains('cancel:9002'),
+        reason: '日常起床提醒必须重新推导排回，不能继续被残留会话压着');
+    expect(player.calls, contains('stop'), reason: '会话没了白噪音不该还在响');
   });
 }

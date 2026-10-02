@@ -55,6 +55,20 @@ void main() {
     });
   });
 
+  group('剩余读法', () {
+    test('起床前给出剩余时长，已过起床时间则为 null', () {
+      final start = DateTime(2026, 8, 30, 23, 14);
+      final s = session(start: start);
+
+      // 23:14 → 次日 07:00 计划 7h46m；已过 3h42m，剩 4h4m。
+      expect(
+          s.remainingLabelAt(start.add(const Duration(hours: 3, minutes: 42))),
+          '4h 4m');
+      expect(s.remainingLabelAt(start.add(const Duration(hours: 8))), isNull,
+          reason: '已过起床时间就不能再说「还有」——同一屏日晷写着「已超过」');
+    });
+  });
+
   group('结束守门', () {
     test('零与负时长被拒', () {
       expect(validateSessionDuration(Duration.zero),

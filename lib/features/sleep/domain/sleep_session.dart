@@ -78,26 +78,16 @@ class SleepSession {
     return '${minutes ~/ 60}h${minutes % 60}m';
   }
 
-  SleepSession copyWith({
-    int? wakeMinutes,
-    bool? alarmEnabled,
-    Object? noiseId = _unset,
-    double? noiseVolume,
-  }) {
-    return SleepSession(
-      startAtUtc: startAtUtc,
-      timeZoneId: timeZoneId,
-      wakeMinutes: wakeMinutes ?? this.wakeMinutes,
-      alarmEnabled: alarmEnabled ?? this.alarmEnabled,
-      // `noiseId` 可以**被显式设回 null**（用户取消选择），所以不能用
-      // `?? this.noiseId` —— 那样就再也清不掉了。
-      noiseId: identical(noiseId, _unset) ? this.noiseId : noiseId as String?,
-      noiseVolume: noiseVolume ?? this.noiseVolume,
-      createdAtUtc: createdAtUtc,
-    );
+  /// 距起床时刻的剩余读法，用于「起床闹钟已开 · 还有 4h 4m」。
+  ///
+  /// **已过起床时间时为 `null`。** 剩余/已过的口径只留模型这一份：`_AlarmChip`
+  /// 先前自己重算一遍并把分钟夹到 0，于是同一屏上方日晷写着「已超过起床时间 42m」、
+  /// 下方写着「还有 0h 0m」——两句互相打脸，而这正是用户睡过头睁眼看手机的那一刻。
+  String? remainingLabelAt(DateTime now) {
+    if (overdueAt(now)) return null;
+    final minutes = (plannedDuration - elapsedAt(now)).inMinutes;
+    return '${minutes ~/ 60}h ${minutes % 60}m';
   }
-
-  static const _unset = Object();
 }
 
 /// 结束会话时时长的合法性判定。

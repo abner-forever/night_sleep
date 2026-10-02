@@ -258,6 +258,24 @@ void main() {
     );
   });
 
+  /// 睡过头那一刻的两句不能打架：上方日晷写「已超过起床时间」，下方胶囊就不能
+  /// 还写「还有 0h 0m」。剩余/已过的口径回到模型里，胶囊只负责措辞。
+  testWidgets('超过起床时间后闹钟胶囊说「已过」，不再说「还有 0h 0m」', (tester) async {
+    final start = DateTime(2026, 8, 30, 23, 14);
+    await pumpSession(
+      tester,
+      session: sessionAt(start, alarmEnabled: true),
+      now: start.add(const Duration(hours: 9)),
+    );
+
+    expect(find.textContaining('已超过起床时间'), findsOneWidget,
+        reason: '前提：日晷确实写着已超过');
+    expect(find.text('起床闹钟已过 · 请手动结束睡眠'), findsOneWidget);
+    expect(find.textContaining('还有 0h'), findsNothing,
+        reason: '两句打架：上方说已超过 42m，下方说还有 0h 0m');
+    expect(find.textContaining('起床闹钟已开'), findsNothing);
+  });
+
   testWidgets('入睡与闹钟时刻都补零到两位', (tester) async {
     // 23:14 / 07:00 两个数本来都是两位数，`padLeft` 等于没被行使；这里换成
     // 一位数的小时与分钟，补零逻辑才真的被测到。

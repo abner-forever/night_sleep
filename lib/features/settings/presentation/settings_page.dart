@@ -9,6 +9,7 @@ import '../../../app/app.dart';
 import '../../../app/app_toast.dart';
 import '../../../app/reminder_permission.dart';
 import '../../../app/reminder_sync.dart';
+import '../../../app/session_teardown.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/platform/reminders.dart';
@@ -109,7 +110,7 @@ class SettingsPage extends ConsumerWidget {
     required bool bedtime,
     required int currentMinutes,
   }) async {
-    var draft = _minutesToClock(currentMinutes);
+    var draft = minutesToClock(currentMinutes);
     // 只有「完成」才提交草稿。
     //
     // 弹层里的滚动立刻改的是 `draft`，与「用户确认过」是两件事；不看返回值的话，
@@ -124,7 +125,7 @@ class SettingsPage extends ConsumerWidget {
     );
     if (confirmed != true) return;
 
-    final minutes = _clockToMinutes(draft);
+    final minutes = clockToMinutes(draft);
     await _update(
       ref,
       bedtime
@@ -132,15 +133,6 @@ class SettingsPage extends ConsumerWidget {
           : AppSettingsCompanion(wakeReminderMinutes: Value(minutes)),
     );
     await _syncReminders(ref);
-  }
-
-  static String _minutesToClock(int minutes) =>
-      '${(minutes ~/ 60).toString().padLeft(2, '0')}:'
-      '${(minutes % 60).toString().padLeft(2, '0')}';
-
-  static int _clockToMinutes(String clock) {
-    final parts = clock.split(':').map(int.parse).toList();
-    return parts[0] * 60 + parts[1];
   }
 
   Future<void> _confirmDeleteAll(BuildContext context, WidgetRef ref) async {
@@ -154,6 +146,11 @@ class SettingsPage extends ConsumerWidget {
     if (confirmed != true) return;
 
     await ref.read(sleepRepositoryProvider).deleteAllUserData();
+    // 与「结束 / 丢弃会话」**同一套收尾**（[teardownSession]）。删掉 active_sessions
+    // 行不会自己撤销 9003、也不会把被压着的日常起床提醒 9002 排回来：少了这一步，
+    // 「开始会话 → 开起床闹钟 → 收起会话页 → 删除全部本地数据」之后，第二天早上
+    // 07:00 仍会弹「该起床了」，9002 要继续等到下次冷启动才恢复。
+    await teardownSession(ref);
     if (!context.mounted) return;
     ref.read(toastProvider.notifier).show('本地数据已全部删除。');
   }
@@ -443,7 +440,7 @@ class SettingsPage extends ConsumerWidget {
                             child: Padding(
                               padding: const EdgeInsets.only(top: 2),
                               child: Text(
-                                _minutesToClock(bedtimeMinutes),
+                                minutesToClock(bedtimeMinutes),
                                 style: AppTheme.num(
                                   context,
                                   size: 12,
@@ -503,7 +500,7 @@ class SettingsPage extends ConsumerWidget {
                             child: Padding(
                               padding: const EdgeInsets.only(top: 2),
                               child: Text(
-                                _minutesToClock(wakeMinutes),
+                                minutesToClock(wakeMinutes),
                                 style: AppTheme.num(
                                   context,
                                   size: 12,

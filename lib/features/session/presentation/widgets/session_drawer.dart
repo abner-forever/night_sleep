@@ -55,7 +55,7 @@ class _SessionDrawerState extends ConsumerState<SessionDrawer> {
   }
 
   Future<void> _pickWakeTime() async {
-    var draft = _minutesToClock(widget.session.wakeMinutes);
+    var draft = minutesToClock(widget.session.wakeMinutes);
 
     // 只有「完成」才提交草稿。滚了轮再点取消不该落库——理由与设置页
     // `_pickReminderTime` 完全相同：用户明确放弃的那次改动不该静默生效。
@@ -71,7 +71,7 @@ class _SessionDrawerState extends ConsumerState<SessionDrawer> {
 
     await ref
         .read(sessionRepositoryProvider)
-        .update(wakeMinutes: _clockToMinutes(draft));
+        .update(wakeMinutes: clockToMinutes(draft));
     // 闹钟开着时，改了时刻要立刻重排——否则它会按旧时刻响。
     await _resyncAlarm();
   }
@@ -108,15 +108,6 @@ class _SessionDrawerState extends ConsumerState<SessionDrawer> {
         ref.read(databaseProvider),
         ref.read(reminderSchedulerProvider),
       );
-
-  static String _minutesToClock(int minutes) =>
-      '${(minutes ~/ 60).toString().padLeft(2, '0')}:'
-      '${(minutes % 60).toString().padLeft(2, '0')}';
-
-  static int _clockToMinutes(String clock) {
-    final parts = clock.split(':').map(int.parse).toList();
-    return parts[0] * 60 + parts[1];
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -162,7 +153,7 @@ class _SessionDrawerState extends ConsumerState<SessionDrawer> {
                           child: Padding(
                             padding: const EdgeInsets.only(top: 2),
                             child: Text(
-                              _minutesToClock(session.wakeMinutes),
+                              minutesToClock(session.wakeMinutes),
                               style: AppTheme.num(
                                 context,
                                 size: 12,

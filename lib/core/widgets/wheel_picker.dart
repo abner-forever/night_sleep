@@ -5,6 +5,20 @@ import '../theme/app_tokens.dart';
 import 'app_basics.dart';
 import 'app_sheet.dart';
 
+/// `HH:mm` ↔「距本地午夜的分钟数」。
+///
+/// 设置页的提醒时刻与会话抽屉的起床闹钟都要这一对换算。此前两处各写了一遍
+/// **逐字符相同**的实现——那是 `CLAUDE.md` 点名的反模式，本项目已经为「两份
+/// `7*60`」付过一次代价：改一处忘一处，症状只在某条特定路径上才显形。
+String minutesToClock(int minutes) =>
+    '${(minutes ~/ 60).toString().padLeft(2, '0')}:'
+    '${(minutes % 60).toString().padLeft(2, '0')}';
+
+int clockToMinutes(String clock) {
+  final parts = clock.split(':').map(int.parse).toList();
+  return parts[0] * 60 + parts[1];
+}
+
 /// One snapping column of a wheel picker.
 ///
 /// Matches `WheelColumn` in the prototype: 44px rows, five visible at a time,
