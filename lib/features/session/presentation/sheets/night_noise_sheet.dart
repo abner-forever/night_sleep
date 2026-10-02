@@ -73,7 +73,7 @@ class _NightNoiseSheet extends ConsumerWidget {
             ),
             boxShadow: [
               BoxShadow(
-                color: Color(0x61000000),
+                color: NightStyle.sheetShadow,
                 blurRadius: 70,
                 offset: Offset(0, -22),
               ),
@@ -222,10 +222,11 @@ class _NightNoiseSheet extends ConsumerWidget {
                     const SizedBox(height: 12),
                     Text(
                       failure,
-                      style: const TextStyle(
+                      // 「出错了」是语义色，走 `AppTokens.danger`，不另立一个字面量。
+                      style: TextStyle(
                         fontSize: 12,
                         height: 1.45,
-                        color: Color(0xFFFF8A8F),
+                        color: tokens.danger,
                       ),
                     ),
                   ],
@@ -251,10 +252,14 @@ class _NightNoiseSheet extends ConsumerWidget {
       ),
     );
   }
-
-  static Color _tileInk(bool selected) =>
-      selected ? const Color(0xFFC4D0FF) : NightStyle.textMuted;
 }
+
+/// 音效格选中态（`.sleep-full-noise-grid button.is-selected`）的文字与图标色。
+///
+/// 提成顶层函数，是因为面板本体（图标）与格子小件（文字）都要用同一份映射——
+/// 各自内联一遍，选中态一旦调色就会漏掉其中一处。
+Color _tileInk(bool selected) =>
+    selected ? NightStyle.selectedInk : NightStyle.textMuted;
 
 /// 弹窗里的一格声音。
 class _NightNoiseTile extends StatelessWidget {
@@ -281,11 +286,14 @@ class _NightNoiseTile extends StatelessWidget {
         label: label,
         child: Container(
           decoration: BoxDecoration(
-            color: selected ? const Color(0x297E91E9) : const Color(0x0AFFFFFF),
+            color: selected
+                ? NightStyle.noiseTileFill
+                : NightStyle.noiseTileIdleFill,
             borderRadius: BorderRadius.circular(17),
             border: Border.all(
-              color:
-                  selected ? const Color(0x57ACBCFF) : const Color(0x12FFFFFF),
+              color: selected
+                  ? NightStyle.noiseTileStroke
+                  : NightStyle.noiseTileIdleStroke,
             ),
           ),
           child: Column(
@@ -297,8 +305,7 @@ class _NightNoiseTile extends StatelessWidget {
                 label,
                 style: TextStyle(
                   fontSize: 11,
-                  color:
-                      selected ? const Color(0xFFC4D0FF) : NightStyle.textMuted,
+                  color: _tileInk(selected),
                 ),
               ),
             ],
@@ -330,7 +337,8 @@ class _NightBlock extends StatelessWidget {
       decoration: BoxDecoration(
         color: NightStyle.fieldFill,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0x12FFFFFF)),
+        // 与音效格的描边同值，但那是 `.sleep-full-noise-grid button` 的另一条规则。
+        border: Border.all(color: NightStyle.sheetFieldStroke),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -354,7 +362,7 @@ class _NightBlock extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFFB9C6FF),
+                    color: NightStyle.fieldValueInk,
                   ),
                 ),
               ],

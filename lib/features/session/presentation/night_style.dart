@@ -84,6 +84,37 @@ abstract final class NightStyle {
   /// 弹窗里「音量」「播放时长」两块的内底色：`rgba(255,255,255,.035)`。
   static const fieldFill = Color(0x09FFFFFF);
 
+  /// `.sleep-settings-sheet` 的 `box-shadow: 0 -22px 70px rgba(0,0,0,.38)`。
+  static const sheetShadow = Color(0x61000000); // rgba(0,0,0,.38)
+
+  /// `.sleep-full-noise-grid button`：未选中格的
+  /// `background: rgba(255,255,255,.04)`。
+  static const noiseTileIdleFill = Color(0x0AFFFFFF);
+
+  /// `.sleep-full-noise-grid button`：未选中格的
+  /// `border: 1px solid rgba(255,255,255,.07)`。
+  ///
+  /// 与 [sheetFieldStroke]（`.sleep-setting-block`）**同值但不同规则**——原型里这两条
+  /// 各写各的，将来谁改了音效格的描边不该带着设置块一起漂。与 [previewStroke] vs
+  /// [cardStroke] 是同一个口径。
+  static const noiseTileIdleStroke = Color(0x12FFFFFF);
+
+  /// `.sleep-full-noise-grid button.is-selected` 的
+  /// `background: rgba(126,145,233,.16)`。
+  static const noiseTileFill = Color(0x297E91E9);
+
+  /// 同上选中态格的 `border-color: rgba(172,188,255,.34)`（文字色即 [selectedInk]）。
+  static const noiseTileStroke = Color(0x57ACBCFF);
+
+  /// `.sleep-setting-block`（「音量」「播放时长」两块外框）的
+  /// `border: 1px solid rgba(255,255,255,.07)`。
+  ///
+  /// 见 [noiseTileIdleStroke] 的说明：同值，但那是另一条规则。
+  static const sheetFieldStroke = Color(0x12FFFFFF);
+
+  /// `.sleep-setting-title strong`（「音量 35%」那个读数）的 `color: #b9c6ff`。
+  static const fieldValueInk = Color(0xFFB9C6FF);
+
   // ── 尺寸 ────────────────────────────────────────────────────────────────
   static const cardRadius = 22.0; // .sleep-option-card / .sleep-events
   static const sheetRadius = 30.0; // .sleep-settings-sheet
