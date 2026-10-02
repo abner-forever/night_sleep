@@ -104,10 +104,12 @@ void main() {
     // **这条断言只能证明「时钟在走」，证明不了别的。**
     //
     // 它盖不住任何**单场景的几何/位移**：34 颗星点那层 `sleepTwinkle` 对每套场景都画，
-    // 两帧之间必然不同，于是「画面变了」永远成立。实测过：把月海（按设计
-    // `case NightScene.moon: break;` 没有任何自己的动画元素）拿来跑，两帧照样不同；
-    // 甚至把「极光盒高」和「流星位移分母」同时改回错的值，aurora / meteor / moon
-    // 三个场景的「两帧不同」也都还是 true。
+    // 两帧之间必然不同，于是「画面变了」永远成立。
+    //
+    // 实测（把场景专属层与流星**全部跳过**，只留网点 + 光晕 + 星点）：
+    // 八套场景逐个跑，`framesDiffer` 一律为 true —— 可见差完全来自星点那一层，
+    // 跟被测场景画了什么无关。也正因为如此，把「极光盒高」「流星位移分母」同时改回
+    // 错的值，aurora / meteor / moon 的「两帧不同」照样是 true。
     //
     // 单场景几何改由下面那组 `NightSceneGeometry` 的纯函数断言来守——那些值直接
     // 取自原型 `/tmp/figma-make/index.css`，不是照抄本仓库的实现。
@@ -301,6 +303,26 @@ void main() {
       expect(NightSceneGeometry.cloudHeight, moreOrLessEquals(.15));
     });
 
+    test('哪些场景有流星：meteor / moon / galaxy，其余五个没有', () {
+      // 原型是**反着**列的：只写了
+      //   .sleep-scene-{aurora,ocean,cloud,firefly,rain} .sleep-meteors { display:none }
+      // 所以另外三个场景（含月海与银河）都有流星。
+      expect(NightScene.values.where(NightSceneGeometry.hasMeteors).toSet(),
+          {NightScene.meteor, NightScene.moon, NightScene.galaxy});
+
+      // 正面把「那五个不能有」也钉住，防止以后顺手加回来。
+      for (final s in [
+        NightScene.aurora,
+        NightScene.ocean,
+        NightScene.cloud,
+        NightScene.firefly,
+        NightScene.rain,
+      ]) {
+        expect(NightSceneGeometry.hasMeteors(s), isFalse,
+            reason: '${s.id} 不该有流星');
+      }
+    });
+
     test('萤火：逐条列举的位置/延迟，后四只重叠', () {
       // :nth-child(1..10) 逐条；:nth-child(n+11) 共用 52% / 54% / -3.5s。
       expect(NightSceneGeometry.fireflyLeft.length, 14);
@@ -321,6 +343,16 @@ void main() {
       expect(NightSceneGeometry.fireflyShiftAt(.45).dy, moreOrLessEquals(-24));
       expect(NightSceneGeometry.fireflyShiftAt(.70).dx, moreOrLessEquals(-9));
       expect(NightSceneGeometry.fireflyShiftAt(.70).dy, moreOrLessEquals(-12));
+
+      // `animation: sleepFirefly 7s ease-in-out infinite` 的 `ease-in-out` 对
+      // **每一段**都生效，中间 45%→70% 那段也不例外。
+      // 取段内 t=.25 处：线性会给出 1 - .6×.25 = .85，套了 ease-in-out 则不是。
+      final easedQuarter = Curves.easeInOut.transform(.25);
+      expect(easedQuarter, lessThan(.25), reason: 'ease-in-out 起步慢于线性');
+      expect(NightSceneGeometry.fireflyOpacityAt(.45 + .25 * .25),
+          moreOrLessEquals(1 - .6 * easedQuarter));
+      expect(NightSceneGeometry.fireflyShiftAt(.45 + .25 * .25).dy,
+          moreOrLessEquals(-24 + 12 * easedQuarter));
     });
 
     test('银河：盒按 inset -22% -45% / 往返的角度·缩放·透明度', () {

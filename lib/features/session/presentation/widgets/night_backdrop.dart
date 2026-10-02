@@ -113,6 +113,24 @@ abstract final class NightSceneGeometry {
   /// CSS 的 `animation-delay` 是**正数**（3.8s / 7.1s）——「晚 3.8 秒才开始」。
   static const meteorDelay = [0.0, 3.8, 7.1];
 
+  /// 哪些场景有流星。
+  ///
+  /// 原型是**反着写**的——只列了要隐藏的五个：
+  /// `.sleep-scene-{aurora,ocean,cloud,firefly,rain} .sleep-meteors { display: none }`
+  /// 所以 `meteor` / `moon` / `galaxy` 三个场景**都有**流星；
+  /// 月海与银河是在底色 + 光晕（+ 银河带）之上再叠一层流星。
+  ///
+  /// 反过来说：**别顺手给 aurora / ocean / cloud / firefly / rain 加回来**。
+  static bool hasMeteors(NightScene scene) => switch (scene) {
+        NightScene.meteor || NightScene.moon || NightScene.galaxy => true,
+        NightScene.aurora ||
+        NightScene.ocean ||
+        NightScene.cloud ||
+        NightScene.firefly ||
+        NightScene.rain =>
+          false,
+      };
+
   /// `sleepMeteor`：`0%, 82% { opacity: 0 }` 与 `91%, 100% { opacity: 0 }`
   /// 给出可见窗口，`84%` 是唯一亮点。
   static bool meteorVisibleAt(double p) => p >= .82 && p <= .91;
@@ -235,10 +253,13 @@ abstract final class NightSceneGeometry {
 
   /// `sleepFirefly { 0%, 100% { opacity: .15; translate(0,0) }
   ///   45% { opacity: 1; translate(14px, -24px) }
-  ///   70% { opacity: .4; translate(-9px, -12px) } }`——三段线性插值。
+  ///   70% { opacity: .4; translate(-9px, -12px) } }`——三段插值。
+  ///
+  /// `animation: sleepFirefly 7s ease-in-out infinite` 里的 `ease-in-out` 对
+  /// **每一段**关键帧区间都生效，所以三段都要套，中间 45%→70% 那段也不例外。
   static double fireflyOpacityAt(double p) {
     if (p < .45) return .15 + .85 * easeInOut(p / .45);
-    if (p < .70) return 1 - .6 * ((p - .45) / .25);
+    if (p < .70) return 1 - .6 * easeInOut((p - .45) / .25);
     return .4 - .25 * easeInOut((p - .70) / .30);
   }
 
@@ -248,7 +269,7 @@ abstract final class NightSceneGeometry {
       return Offset(14 * k, -24 * k);
     }
     if (p < .70) {
-      final k = (p - .45) / .25;
+      final k = easeInOut((p - .45) / .25);
       return Offset.lerp(const Offset(14, -24), const Offset(-9, -12), k)!;
     }
     final k = easeInOut((p - .70) / .30);
@@ -390,9 +411,14 @@ class _NightScenePainter extends CustomPainter {
     _paintTexture(canvas, size);
     _paintGlows(canvas, size);
     _paintStars(canvas, size);
+    // 流星不属于「每套场景各一层」那一档：它跟在月海、银河之上也要画。
+    if (NightSceneGeometry.hasMeteors(scene)) _paintMeteors(canvas, size);
     switch (scene) {
       case NightScene.meteor:
-        _paintMeteors(canvas, size);
+      case NightScene.moon:
+        // 流星夜只有流星；月海只有一圈更大的光晕（见 `_paintGlows`）——
+        // 两者的场景专属层都不在这里加，流星已由上面的 `hasMeteors` 统一处理。
+        break;
       case NightScene.aurora:
         _paintAurora(canvas, size);
       case NightScene.ocean:
@@ -405,9 +431,6 @@ class _NightScenePainter extends CustomPainter {
         _paintGalaxy(canvas, size);
       case NightScene.rain:
         _paintRain(canvas, size);
-      case NightScene.moon:
-        // 月海只有一圈更大的光晕，已经在 `_paintGlows` 里按场景处理过了。
-        break;
     }
   }
 
