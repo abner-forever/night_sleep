@@ -11,9 +11,18 @@ import 'package:night_sleep/features/session/presentation/widgets/night_backdrop
 ///
 /// 这是这一份测试唯一能钉住「动画到底动没动」的办法：pixel 比较不会因为
 /// `CustomPaint` 的画笔是私有的就变成一句空断言。
+///
+/// 取的是 `NightBackdrop` **自己**那层 `RepaintBoundary`（它在 `build` 里的根就是），
+/// 而不是 `find.byType(RepaintBoundary).first`——后者会落到路由
+/// `_ModalScope` 那个祖先边界上，框进来的是整屏，不是被测组件。
 Future<Uint8List> snapshot(WidgetTester tester) async {
   final boundary = tester.renderObject<RenderRepaintBoundary>(
-    find.byType(RepaintBoundary).first,
+    find
+        .descendant(
+          of: find.byType(NightBackdrop),
+          matching: find.byType(RepaintBoundary),
+        )
+        .first,
   );
   final bytes = await tester.runAsync(() async {
     final image = await boundary.toImage();

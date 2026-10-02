@@ -159,15 +159,20 @@ class _NightScenePainter extends CustomPainter {
   ///
   /// 原型给它们挂了 `filter: blur(4px)`——对这种尺寸的软径向渐变来说不足 1% 的
   /// 视觉差别，这里不额外套一层模糊去凑那个数字。
+  ///
+  /// **一处如实的近似**：这几团的衰减范围不是与原型逐像素对齐的。CSS 的
+  /// `radial-gradient(circle, …)` 默认按 **farthest-corner** 算半径，而 Flutter 的
+  /// `RadialGradient.radius` 是相对**短边**的比例。盒子越扁，两者差得越多；这里沿用
+  /// `stops` 的百分比落在色带内的相对位置，所以色带形状对得上、外扩范围是近似的。
   void _paintGlows(Canvas canvas, Size size) {
     final w = size.width;
     final moon = scene == NightScene.moon;
 
     // glow-one：默认 70vw × 42vw / top -12vw right -10vw；
-    // `.sleep-scene-moon` 换成 48vw 见方、圆心在 8%/7%，也就是一轮月华。
+    // `.sleep-scene-moon .sleep-scene-glow-one`：48vw 见方，top 8%（相对容器高）、
+    // right 7%（相对容器宽）——即盒的左上角在 45% 宽、8% 高处，也就是一轮月华。
     final oneRect = moon
-        ? Rect.fromLTWH(
-            w * .93 - w * .48, size.height * .15 - w * .48, w * .96, w * .96)
+        ? Rect.fromLTWH(w * .45, size.height * .08, w * .48, w * .48)
         : Rect.fromLTWH(w + w * .10 - w * .70, -w * .12, w * .70, w * .42);
     canvas.drawRect(
       oneRect,
@@ -416,8 +421,10 @@ class _NightScenePainter extends CustomPainter {
         shift = Offset.lerp(const Offset(-9, -12), Offset.zero, k)!;
       }
 
-      // 最后四只共用同一格（原型 CSS 的 `nth-child(n+11)` 就是这么写的），
-      // 叠在同一处——照抄，不替它挪位置。
+      // 最后四只共用同一格：`left: 52%; top: 54%; animation-delay: -3.5s` 逐字相同，
+      // 是原型 CSS `nth-child(n+11)` 的原样。`_progress` 是纯函数，相位也一样，
+      // 所以这四只严格叠在一起、透明度也相同——**实际可见 11 只，不是 14 只**。
+      // 这是原型如此，不是笔误：照抄，不替它挪位置、也不「修好」它。
       final centre = Offset(
         spot.left / 100 * size.width + shift.dx,
         spot.top / 100 * size.height + shift.dy,
