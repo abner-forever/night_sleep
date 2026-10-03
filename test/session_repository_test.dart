@@ -56,6 +56,55 @@ void main() {
     expect((await repo.start(now: start.toLocal())).wakeMinutes, 390);
   });
 
+  /// setup 态的「开始睡眠」一次把草稿写全。分成 `start()` + 若干 `update()` 两笔写的话，
+  /// 中间那一瞬库里 `noiseId` 还是 null、而播放器已经在放——一个「库里说没放、实际在放」
+  /// 的假值，正是 `NoiseSessionController` 冷启动对账要清掉的那种。
+  test('start 一次写全 setup 的草稿：闹钟、场景、白噪音、音量', () async {
+    final session = await repo.start(
+      now: start.toLocal(),
+      wakeMinutes: 6 * 60 + 45,
+      alarmEnabled: true,
+      sceneId: 'galaxy',
+      noiseId: 'rain',
+      noiseVolume: 0.35,
+    );
+
+    expect(session.wakeMinutes, 405);
+    expect(session.alarmEnabled, isTrue);
+    expect(session.sceneId, 'galaxy');
+    expect(session.noiseId, 'rain');
+    expect(session.noiseVolume, 0.35);
+
+    final stored = (await repo.load())!;
+    expect(stored.sceneId, 'galaxy', reason: '草稿要真落库，不能只活在返回值里');
+    expect(stored.noiseId, 'rain');
+    expect(stored.noiseVolume, 0.35);
+    expect(stored.alarmEnabled, isTrue);
+  });
+
+  test('start 不传草稿时默认值不被新参数带偏', () async {
+    final session = await repo.start(now: start.toLocal());
+
+    expect(session.alarmEnabled, isFalse, reason: '闹钟默认关，不继承任何偏好');
+    expect(session.sceneId, isNull, reason: '场景默认回落「流星夜」在页面层做');
+    expect(session.noiseId, isNull);
+    expect(session.noiseVolume, 0.5);
+  });
+
+  /// 会话页一帧里有两个读者（起床草稿、鼾声偏好），全新库上它们会同时走到
+  /// 「没有设置行 → 插一行默认值」那条路。`getSettings` 是「先读后插」，
+  /// 第二个插入撞 `UNIQUE constraint failed: app_settings.id` 直接把页面炸掉。
+  test('首次并发读设置不炸：后一个插入必须让路', () async {
+    final results = await Future.wait([
+      database.getSettings(),
+      database.getSettings(),
+    ]);
+
+    expect(results, hasLength(2));
+    expect(results[0].id, 'default');
+    expect(results[1].id, 'default');
+  });
+
   test('update 只改传入的字段', () async {
     await repo.start(now: start.toLocal());
     await repo.update(alarmEnabled: true, wakeMinutes: 8 * 60);

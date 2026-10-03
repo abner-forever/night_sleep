@@ -118,6 +118,56 @@ abstract final class NightStyle {
   /// `.sleep-setting-title strong`（「音量 35%」那个读数）的 `color: #b9c6ff`。
   static const fieldValueInk = Color(0xFFB9C6FF);
 
+  // ── 入睡前（setup）态 ───────────────────────────────────────────────────
+  //
+  // 值取自原型最终生效层那段 `/* ── Immersive sleep controls ── */`
+  // （index.css:1730–1960），它覆盖了前面第 1557 行起的同名规则。
+  /// `.sleep-control-deck`：`linear-gradient(145deg, .09, .04)` + 描边 + 外阴影。
+  static const deckFillTop = Color(0x17FFFFFF); // rgba(255,255,255,.09)
+  static const deckFillBottom = Color(0x0AFFFFFF); // rgba(255,255,255,.04)
+  static const deckStroke = Color(0x1AFFFFFF); // rgba(255,255,255,.10)
+  static const deckShadow = Color(0x29000000); // rgba(0,0,0,.16)
+
+  /// `.sleep-mode-kicker`（「睡眠模式」）。
+  static const kickerInk = Color(0x80E1E5F4); // rgba(225,229,244,.50)
+  /// `.sleep-greeting`（「晚安」）。
+  static const greetingInk = Color(0xFF9EAFF3);
+
+  /// `.sleep-setup-hero > p:last-child`（「放下今天…」）。
+  static const heroBodyInk = Color(0x8FE1E5F4); // rgba(225,229,244,.56)
+  /// `.sleep-start-note`（「屏幕将保持暗色…」）。
+  static const startNoteInk = Color(0x5CE1E5F4); // rgba(225,229,244,.36)
+
+  /// `.sleep-scene-picker-title > span` / `small`。
+  static const pickerTitleInk = Color(0xB8E1E5F4); // rgba(225,229,244,.72)
+  static const pickerHintInk = Color(0x52E1E5F4); // rgba(225,229,244,.32)
+
+  /// `.sleep-control-label > span`（「常用白噪音」）与右侧「完整设置」。
+  static const controlLabelInk = Color(0x7AE1E5F4); // rgba(225,229,244,.48)
+  static const controlActionInk = Color(0xFFAEBDFF);
+
+  /// `.sleep-control-copy small`（控制行副标题）。
+  static const controlMutedInk = Color(0x6BE1E5F4); // rgba(225,229,244,.42)
+  /// `.sleep-control-row` 的分隔线。
+  static const controlRowDivider = Color(0x12FFFFFF); // rgba(255,255,255,.07)
+
+  /// `.sleep-quick-sound-list button` 的三态。
+  static const quickSoundInk = Color(0x7AE1E5F4); // rgba(225,229,244,.48)
+  static const quickSoundFill = Color(0x09FFFFFF); // rgba(255,255,255,.035)
+  static const quickSoundStroke = Color(0x0FFFFFFF); // rgba(255,255,255,.06)
+  static const quickSoundSelectedInk = Color(0xFFC3CEFF);
+  static const quickSoundSelectedFill =
+      Color(0x267E91E9); // rgba(126,145,233,.15)
+  static const quickSoundSelectedStroke =
+      Color(0x47ACBCFF); // rgba(172,188,255,.28)
+
+  /// `.sleep-start-button`：`linear-gradient(135deg, #687fe2, #6962c7)` + 外阴影 + 内高光。
+  static const startGradient = [Color(0xFF687FE2), Color(0xFF6962C7)];
+  static const startInk = Color(0xFFFFFFFF); // color: #fff
+  static const startShadow = Color(0x524450A4); // rgba(68,80,164,.32)
+  static const startInnerHighlight =
+      Color(0x33FFFFFF); // inset 0 1px rgba(255,255,255,.20)
+
   // ── 尺寸 ────────────────────────────────────────────────────────────────
   static const cardRadius = 22.0; // .sleep-option-card / .sleep-events
   static const sheetRadius = 30.0; // .sleep-settings-sheet
@@ -126,6 +176,14 @@ abstract final class NightStyle {
   static const eventIconSize = 34.0; // .sleep-event-icon
   static const eventIconRadius = 12.0;
   static const eventRowMinHeight = 61.0; // .sleep-event-row
+  /// setup 的控制行图标底板：`.sleep-control-row .sleep-option-icon` 是 35，
+  /// 比事件行的 34 大一格——原型里这两条规则各写各的，故不合并。
+  static const setupIconSize = 35.0; // .sleep-control-row .sleep-option-icon
+  static const deckRadius = 28.0; // .sleep-control-deck
+  static const quickSoundMinHeight = 47.0; // .sleep-quick-sound-list button
+  static const quickSoundRadius = 14.0;
+  static const setupStartMinHeight = 58.0; // .sleep-start-button
+  static const setupStartRadius = 18.0;
   static const holdButtonMinHeight = 56.0;
   static const holdButtonRadius = 18.0;
   static const scenePreviewWidth = 64.0;
@@ -135,4 +193,21 @@ abstract final class NightStyle {
   /// `@media (prefers-reduced-motion: reduce)`。
   static bool reduceMotion(BuildContext context) =>
       MediaQuery.disableAnimationsOf(context);
+
+  // ── 最终生效层里的两条媒体查询 ──────────────────────────────────────────
+  //
+  // 它们与上面那些规则同在「Immersive sleep controls」那一层里，同样属于**最终
+  // 生效层**（index.css:1937 与 1937 之后那两条），不能因为「是媒体查询」就跳过。
+  /// `@media (max-width: 390px)`：deck 的内边距 16 → 13，常用白噪音四格改**竖排**
+  /// （`flex-direction: column`，图标在上、标签在下，间距 3）。
+  static bool narrowDeck(BuildContext context) =>
+      MediaQuery.sizeOf(context).width <= 390;
+
+  /// `@media (min-height: 860px)`：入睡前态 hero 从 230 撑到 **285**。
+  static bool tallHero(BuildContext context) =>
+      MediaQuery.sizeOf(context).height >= 860;
+
+  /// deck 里各段的行内边距：常规 16，窄屏 13。
+  static const deckGutter = 16.0;
+  static const narrowGutter = 13.0;
 }

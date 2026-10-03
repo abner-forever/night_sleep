@@ -150,19 +150,23 @@ class _HomeContent extends StatelessWidget {
           _HeroCard(entry: today, animateRing: animateRing),
           const SizedBox(height: 18),
         ],
-        // 会话在跑时不再给「开始睡眠」——那会开出第二个会话。主按钮位换成
+        // 会话在跑时不再给「开始入睡」——那会开出第二个会话。主按钮位换成
         // 一张「正在睡眠」卡，点它回到会话页。
+        //
+        // 文案逐字取自原型首页（「开始入睡」/「开启睡眠记录、鼾声检测与白噪音」），
+        // 只有一处例外：副标题**不写「鼾声检测」**——plan A 没接录音，那是我们不能
+        // 承诺的能力（偏差 #7 是产品红线），改成白噪音与夜景氛围这两件真做了的事。
         if (session != null)
           _ActiveSessionCard(session: session!, now: now)
         else
           PrimaryAction(
-            label: '开始睡眠',
-            subtitle: '定好闹钟与白噪音，记录今晚',
+            label: '开始入睡',
+            subtitle: '开启睡眠记录、白噪音与夜景氛围',
             trailing:
                 AppIcons.moon(size: 20, color: Colors.white, strokeWidth: 2),
             onTap: onStartSleep,
           ),
-        // 会话进行中就不再摆空状态：它那句「开始睡眠」的号召和上面那张卡
+        // 会话进行中就不再摆空状态：它那句「开始入睡」的号召和上面那张卡
         // 是互相打架的（卡片正说明会话已经在跑），而记录为空是会话刚开始
         // 时的常态。
         if (records.isEmpty && session == null) ...[
@@ -172,7 +176,7 @@ class _HomeContent extends StatelessWidget {
                 AppIcons.moon(size: 30, color: tokens.accent, strokeWidth: 1.6),
             title: '还没有睡眠记录',
             body: '记下你的第一晚，明早回来就能看到时长、评分与趋势。',
-            actionLabel: '开始睡眠',
+            actionLabel: '开始入睡',
             onAction: onStartSleep,
           ),
         ],
@@ -297,7 +301,7 @@ class _HomeContent extends StatelessWidget {
 
 /// 会话进行中时占住首页主按钮位的那张卡。
 ///
-/// 它替代「开始睡眠」而不是并排放在一起：会话在跑时再给一个开始按钮，等于
+/// 它替代「开始入睡」而不是并排放在一起：会话在跑时再给一个开始按钮，等于
 /// 允许同时开出两个。卡片本身没有新能力——圆环画的是「已过时长 ÷ 计划时长」，
 /// 两个数都是推导的，点它只是回到会话页。
 class _ActiveSessionCard extends StatelessWidget {

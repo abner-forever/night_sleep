@@ -38,7 +38,7 @@ class _SheetFakeNoisePlayer extends NoisePlayer {
 ///
 /// [appTheme] 默认深色（会话页实际情形）；传 `AppTheme.light()` 用来验「弹窗
 /// 走到 root navigator、继承不到会话页那层 Theme」时的令牌归属。
-Future<void> pumpNoiseSheet(
+Future<AppDatabase> pumpNoiseSheet(
   WidgetTester tester, {
   NoisePlayer? player,
   ThemeData? appTheme,
@@ -83,6 +83,7 @@ Future<void> pumpNoiseSheet(
   await tester.pumpAndSettle();
   await tester.tap(find.text('打开'));
   await tester.pumpAndSettle();
+  return database;
 }
 
 void main() {
@@ -90,6 +91,7 @@ void main() {
     WidgetTester tester, {
     required NightScene scene,
     required ValueChanged<NightScene> onChanged,
+    bool compact = true,
   }) async {
     // 取一块足够宽的画布：八张卡 8×68 + 7×10 + 24 ≈ 638px，手机宽（430）下
     // 第七张「银河」会落在视口外——懒加载的 `ListView` 不会把它摆上台面，
@@ -103,7 +105,11 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: NightScenePicker(scene: scene, onChanged: onChanged),
+          body: NightScenePicker(
+            scene: scene,
+            onChanged: onChanged,
+            compact: compact,
+          ),
         ),
       ),
     );
@@ -176,6 +182,59 @@ void main() {
     expect(picked, [NightScene.rain]);
   });
 
+  testWidgets('setup 变体多一行「夜景氛围 / 左右滑动切换」，进行中变体没有', (tester) async {
+    await pumpPicker(
+      tester,
+      scene: NightScene.meteor,
+      onChanged: (_) {},
+      compact: false,
+    );
+    expect(find.text('夜景氛围'), findsOneWidget);
+    expect(find.text('左右滑动切换'), findsOneWidget);
+
+    await pumpPicker(tester, scene: NightScene.meteor, onChanged: (_) {});
+    expect(find.text('夜景氛围'), findsNothing,
+        reason: '进行中态的标题行是隐藏的（原型 .sleep-scene-picker-compact 里 display:none）');
+    expect(find.text('左右滑动切换'), findsNothing);
+  });
+
+  /// 选中态在**最终生效层**是 `transform: scale(.98)`（index.css:1789），
+  /// 早期那层的 `translateY(-2px)`（index.css:1590）被它覆盖。这条钉住订正后的值，
+  /// 防有人照早期那层改回去。
+  testWidgets('选中卡绕中心缩到 .98，不是上移 2px', (tester) async {
+    await pumpPicker(tester, scene: NightScene.ocean, onChanged: (_) {});
+
+    final selected = tester.widget<AnimatedContainer>(
+      find
+          .descendant(
+            of: find.byWidgetPredicate(
+              (w) => w is NightSceneChoice && w.selected,
+            ),
+            matching: find.byType(AnimatedContainer),
+          )
+          .first,
+    );
+    final matrix = selected.transform!;
+    expect(matrix.storage[0], closeTo(.98, 1e-6), reason: 'x 缩放 .98');
+    expect(matrix.storage[5], closeTo(.98, 1e-6), reason: 'y 缩放 .98');
+    expect(matrix.storage[13], 0, reason: '没有纵向位移——那是被覆盖掉的早期层');
+    expect(selected.transformAlignment, Alignment.center,
+        reason: 'CSS 的 transform 默认绕中心；Container 默认绕左上角，会往左上缩');
+
+    final idle = tester.widget<AnimatedContainer>(
+      find
+          .descendant(
+            of: find.byWidgetPredicate(
+              (w) => w is NightSceneChoice && !w.selected,
+            ),
+            matching: find.byType(AnimatedContainer),
+          )
+          .first,
+    );
+    expect(idle.transform!.storage[0], 1, reason: '未选中的卡不缩');
+    expect(idle.transform!.storage[13], 0);
+  });
+
   testWidgets('弹窗里有九宫格、音量、四个时长档，没有「整晚」', (tester) async {
     await pumpNoiseSheet(tester);
 
@@ -208,6 +267,53 @@ void main() {
     expect(find.text('白噪音设置'), findsNothing);
     // 关掉弹窗**不**停声音——播放器挂在 app 级的控制器上，生命周期比这层弹窗长。
     expect(player.calls.where((c) => c == 'stop'), isEmpty);
+  });
+
+  /// 弹窗现在是**入睡前那一屏**的唯一白噪音入口，但控制器本身与弹窗无关：
+  /// 下面两条钉的是控制器怎么跟播放器和会话行打交道。
+  testWidgets('选中白噪音会交给播放器，再点一次停掉', (tester) async {
+    final player = _SheetFakeNoisePlayer();
+    await pumpNoiseSheet(tester, player: player);
+
+    // 选中之后事件卡那一行也会出现「雨声」，按宫格定位那一格才稳。
+    final rainTile = find.descendant(
+      of: find.byType(GridView),
+      matching: find.text('雨声'),
+    );
+
+    await tester.tap(rainTile);
+    // 选中即起 1 秒周期的倒计时，`pumpAndSettle` 会因它永不收敛而超时，
+    // 所以这里显式 pump（与 `test/noise_sheet_test.dart` 同一手法）。
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(player.calls.first, 'play:rain:0.50', reason: '应把雨声与当前音量交给播放器');
+
+    await tester.tap(rainTile);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(player.calls, contains('stop'), reason: '再点一次就是取消选择');
+  });
+
+  testWidgets('白噪音倒计时到点会停掉，并清空会话里的选中值', (tester) async {
+    final player = _SheetFakeNoisePlayer();
+    final database = await pumpNoiseSheet(tester, player: player);
+
+    await tester.tap(find.text('雨声'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect((await database.activeSession())?.noiseId, 'rain',
+        reason: '这一列的定义是「选中并正在播放」');
+
+    // 默认定时 30 分钟；把假时钟推过它就是「到点」。
+    await tester.pump(const Duration(minutes: 30));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(player.calls, contains('stop'));
+    expect((await database.activeSession())?.noiseId, isNull,
+        reason: '到点之后不能留下一个「在播」的假值');
   });
 
   testWidgets('浅色应用主题下，弹窗内的共享控件仍是深色令牌', (tester) async {

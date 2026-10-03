@@ -6,25 +6,39 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/app_shell.dart';
 import '../../../app/app_toast.dart';
+import '../../../app/noise_session.dart';
+import '../../../app/reminder_permission.dart';
+import '../../../app/reminder_sync.dart';
 import '../../../app/session_teardown.dart';
+import '../../../core/database/app_database.dart';
 import '../../../core/platform/haptics.dart';
+import '../../../core/platform/reminders.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_basics.dart';
-import '../../../core/widgets/app_icons.dart';
 import '../../../core/widgets/app_sheet.dart';
+import '../../../core/widgets/wheel_picker.dart';
 import '../../sleep/data/session_repository.dart';
 import '../../sleep/domain/sleep_session.dart';
 import 'night_scene.dart';
 import 'night_style.dart';
 import 'sheets/quality_rating_sheet.dart';
+import 'widgets/collapse_pill.dart';
 import 'widgets/hold_to_finish_button.dart';
 import 'widgets/night_backdrop.dart';
 import 'widgets/night_scene_picker.dart';
 import 'widgets/session_events_card.dart';
+import 'widgets/session_setup.dart';
 import 'widgets/sleep_moon_mark.dart';
 
-/// 睡眠会话页。
+/// 睡眠会话页，**一个路由两态**：
+///
+/// - **入睡前（`activeSessionProvider` 为 null）**：原型 `SleepView` 的 setup 分支。
+///   攒草稿——场景 / 常用白噪音 / 起床闹钟 / 鼾声偏好，**什么都不写库**。
+/// - **进行中**：v3.2 照原型重建的那一屏（夜景 / `HH:MM:SS` / 事件卡 / 长按结束）。
+///
+/// 记录起点因此是页内的「开始睡眠」，不是首页那颗按钮：点首页按钮只进页面
+/// （`app.dart` 的注释里记了这条）。
 ///
 /// **它不测量任何东西**：两个时刻来自用户按下的按钮，起床时间来自用户的设定。
 /// 没有阶段、没有鼾声判定、没有「睡眠质量」的推断——那些要么由用户自己补，
@@ -58,6 +72,20 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage> {
   /// 页面滚动位置。
   final ScrollController _scroll = ScrollController();
 
+  // ── 入睡前的草稿 ────────────────────────────────────────────────────────
+  //
+  // 只活在这一次挂载里：收起再进来就回到初值（原型的组件状态也是 unmount 即丢）。
+  // 白噪音不在此列——它的选中与音量由 app 级的 `NoiseSessionController` 拿着。
+  NightScene _draftScene = NightScene.fallback;
+  bool _draftAlarm = false;
+
+  /// 起床时刻的草稿。先用默认值起，读到设置里的起床提醒时刻再换上去
+  /// （与 `SessionRepository.start()` 的缺省口径同一个：用户设过就复用）。
+  int _draftWakeMinutes = SessionRepository.defaultWakeMinutes;
+
+  /// 「开始睡眠」不能被点两遍：第二遍会把 `startAtUtc` 冲掉。
+  bool _starting = false;
+
   @override
   void initState() {
     super.initState();
@@ -69,6 +97,17 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage> {
         if (mounted) setState(() => _now = DateTime.now());
       });
     }
+    _loadWakeDraft();
+  }
+
+  /// 只读一次，**不订阅** `settingsProvider` 那条 drift 流：widget 测试的假时钟
+  /// 不推进，订阅 `watch*` 会留下 pending timer（见 `.claude/skills/flutter-pitfalls`）。
+  Future<void> _loadWakeDraft() async {
+    final settings = await ref.read(databaseProvider).getSettings();
+    if (!mounted) return;
+    final stored = settings.wakeReminderMinutes;
+    if (stored == null) return;
+    setState(() => _draftWakeMinutes = stored);
   }
 
   @override
@@ -81,7 +120,10 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage> {
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(activeSessionProvider).valueOrNull;
-    final scene = NightScene.fromId(session?.sceneId);
+    // 没有会话时，背景跟的是**草稿**里那个场景——用户在选择器上点一下，整屏夜色
+    // 立刻跟着换（原型 setup 分支也是这么做的）。
+    final scene =
+        session == null ? _draftScene : NightScene.fromId(session.sceneId);
 
     // 会话页是**常暗**的（原型的睡眠模式就是这么设计的：setup 页写着「屏幕将保持
     // 暗色」），而应用主题可能是浅色。包一层 dark `Theme` 之后，复用的共享组件
@@ -98,26 +140,124 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage> {
             Positioned.fill(child: NightBackdrop(scene: scene)),
             SafeArea(
               minimum: const EdgeInsets.only(top: 20),
-              child: session == null
-                  ? const _NoSession()
-                  : _SessionBody(
-                      session: session,
-                      now: _now,
-                      scene: scene,
-                      onSceneChanged: (picked) => ref
-                          .read(sessionRepositoryProvider)
-                          .update(sceneId: picked.id),
-                      onFinish: () => _finish(session),
-                      onFinishHint: () => ref
-                          .read(toastProvider.notifier)
-                          .show('按住不放，填充条扫满才结束。'),
-                      scrollController: _scroll,
-                    ),
+              // 两态都居中限宽 680：原型最终生效层给 `.sleep-setup` 与
+              // `.sleep-active` 的 shell 都是 `width: min(100%, 680px)`
+              // （index.css:1734 / 1915）。不限宽的话宽屏上会整条拉满。
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 680),
+                  child: session == null
+                      ? SessionSetupBody(
+                          scene: _draftScene,
+                          alarmEnabled: _draftAlarm,
+                          wakeMinutes: _draftWakeMinutes,
+                          onSceneChanged: (picked) =>
+                              setState(() => _draftScene = picked),
+                          onAlarmToggled: _toggleAlarmDraft,
+                          onWakeTimePicked: _pickWakeTimeDraft,
+                          onCollapse: _collapseSetup,
+                          onStart: _beginSleep,
+                          scrollController: _scroll,
+                        )
+                      : _SessionBody(
+                          session: session,
+                          now: _now,
+                          scene: scene,
+                          onSceneChanged: (picked) => ref
+                              .read(sessionRepositoryProvider)
+                              .update(sceneId: picked.id),
+                          onFinish: () => _finish(session),
+                          onFinishHint: () => ref
+                              .read(toastProvider.notifier)
+                              .show('按住不放，填充条扫满才结束。'),
+                          scrollController: _scroll,
+                        ),
+                ),
+              ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  /// 「开始睡眠」：把草稿一次写全，从这一刻开始计时。
+  ///
+  /// **写库只发生在这里。** 进页面什么都不写（原型的睡眠模式也是这个语义：进去只是
+  /// 一屏睡前设定），所以记录里的入睡时刻就是按下这颗按钮的时刻。
+  Future<void> _beginSleep() async {
+    if (_starting) return;
+
+    // 与进行中态同一个闸口：闹钟开着但通知权限被拒（或平台安排不了）时，不写库、
+    // 也不开始这一晚——否则会留下一个「设了闹钟却不会响」的会话。
+    if (_draftAlarm &&
+        !await ensureNotificationPermission(context, ref, target: '闹钟')) {
+      return;
+    }
+    if (!mounted) return;
+
+    setState(() => _starting = true);
+    final noise = ref.read(noiseSessionControllerProvider);
+    try {
+      await ref.read(sessionRepositoryProvider).start(
+            now: widget.now,
+            wakeMinutes: _draftWakeMinutes,
+            alarmEnabled: _draftAlarm,
+            sceneId: _draftScene.id,
+            // 正在试听的那条音直接成为这一晚的音：控制器的语义就是「选中并正在播放」，
+            // 所以这里不做第二次 `play`，也不给它第二个真源。
+            noiseId: noise.activeId,
+            noiseVolume: noise.volume,
+          );
+      // 与收尾同款：会话闹钟（9003）与日常起床提醒（9002）必须成对推导。
+      await syncAllReminders(
+        ref.read(databaseProvider),
+        ref.read(reminderSchedulerProvider),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _starting = false);
+      ref.read(toastProvider.notifier).show('开始失败：$error');
+      return;
+    }
+
+    if (!mounted) return;
+    AppHaptics.success();
+    // 不 pop、不 push：会话行一写下去，`activeSessionProvider` 自己把本页翻到
+    // 进行中态（`_starting` 随之作废——那一态根本没有「开始」按钮）。
+  }
+
+  /// 入睡前态收起：停掉试听再走，**什么都不写库**。
+  ///
+  /// 试听要停——没有会话在跑，就没有理由让声音留在后台（原型的 setup 分支卸载时
+  /// 也 `stop()`）。这与进行中态的收起**刻意不同**：那一态会话还在跑，白噪音要陪着
+  /// （偏差 #28）。
+  Future<void> _collapseSetup() async {
+    await ref.read(noiseSessionControllerProvider).stop();
+    if (!mounted) return;
+    _collapse(context);
+  }
+
+  /// 闹钟开关只改草稿；真正排定在 `_beginSleep` 写完会话行之后。
+  Future<void> _toggleAlarmDraft(bool value) async {
+    if (value &&
+        !await ensureNotificationPermission(context, ref, target: '闹钟')) {
+      return; // 被拒：草稿不动，开关自己弹回去。
+    }
+    if (!mounted) return;
+    setState(() => _draftAlarm = value);
+  }
+
+  /// 起床时刻也只在草稿里改。只有「完成」才提交——滚了轮再点取消不该生效。
+  Future<void> _pickWakeTimeDraft() async {
+    var draft = minutesToClock(_draftWakeMinutes);
+    final confirmed = await showPickerSheet(
+      context: context,
+      title: '起床闹钟',
+      child: AppTimePicker(value: draft, onChanged: (value) => draft = value),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _draftWakeMinutes = clockToMinutes(draft));
   }
 
   /// 结束这次会话：评星 → 落库 → 停白噪音 → 撤闹钟 → 切到「回顾」。
@@ -182,27 +322,6 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage> {
   }
 }
 
-class _NoSession extends StatelessWidget {
-  const _NoSession();
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AppTokens.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: EmptyState(
-          icon: AppIcons.moon(size: 30, color: tokens.accent, strokeWidth: 1.6),
-          title: '没有正在进行的睡眠',
-          body: '回到首页按「开始睡眠」就能开始记录今晚。',
-          actionLabel: '回首页',
-          onAction: () => context.go('/'),
-        ),
-      ),
-    );
-  }
-}
-
 class _SessionBody extends StatelessWidget {
   const _SessionBody({
     required this.session,
@@ -259,7 +378,7 @@ class _StatusHeader extends StatelessWidget {
       height: 40,
       child: Row(
         children: [
-          _CollapsePill(onTap: onCollapse),
+          CollapsePill(onTap: onCollapse),
           const Expanded(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -454,42 +573,6 @@ class _RejectedSheet extends StatelessWidget {
             ),
             SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 左上角的「收起」：离开页面但**不结束会话**。
-class _CollapsePill extends StatelessWidget {
-  const _CollapsePill({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
-        AppHaptics.tap();
-        onTap();
-      },
-      child: Container(
-        constraints: const BoxConstraints(minWidth: 56, minHeight: 34),
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-        decoration: BoxDecoration(
-          color: NightStyle.glassFill,
-          borderRadius: BorderRadius.circular(AppRadii.pill),
-          border: Border.all(color: NightStyle.glassStroke),
-        ),
-        alignment: Alignment.center,
-        child: const Text(
-          '收起',
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: NightStyle.glassInk,
-          ),
         ),
       ),
     );

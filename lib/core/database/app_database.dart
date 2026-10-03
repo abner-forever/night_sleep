@@ -390,8 +390,13 @@ class AppDatabase extends _$AppDatabase {
           ..where((table) => table.id.equals('default')))
         .getSingleOrNull();
     if (current != null) return current;
-    await into(appSettings)
-        .insert(const AppSettingsCompanion(id: Value('default')));
+    // 首次读取就地补一行默认值。**必须是 `insertOrIgnore`**：这是「先读后插」，
+    // 同一帧里两个读者（例如会话页读起床草稿与鼾声偏好那两处）都会看到「没有」，
+    // 于是都去插——后一个撞 `UNIQUE constraint failed: app_settings.id` 直接抛。
+    await into(appSettings).insert(
+      const AppSettingsCompanion(id: Value('default')),
+      mode: InsertMode.insertOrIgnore,
+    );
     return (select(appSettings)..where((table) => table.id.equals('default')))
         .getSingle();
   }

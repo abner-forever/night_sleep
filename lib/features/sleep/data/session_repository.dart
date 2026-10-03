@@ -30,7 +30,18 @@ class SessionRepository {
 
   /// 开始一个会话。已有一个在跑时**直接覆盖**它——那意味着用户又按了一次
   /// 「开始睡眠」，按新的开始时刻重新计时才是他的意思。
-  Future<SleepSession> start({DateTime? now, int? wakeMinutes}) async {
+  ///
+  /// 场景 / 白噪音 / 音量 / 闹钟这几项是 setup 态攒下的草稿，**一次写全**。不这么写就得
+  /// `start()` 之后再补几笔 `update()`，中间那一瞬库里写着「没在放音」而播放器已经在响
+  /// ——那是个假值（`NoiseSessionController` 的冷启动对账清的就是这一类）。
+  Future<SleepSession> start({
+    DateTime? now,
+    int? wakeMinutes,
+    bool alarmEnabled = false,
+    String? sceneId,
+    String? noiseId,
+    double? noiseVolume,
+  }) async {
     final at = (now ?? DateTime.now()).toUtc();
     final resolvedWake = wakeMinutes ?? await _defaultWakeMinutes();
 
@@ -40,6 +51,12 @@ class SessionRepository {
         startAtUtc: at,
         timeZoneId: Value((now ?? DateTime.now()).timeZoneName),
         wakeMinutes: resolvedWake,
+        alarmEnabled: Value(alarmEnabled),
+        noiseId: Value(noiseId),
+        // 与列默认值一致：不传音量时写 0.5，不留给列默认去补——一次 insert 里
+        // 显式给出全部字段，读回来才不会有一半是「没写」。
+        noiseVolume: Value(noiseVolume ?? 0.5),
+        sceneId: Value(sceneId),
         createdAt: at,
       ),
     );

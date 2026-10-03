@@ -234,8 +234,8 @@ void main() {
     );
   }
 
-  /// 首页。`onStartSleep` 按需接线——「点开始会写入会话行」那条用例传一个真的
-  /// 调 `SessionRepository.start()` 的回调，其余用例不需要它真的做事。
+  /// 首页。`onStartSleep` 默认什么都不做——它的真实接线（推入会话页）在
+  /// 「点「开始入睡」只进页面，不写会话行」那条里走真实路由验证。
   Widget home({VoidCallback onStartSleep = _noop}) => HomePage(
         animateRing: false,
         onRingConsumed: () {},
@@ -249,8 +249,8 @@ void main() {
 
       expect(find.text('睡眠概览'), findsOneWidget);
       expect(find.text('还没有睡眠记录'), findsOneWidget);
-      // 主按钮与空状态行动按钮都落到同一个「开始睡眠」。
-      expect(find.text('开始睡眠'), findsWidgets);
+      // 主按钮与空状态行动按钮都落到同一个「开始入睡」（原型首页的文案）。
+      expect(find.text('开始入睡'), findsWidgets);
       // Nothing fabricated without data.
       expect(find.text('昨夜睡眠'), findsNothing);
       expect(find.text('近 7 日均时'), findsNothing);
@@ -304,19 +304,19 @@ void main() {
       expect(find.textContaining('正在显示演示数据'), findsOneWidget);
     });
 
-    testWidgets('没有会话时主按钮是「开始睡眠」', (tester) async {
+    testWidgets('没有会话时主按钮是「开始入睡」', (tester) async {
       await pumpPage(tester, home(), activeSession: null);
 
       // 主按钮那一个是 `PrimaryAction`：钉住「是这一颗」，而不是「页面上有这两个字」。
-      expect(find.widgetWithText(PrimaryAction, '开始睡眠'), findsOneWidget);
+      expect(find.widgetWithText(PrimaryAction, '开始入睡'), findsOneWidget);
       expect(find.text('记录昨夜睡眠'), findsNothing);
     });
 
-    testWidgets('空状态的行动按钮也是「开始睡眠」', (tester) async {
+    testWidgets('空状态的行动按钮也是「开始入睡」', (tester) async {
       await pumpPage(tester, home(), activeSession: null);
 
       expect(find.text('记录第一晚'), findsNothing);
-      expect(find.widgetWithText(EmptyState, '开始睡眠'), findsOneWidget);
+      expect(find.widgetWithText(EmptyState, '开始入睡'), findsOneWidget);
     });
 
     testWidgets('有会话时显示「正在睡眠」卡并可回到会话页', (tester) async {
@@ -337,22 +337,38 @@ void main() {
       expect(find.text('正在睡眠'), findsOneWidget);
       // 收紧过：只断言「已睡」二字的话，时长算错也照样通过；这里钉住具体读数。
       expect(find.text('已睡 3h 42m'), findsOneWidget);
-      expect(find.text('开始睡眠'), findsNothing, reason: '会话在跑时不该再给开始按钮');
+      expect(find.text('开始入睡'), findsNothing, reason: '会话在跑时不该再给开始按钮');
     });
 
-    testWidgets('点「开始睡眠」会写入会话行', (tester) async {
-      await pumpPage(
-        tester,
-        home(
-          onStartSleep: () => SessionRepository(database).start(),
-        ),
-        activeSession: null,
+    /// v3.3 起首页那颗按钮**只进页面**：记录起点在页内那颗「开始睡眠」上，所以
+    /// 「点进来看一眼又退出」不该留下一段并不存在的睡眠。走真实路由，顺带覆盖
+    /// `app.dart` 里注册的 `path: 'sleep/session'`。
+    testWidgets('点「开始入睡」只进页面，不写会话行', (tester) async {
+      // 会话页的夜景是 60 秒循环动画，开着它 `pumpAndSettle()` 会 timed out（已实测）。
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(disableAnimations: true);
+      addTearDown(
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
       );
 
-      await tester.tap(find.text('开始睡眠').first);
+      await pumpRealApp(tester);
+
+      await tester.tap(find.text('开始入睡').first);
       await tester.pumpAndSettle();
 
-      expect(await database.activeSession(), isNotNull);
+      expect(find.text('准备好休息了吗？'), findsOneWidget, reason: '进的是入睡前那一屏');
+      expect(
+        await database.activeSession(),
+        isNull,
+        reason: '进页面不许写会话行——写库的是页内的「开始睡眠」',
+      );
+
+      // 收起回首页，库里依然什么都没有。
+      await tester.tap(find.text('收起'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('睡眠概览'), findsOneWidget);
+      expect(await database.activeSession(), isNull);
     });
   });
 
@@ -539,7 +555,8 @@ void main() {
       );
       await tester.pumpAndSettle();
       // 应用路由是共享实例，前一个路由测试可能仍停在手动补录页。
-      final router = tester.widget<MaterialApp>(find.byType(MaterialApp))
+      final router = tester
+          .widget<MaterialApp>(find.byType(MaterialApp))
           .routerConfig! as GoRouter;
       router.go('/');
       await tester.pumpAndSettle();

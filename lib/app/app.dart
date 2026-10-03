@@ -19,7 +19,6 @@ import '../features/settings/presentation/insight_config_page.dart';
 import '../features/settings/presentation/settings_page.dart';
 import '../features/settings/presentation/sleep_import_page.dart';
 import '../features/session/presentation/sleep_session_page.dart';
-import '../features/sleep/data/session_repository.dart';
 import '../features/sleep/presentation/sheets/noise_sheet.dart';
 import '../features/stats/presentation/stats_page.dart';
 import 'app_shell.dart';
@@ -130,13 +129,13 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
     showNoiseSheet(context);
   }
 
-  /// 开始一个会话：写入会话行，再推入会话页。
+  /// 打开会话页。**它不写库。**
   ///
-  /// 先 `await` 落库再推入——会话页读的是 `activeSessionProvider`，行还没写完就
-  /// 推过去，会先闪一下「没有正在进行的睡眠」再跳变。本地写够快，这点等待值。
-  Future<void> _startSleep(BuildContext context, WidgetRef ref) async {
-    await ref.read(sessionRepositoryProvider).start();
-    if (!context.mounted) return;
+  /// v3.3 起记录起点在页内那颗「开始睡眠」上（原型 `SleepView` 就是这个语义：
+  /// 进睡眠模式只是进了一屏睡前设定）。这里只负责推入——没有会话行时那一页显示
+  /// 入睡前态，用户按下「开始睡眠」才写行、翻到进行中态。于是「点进来看一眼又退出」
+  /// 不会留下一段并不存在的睡眠。
+  void _openSession(BuildContext context) {
     context.push('/sleep/session');
   }
 
@@ -164,7 +163,7 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
                   ringHasPlayed: _ringHasPlayed,
                   onRingConsumed: () => _ringHasPlayed = true,
                   onOpenNoise: _openNoiseSheet,
-                  onStartSleep: () => _startSleep(context, ref),
+                  onStartSleep: () => _openSession(context),
                 ),
               ),
             ),
