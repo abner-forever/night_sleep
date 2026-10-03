@@ -32,6 +32,13 @@
 没有氛围渐变。所以每个 push 页面都走 `core/widgets/subpage.dart` 的 `Subpage`。
 底部弹层同理，材质祖先由 `AppSheet` 提供。
 
+**开屏页挂在 `AppScaffold` 的 `Stack` 最上层，不是路由**（`splash_screen.dart`）。冷启动约
+1.6 秒，`_splashFinished` 是 State 字段而非 provider——`AppScaffold` 是 `/` 的 builder，push
+子页时 State 被复用，来回跳转不会让它重播。收起条件是「时间轴播完 **且** `settings` 已读到
+第一帧」（判据是 `AsyncValue.isLoading` 为假，成功与失败都算结论），否则会「先闪一下主界面
+再跳出引导」。因为它在 `Stack` 里，任何 push 在其之上的路由都会盖住它——只在冷启动停在 `/`
+时生效，将来若加路由恢复或 deep link 要改挂 `MaterialApp.builder`。
+
 ## 数据库
 
 Drift + SQLite，schema v3（`schemaVersion => 3`，`onUpgrade` 在 `app_database.dart`）。
@@ -56,6 +63,11 @@ Drift + SQLite，schema v3（`schemaVersion => 3`，`onUpgrade` 在 `app_databas
 
 - 宽屏断点 `kWideLayoutBreakpoint = 768`，定义在 `core/theme/app_tokens.dart`，路由外壳与
   二级页共用同一个值，不要另写常量。
+- **设置的信息架构（v3.5）**：根页只做导航（常用 / 数据与智能 / 数据与隐私 / 关于），外观与
+  「睡眠目标 + 提醒 + 声音检测」各自一个二级页。提醒的读写与调度行为与搬家前**完全一致**；
+  两条产品红线逐字保留（「尚未接入录音，开关只保存偏好」、权限被拒的「去系统设置」行）。
+  下拉选择器统一走 `core/widgets/app_menu_field.dart` 的 `AppMenuField`（菜单由
+  `PopupMenuButton` 渲染到应用 overlay，树内会被 `GlassSurface` 的 `ClipRRect` 裁掉）。
 - `AppHaptics` 在 macOS 桌面 / Web 上是 no-op，与原型 guarded `try/catch` 一致。
 - 助眠音效是**实时合成**的（`noise_synth.dart`：22050Hz、20 秒循环、等功率接缝交叉淡化、
   按种类固定种子），不打包任何第三方音频。
