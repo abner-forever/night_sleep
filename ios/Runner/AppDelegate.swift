@@ -14,10 +14,11 @@ import UserNotifications
     // 没有 delegate 时，应用在前台收到的本地通知会被系统压掉——
     // 表现为「提醒到点了却什么都没出现」。
     //
-    // 用可选转换而不是 `= self`：iOS 上 `FlutterAppDelegate` 确实实现了
-    // `UNUserNotificationCenterDelegate`，所以 `self` 转换后非 nil，不是「可能失败」。
+    // 直接赋 `self`：iOS 上 `FlutterAppDelegate` 确实实现了
+    // `UNUserNotificationCenterDelegate`，转换恒成立——写成 `as?` 会招来
+    // “conditional cast always succeeds” 警告。
     // 前台展示通知正是靠这一行，不要删。
-    UNUserNotificationCenter.current().delegate = self as? UNUserNotificationCenterDelegate
+    UNUserNotificationCenter.current().delegate = self
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
