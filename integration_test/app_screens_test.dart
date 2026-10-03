@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:night_sleep/core/widgets/subpage.dart';
 import 'package:night_sleep/features/session/presentation/widgets/hold_to_finish_button.dart';
+import 'package:night_sleep/features/sleep/presentation/sheets/sound_card.dart';
 import 'package:night_sleep/main.dart' as app;
 
 /// Walks every screen and pauses on each one so a host-side `simctl` loop can
@@ -367,7 +368,21 @@ void main() {
       await tapText(tester, '详情');
       await Future<void>.delayed(hold);
       // Expanded, so the waveform and transcript are on screen too.
-      await tapText(tester, '打鼾');
+      //
+      // **按控件点，不按文字点。** 展开之后「打鼾」会同时出现在两个地方：卡片标题
+      // 与标注选项里的那一项。`find.text('打鼾')` 因此会命中两个 widget，
+      // `tester.tap` 直接抛「Found 2 widgets」。这里要的是展开那张卡，所以认
+      // `SoundCard` 本身。
+      final card = find.byType(SoundCard).first;
+      if (card.evaluate().isEmpty) {
+        await tester.scrollUntilVisible(
+          card,
+          240,
+          scrollable: find.byType(Scrollable).first,
+          maxScrolls: 12,
+        );
+      }
+      await tester.tap(card);
       await Future<void>.delayed(hold);
       await goBack(tester);
     });

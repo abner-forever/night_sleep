@@ -1,9 +1,13 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/database/app_database.dart' as db;
+import '../domain/clip_journal.dart';
 import '../domain/sleep_quality.dart';
 import '../domain/sleep_session.dart';
+import '../domain/sound_event.dart';
 
 /// 活跃睡眠会话的读写。
 ///
@@ -76,6 +80,7 @@ class SessionRepository {
     Object? noiseId = _unset,
     double? noiseVolume,
     Object? sceneId = _unset,
+    List<ClipDraft>? clipJournal,
   }) async {
     await _db.updateActiveSession(
       db.ActiveSessionsCompanion(
@@ -91,6 +96,9 @@ class SessionRepository {
         sceneId: identical(sceneId, _unset)
             ? const Value.absent()
             : Value(sceneId as String?),
+        clipJournal: clipJournal == null
+            ? const Value.absent()
+            : Value(encodeClipJournal(clipJournal)),
       ),
     );
   }
@@ -121,6 +129,27 @@ class SessionRepository {
     final id = endAt.microsecondsSinceEpoch.toString();
     final stamp = DateTime.now().toUtc();
 
+    // 整晚录到的片段就在会话行里躺着（`clipJournal`），这里把它们落成真正的
+    // `SoundClips` 行——**必须和记录行在同一个事务里**，也必须**在删会话行之前**
+    // 读出来，否则清单随那一行一起消失，整晚录音白录。
+    final clips = [
+      for (final draft in session.clipJournal)
+        db.SoundClipsCompanion.insert(
+          id: draft.id,
+          recordId: id,
+          // 中性的占位值：这一段确实有声响，但还不能说是鼾声还是梦话。
+          // 界面据此把未标注的显示成「待标注」，而不是「杂音」。
+          kind: SoundEventKind.noise.id,
+          startedAtUtc: draft.startedAtUtc,
+          durationMs: draft.durationMs,
+          localUri: Value(draft.localUri),
+          waveformEnvelope: Value(
+            draft.envelope == null ? null : jsonEncode(draft.envelope),
+          ),
+          source: const Value('recording'),
+        ),
+    ];
+
     await _db.transaction(() async {
       await _db.saveRecord(
         db.SleepRecordsCompanion.insert(
@@ -134,6 +163,7 @@ class SessionRepository {
           updatedAt: stamp,
         ),
       );
+      await _db.insertClips(clips);
       await _db.deleteActiveSession();
     });
   }
@@ -154,6 +184,7 @@ class SessionRepository {
         sceneId: row.sceneId,
         noiseId: row.noiseId,
         noiseVolume: row.noiseVolume,
+        clipJournal: decodeClipJournal(row.clipJournal),
         createdAtUtc: row.createdAt.toUtc(),
       );
 

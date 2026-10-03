@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/database/app_database.dart';
 import '../core/platform/reminders.dart';
+import 'night_recording.dart';
 import 'noise_session.dart';
 import 'reminder_sync.dart';
 
@@ -19,6 +20,18 @@ import 'reminder_sync.dart';
 /// 页面上，是用一个装饰性的失败换掉了整个反馈。分开 try 是因为失败模式互不相关：
 /// 停不掉声音最坏多响一会儿，撤不掉通知最坏多响一次（9003 是一次性通知，响过就没了）。
 Future<void> teardownSession(WidgetRef ref) async {
+  // **录音排在白噪音之前。** 停白噪音会让 `_onNoiseChanged` 叫醒录音控制器去
+  // 重新对账，而对账时会重新读一次会话行——记录已经落库、会话行已经删掉，所以
+  // 它得到的是「没有会话」，于是把录音停掉而不是起起来。顺序反过来的话，收尾
+  // 这一步会先把白噪音停掉、再一边停录音一边被对账重新起一次。
+  try {
+    await ref
+        .read(nightRecordingControllerProvider.notifier)
+        .stopForSessionEnd();
+  } catch (_) {
+    // 录音停不掉不影响下面的白噪音、闹钟与跳转。
+  }
+
   try {
     await ref.read(noiseSessionControllerProvider).stop();
   } catch (_) {

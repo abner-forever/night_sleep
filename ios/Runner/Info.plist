@@ -26,6 +26,8 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>用于在夜间录制环境声音。录音片段仅保存在本机，不会上传；可在设置中随时删除，超过保留期限的片段会自动清理。</string>
 	<key>NSMotionUsageDescription</key>
 	<string>用于罗盘感知手机转动、倾斜和磁北方位，数据只在本机处理。</string>
 	<key>UIApplicationSceneManifest</key>
@@ -51,6 +53,10 @@
 	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

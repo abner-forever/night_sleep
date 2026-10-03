@@ -427,7 +427,10 @@ void main() {
     expect(find.text('07:00 起床闹钟'), findsOneWidget);
     expect(find.text('已设置'), findsOneWidget, reason: '右侧只写状态，不再是开关');
     expect(find.text('鼾声/梦话记录'), findsOneWidget);
-    expect(find.text('尚未接入录音，开关只保存偏好。'), findsOneWidget);
+    // 从前这里钉的是「尚未接入录音，开关只保存偏好」。plan B 落地后那句话成了
+    // 一句假话（偏差 #7 作废），所以反过来钉：它**必须不在**。
+    expect(find.text('尚未接入录音，开关只保存偏好。'), findsNothing,
+        reason: '录音已经接入了，留着这句话就是让应用撒谎');
 
     // 没在放音 → 没有白噪音行（原型 `{selectedNoise && …}`）。
     expect(find.text('白噪音'), findsNothing);
@@ -438,7 +441,7 @@ void main() {
     expect(find.text('15m'), findsNothing);
   });
 
-  testWidgets('鼾声/梦话开关带上「尚未接入录音」的说明（plan A）', (tester) async {
+  testWidgets('鼾声那一行写的是录音的真实状态，不是一句占位说明', (tester) async {
     final start = DateTime(2026, 8, 30, 23, 14);
     await pumpSession(
       tester,
@@ -446,8 +449,11 @@ void main() {
       now: start.add(const Duration(hours: 1)),
     );
 
-    // 开关常驻，标注也必须跟着常驻。
-    expect(find.textContaining('尚未接入录音'), findsOneWidget);
+    // 开关常驻，状态说明也必须跟着常驻——但它必须是**真的**。
+    expect(find.textContaining('尚未接入录音'), findsNothing,
+        reason: '偏差 #7 在 plan B 落地后作废，这句假话不许再出现');
+    expect(find.textContaining('有声响的片段'), findsOneWidget,
+        reason: '说清楚它录的是「有声响的片段」，不是「鼾声」——没有自动识别');
   });
 
   testWidgets('拨动鼾声开关会写回设置', (tester) async {

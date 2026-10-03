@@ -76,6 +76,18 @@ class SoundClips extends Table {
       text().withDefault(const Constant('pending'))();
   TextColumn get source => text().withDefault(const Constant('recording'))();
 
+  /// 实测包络：归一化到 0–1、重采样到 `SoundClip.waveformBarCount` 条，存成 JSON 数组。
+  ///
+  /// 落库而不是读取时解码文件，因为片段被保留期限裁掉之后 `localUri` 就空了，
+  /// 而**形状仍然是真的**——那张卡理应继续画得出波形，只是不再能回放。
+  TextColumn get waveformEnvelope => text().nullable()();
+
+  /// 用户听过并标注过这一段的时刻；`null` = 还没标过。
+  ///
+  /// 少这一列就没法把「用户标成了杂音」与「还没标过」分开：两者在 [kind] 里
+  /// 都是 `'noise'`。界面据此把未标注的片段显示成「待标注」而不是「杂音」。
+  DateTimeColumn get labeledAtUtc => dateTime().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -141,6 +153,15 @@ class ActiveSessions extends Table {
 
   DateTimeColumn get createdAt => dateTime()();
 
+  /// 进行中会话已经录到的片段清单，JSON 数组；没有则为 `null`。
+  ///
+  /// 片段必须在会话结束**之前**就有地方待着：`SoundClips.recordId` 是指向
+  /// `SleepRecords` 的外键，而记录行要等「结束睡眠」才写。攒在内存里的话，
+  /// App 被杀就等于整晚录音全丢，而这一行会话是活下来的——用户重启后照常能
+  /// 结束这一晚。所以清单跟着会话行走：每录完一段更新一次，结束时在同一个
+  /// 事务里落成真正的片段行，然后随这一行一起消失。
+  TextColumn get clipJournal => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -194,7 +215,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -253,6 +274,28 @@ class AppDatabase extends _$AppDatabase {
             // 只加一列可空列，不重建表：SQLite 的 `ALTER TABLE ADD COLUMN` 支持
             // 可空列原地添加，与 v4 那次「改可空性必须重建」是两回事。
             await m.addColumn(activeSessions, activeSessions.sceneId);
+          }
+          // v6 的三列都是可空列，`ADD COLUMN` 原地加，不重建表。**两条下界必须
+          // 分开写，它们是两个不同的理由：**
+          //
+          // `sound_clips` 从 v2 那次 `createTable` 之后**再没被重建过**，所以
+          // 停在 v2 / v3 / v4 / v5 的库里这张表都是老样子，四者都要补列——
+          // 只有 `from < 2` 排除在外：那一支的 `createTable(soundClips)` 用的是
+          // **当前**表定义，一建出来就带着这两列，再加就是 `duplicate column name`。
+          //
+          // `active_sessions` 相反：它是 v4 才有的表，且 `from < 4` 那一支的
+          // `createTable` 同样用当前定义。所以只有**真正停在 v4 或 v5** 的库需要补。
+          //
+          // 这里踩过一次：最初写成 `from >= 5 && from < 6`，那会让 v4 的库升级时
+          // 整块跳过——而 v4→v5 那段只加 `scene_id`，没有任何一段会补上这三列，
+          // 结果是升上来的库里根本没有这些列。`test/schema_migration_test.dart`
+          // 的 `v4 → v6` 与 `v2 → v6` 两条就是钉这个的。
+          if (from >= 2 && from < 6) {
+            await m.addColumn(soundClips, soundClips.waveformEnvelope);
+            await m.addColumn(soundClips, soundClips.labeledAtUtc);
+          }
+          if (from >= 4 && from < 6) {
+            await m.addColumn(activeSessions, activeSessions.clipJournal);
           }
         },
         beforeOpen: (details) async {
@@ -337,6 +380,60 @@ class AppDatabase extends _$AppDatabase {
       grouped.putIfAbsent(row.recordId, () => []).add(row);
     }
     return grouped;
+  }
+
+  /// 片段表的变更流。`sleepEntriesProvider` 订阅它，否则新写入的片段不会让
+  /// 详情页重读——那条 provider 原本只 watch 记录表。
+  Stream<List<SoundClip>> watchAllClips() {
+    return (select(soundClips)
+          ..orderBy([(table) => OrderingTerm.asc(table.startedAtUtc)]))
+        .watch();
+  }
+
+  /// 会话结束时把整晚的片段一次写进去。调用方负责包在事务里——记录行与片段行
+  /// 必须同生共死。
+  Future<void> insertClips(List<SoundClipsCompanion> rows) async {
+    if (rows.isEmpty) return;
+    await batch((b) => b.insertAll(soundClips, rows));
+  }
+
+  /// 用户听完之后标注一段。`kind` 与 `labeledAtUtc` 必须一起写：
+  /// 只改 `kind` 会让「标成了杂音」与「还没标过」再也分不开。
+  Future<void> updateClipLabel(
+    String clipId, {
+    required String kind,
+    required DateTime labeledAtUtc,
+  }) async {
+    await (update(soundClips)..where((table) => table.id.equals(clipId))).write(
+      SoundClipsCompanion(
+        kind: Value(kind),
+        labeledAtUtc: Value(labeledAtUtc),
+      ),
+    );
+  }
+
+  /// 全部真实录音的片段（不含演示数据），供保留期限清理与占用统计用。
+  Future<List<SoundClip>> allRecordingClips() {
+    return (select(soundClips)
+          ..where((table) => table.source.equals('recording')))
+        .get();
+  }
+
+  /// 把指定片段的文件指针清空，**行本身保留**。
+  ///
+  /// 这正是 `SoundClips.localUri` 列注释早就写好的语义：音频被裁掉之后事件记录
+  /// 还在，详情页如实显示「这段录音未保留在本地」，而不是那个片段凭空消失。
+  Future<void> clearClipLocalUris(List<String> clipIds) async {
+    if (clipIds.isEmpty) return;
+    await (update(soundClips)..where((table) => table.id.isIn(clipIds)))
+        .write(const SoundClipsCompanion(localUri: Value(null)));
+  }
+
+  /// 「删除全部录音」：删掉全部真实录音的片段行（演示片段随演示数据走）。
+  Future<void> deleteAllRecordingClips() async {
+    await (delete(soundClips)
+          ..where((table) => table.source.equals('recording')))
+        .go();
   }
 
   // ── Insights ──────────────────────────────────────────────────────────────
@@ -442,6 +539,16 @@ final databaseProvider = Provider<AppDatabase>((ref) {
 
 final recordsProvider = StreamProvider<List<SleepRecord>>((ref) {
   return ref.watch(databaseProvider).watchAllRecords();
+});
+
+/// 片段表的变更流。
+///
+/// `sleepEntriesProvider` **确实订阅了它**（`sleep_repository.dart`）。记录表与片段表
+/// 是两张表：只订阅记录表的话，标注一段录音、裁掉超期录音、或会话结束时写入片段，
+/// 都不会让首页与统计重读，界面会挂着旧数据。调用方那几处 `ref.invalidate` 是第二道
+/// 保险，不是唯一的一道。
+final clipsProvider = StreamProvider<List<SoundClip>>((ref) {
+  return ref.watch(databaseProvider).watchAllClips();
 });
 
 final recordProvider = FutureProvider.family<SleepRecord?, String>((ref, id) {

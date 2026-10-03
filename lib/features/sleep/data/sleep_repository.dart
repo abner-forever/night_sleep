@@ -93,12 +93,13 @@ class SleepRepository {
               analysis: clip.analysis,
               analysisStatus: SoundAnalysisStatus.fromId(clip.analysisStatus),
               source: clip.source,
-              // Only demo rows get a shape. A real clip's envelope must come
-              // from decoding its file, and inventing one for it would be
-              // presenting a measurement that was never taken.
+              // 演示行整个是合成的（转写与睡眠阶段同样是示例），包络照旧现算。
+              // 真实行的包络是采集时实测的，存在列里；读不到或读坏了就是 null，
+              // 界面画等高轨道，绝不给它编一个形状。
               waveformEnvelope: clip.source == 'demo'
                   ? SoundClip.demoWaveformEnvelope(clip.id, kind)
-                  : null,
+                  : _decodeEnvelope(clip.waveformEnvelope),
+              labeledAtUtc: clip.labeledAtUtc?.toUtc(),
             ),
       ],
       insight: insightRow == null
@@ -239,13 +240,41 @@ class SleepRepository {
   Future<void> deleteAllUserData() => _db.deleteAllUserData();
 }
 
+/// 把 `sound_clips.waveform_envelope` 里的 JSON 数组读成包络。
+///
+/// **读不出来就是 `null`，不是抛异常、也不是补一个形状。** 这一列有可能是旧版本
+/// 留下的、写了一半的、或者被手工改坏的；一行坏数据不该让整晚的睡眠详情打不开，
+/// 而补一个编出来的包络等于把「没测量」说成「测量过了」。
+List<double>? _decodeEnvelope(String? raw) {
+  if (raw == null || raw.isEmpty) return null;
+  Object? decoded;
+  try {
+    decoded = jsonDecode(raw);
+  } on FormatException {
+    return null;
+  }
+  if (decoded is! List) return null;
+  final bars = <double>[];
+  for (final bar in decoded) {
+    if (bar is! num) return null;
+    bars.add(bar.toDouble());
+  }
+  return bars.isEmpty ? null : bars;
+}
+
 final sleepRepositoryProvider = Provider<SleepRepository>((ref) {
   return SleepRepository(ref.watch(db.databaseProvider));
 });
 
 /// Every entry, newest first. The single source the UI reads from.
 final sleepEntriesProvider = FutureProvider<List<SleepEntry>>((ref) async {
-  // Re-read whenever the records table changes.
+  // 记录表变了要重读。
   ref.watch(db.recordsProvider);
+  // **片段表变了也要重读。** 它是另一张表：标注一段录音（`updateClipLabel`）、
+  // 保留期限裁掉超期录音（`clearClipLocalUris`）、「删除全部录音」
+  // （`deleteAllRecordingClips`）都不碰 `sleep_records`，只 watch 记录表的话，
+  // 这几件事做完首页与详情页还挂着旧数据。调用方那几处 `ref.invalidate` 是第二道
+  // 保险，不该是唯一的一道。
+  ref.watch(db.clipsProvider);
   return ref.watch(sleepRepositoryProvider).loadAll();
 });

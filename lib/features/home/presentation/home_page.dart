@@ -554,9 +554,12 @@ class _HeroCard extends StatelessWidget {
                               const SizedBox(width: 8),
                               Flexible(
                                 child: Text(
+                                  // 「全程安静」把「录过、没听到」与「根本没录」
+                                  // 说成同一件事，等于替用户下一个我们没有依据的
+                                  // 结论。零片段就只说零片段。
                                   entry.hasSoundEvents
                                       ? '${entry.soundClips.length}条声音'
-                                      : '全程安静',
+                                      : '无声音片段',
                                   style: TextStyle(
                                       fontSize: 12, color: tokens.textMuted),
                                 ),

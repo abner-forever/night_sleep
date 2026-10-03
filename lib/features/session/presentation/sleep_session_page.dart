@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/app_shell.dart';
 import '../../../app/app_toast.dart';
+import '../../../app/night_recording.dart';
 import '../../../app/noise_session.dart';
 import '../../../app/reminder_permission.dart';
 import '../../../app/reminder_sync.dart';
@@ -221,6 +222,16 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage> {
       return;
     }
 
+    // `syncAllReminders` 是平台调用，回到这里时页面可能已经被 pop 掉了。
+    // 少了这道守卫，下面那句 `ref.read` 会在一个已释放的 `ConsumerState` 上抛错，
+    // 把一次「用户自己退出去」变成一条未处理异常。
+    if (!mounted) return;
+
+    // 会话行已经写下去了，现在才轮到录音。**顺序不能反**：录音控制器要先能读到
+    // 那一行（它据此判断「有没有会话」，以及有没有白噪音挡着），才谈得上开始录。
+    // 正在试听的白噪音照样会挡住录音——这一条由控制器自己按 `isPlaying` 判断。
+    await ref.read(nightRecordingControllerProvider.notifier).syncWithSession();
+
     if (!mounted) return;
     AppHaptics.success();
     // 不 pop、不 push：会话行一写下去，`activeSessionProvider` 自己把本页翻到
@@ -285,6 +296,15 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage> {
     final quality = await showQualityRatingSheet(context);
     if (!mounted) return;
 
+    // **录音必须在 `finish()` 之前收尾，而且要等它把最后一次清单写完。**
+    // `finish()` 会在同一个事务里读这一行会话的 `clipJournal` 来落片段行；这时候
+    // 还挂着的那一段（往往就是整晚唯一的一段）如果没先定案，就永远进不了库。
+    // `stopForSessionEnd` 内部已经包含了「等清单落库」那一步。
+    await ref
+        .read(nightRecordingControllerProvider.notifier)
+        .stopForSessionEnd();
+    if (!mounted) return;
+
     try {
       await ref
           .read(sessionRepositoryProvider)
@@ -308,6 +328,11 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage> {
 
   /// 「丢弃这次会话」：不写记录，只删会话行。
   Future<void> _discard(BuildContext sheetContext) async {
+    // 录音先停、已录到的文件先删。**排在 `discard()` 之前**：会话行还在的时候
+    // 才读得到那份片段清单，行一删就再也说不清哪些文件是这一晚的了。
+    await ref
+        .read(nightRecordingControllerProvider.notifier)
+        .discardRecordings();
     await ref.read(sessionRepositoryProvider).discard();
     // 与结束路径**同一套收尾**（[teardownSession]）。丢弃删的是同一行会话，而
     // 9003 是设定区那个闹钟开关排的、那次调用同时让 9002 让了位：这里若不重排，

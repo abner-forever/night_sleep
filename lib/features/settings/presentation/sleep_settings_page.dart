@@ -3,21 +3,47 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/app.dart';
+import '../../../app/app_toast.dart';
+import '../../../app/night_recording.dart';
 import '../../../app/reminder_permission.dart';
 import '../../../app/reminder_sync.dart';
 import '../../../core/database/app_database.dart';
+import '../../../core/platform/app_settings.dart';
 import '../../../core/platform/reminders.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_basics.dart';
 import '../../../core/widgets/app_icons.dart';
+import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/glass_surface.dart';
 import '../../../core/widgets/ios_controls.dart';
 import '../../../core/widgets/subpage.dart';
 import '../../../core/widgets/wheel_picker.dart';
+import '../../sleep/data/clip_store.dart';
+import '../../sleep/data/night_recorder.dart';
+import '../../sleep/data/sleep_repository.dart';
+import '../data/app_cache.dart';
 import 'settings_page.dart';
 import 'widgets/goal_slider.dart';
 import 'widgets/settings_footnote.dart';
+
+/// 麦克风权限最近一次被拒的观测。
+///
+/// **不能像 [reminderPermissionProvider] 那样在 build 时查询**：`record` 的
+/// `hasPermission()` 在 iOS / macOS 上**本身就会弹权限框**，拿它当纯查询用，一进
+/// 设置页就会向用户要权限。所以这里没有可读的权限状态，只在用户拨开关被拒之后记
+/// 一笔，好把「去系统设置」那一行显示出来。
+final microphonePermissionDeniedProvider = StateProvider<bool>((ref) => false);
+
+/// 「声音检测」区块的当前录音占用读数。
+///
+/// 单独一个 provider 而不是塞进页面 State：读不到占用要如实显示「读不到」
+/// （`AsyncError`），删完全部录音之后 `invalidate` 一下就能重新量——加载 / 错误 /
+/// 数据三态由 provider 天然表达。`autoDispose` 是为了每次进这一页都重新量一次，
+/// 而不是把上次进页面时的读数一直缓存着。
+final recordingUsageProvider = FutureProvider.autoDispose<int>((ref) {
+  return ref.watch(clipFileStoreProvider).totalBytes();
+});
 
 /// 睡眠设置（`/settings/sleep`）。
 ///
@@ -92,6 +118,83 @@ class SleepSettingsPage extends ConsumerWidget {
     );
   }
 
+  /// 切换夜间声音录制开关。
+  ///
+  /// 与提醒开关同一套结构（开启前先申请、被拒则不落库、让开关自己弹回去），但走的
+  /// 是**另一条权限链**：录音的闸口是麦克风，不是通知。被拒时把
+  /// [microphonePermissionDeniedProvider] 置真，下面据此显示「去系统设置」那一行。
+  ///
+  /// **不复用 `reminders.dart` 的 `openSystemSettings()`**：那个跳的是通知设置页，
+  /// 到不了麦克风。
+  Future<void> _setSoundRecording(
+    BuildContext context,
+    WidgetRef ref, {
+    required bool value,
+  }) async {
+    if (value) {
+      final granted = await ref.read(nightRecorderProvider).ensurePermission();
+      if (!granted) {
+        if (!context.mounted) return;
+        ref.read(microphonePermissionDeniedProvider.notifier).state = true;
+        ref.read(toastProvider.notifier).show(
+              '没有获得麦克风权限，夜间声音录制未开启。可在系统设置中允许「夜深」使用麦克风。',
+            );
+        return;
+      }
+      // 拿到权限了就把上一次的拒绝提示撤掉。
+      ref.read(microphonePermissionDeniedProvider.notifier).state = false;
+    }
+
+    await _update(
+      ref,
+      AppSettingsCompanion(soundRecordingEnabled: Value(value)),
+    );
+    // **写完必须让录音重新对齐。** 用户完全可能在会话进行中（收起会话页）跑到这里
+    // 把开关关掉；不叫这一声，麦克风会一直录到这一晚结束——一个「已经关掉却还在录」
+    // 的麦克风，是这一整块最不能有的状态。打开同理，否则要等到下一次白噪音变化或
+    // 重启才生效。
+    await ref.read(nightRecordingControllerProvider.notifier).refresh();
+  }
+
+  /// 「删除全部录音」：二次确认后删文件、删片段行，并让界面重读。
+  ///
+  /// 只删 `source = 'recording'` 的片段行（演示片段随演示数据走），睡眠记录本身
+  /// 不受影响。删完 `invalidate` 两处：占用读数要重新量，详情页读的
+  /// `sleepEntriesProvider` 要重新拉——片段表与记录表是两张表，不失效的话删完还挂着
+  /// 旧片段。
+  Future<void> _deleteAllRecordings(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final confirmed = await showConfirmDialog(
+      context,
+      title: '删除全部录音？',
+      message: '已录到的声音片段文件会被永久删除，此操作无法撤销；睡眠记录与睡眠阶段不受影响。',
+      confirmLabel: '删除',
+      destructive: true,
+    );
+    if (confirmed != true) return;
+
+    try {
+      await ref.read(clipFileStoreProvider).deleteAll();
+      await ref.read(databaseProvider).deleteAllRecordingClips();
+      // **当前会话还没入库的那几条也要一起清指针。** 它们的文件刚被删掉，但
+      // `deleteAllRecordingClips()` 只动库里的行——会话行里那份清单还指着已经不存在
+      // 的文件。不清的话，这一晚结束时写进的片段行会声称音频还在，用户点回放才发现
+      // 文件没了。
+      await ref
+          .read(nightRecordingControllerProvider.notifier)
+          .forgetRecordings();
+      ref.invalidate(recordingUsageProvider);
+      ref.invalidate(sleepEntriesProvider);
+      if (!context.mounted) return;
+      ref.read(toastProvider.notifier).show('已删除全部录音片段。');
+    } on Object {
+      if (!context.mounted) return;
+      ref.read(toastProvider.notifier).show('删除失败，请稍后再试。');
+    }
+  }
+
   Future<void> _pickReminderTime(
     BuildContext context,
     WidgetRef ref, {
@@ -150,6 +253,8 @@ class SleepSettingsPage extends ConsumerWidget {
         settings?.wakeReminderMinutes ?? SettingsPage.defaultWakeMinutes;
     final soundEnabled = settings?.soundRecordingEnabled ?? false;
     final permission = ref.watch(reminderPermissionProvider).valueOrNull;
+    final micDenied = ref.watch(microphonePermissionDeniedProvider);
+    final usage = ref.watch(recordingUsageProvider);
 
     return Subpage(
       title: '睡眠设置',
@@ -456,11 +561,12 @@ class SleepSettingsPage extends ConsumerWidget {
                           ),
                         ),
                         const SizedBox(height: 2),
-                        // 新版原型这里写的是「检测打鼾、梦话并生成洞察」——那是我们
-                        // **没有的能力**（录音仍未接入，偏差 #7 是产品红线）。照抄
-                        // 就等于让应用当场说谎，所以维持既有说法。
+                        // 与真实能力一致：录到的是「有声响的片段」，**不做任何自动
+                        // 识别**，标注由用户听完之后自己做。新版原型那句「检测打鼾、
+                        // 梦话并生成洞察」是我们没有的能力，照抄就是让应用当场说谎
+                        // （产品红线，规格 §三 / §九）。
                         Text(
-                          '尚未接入录音，开关只保存偏好',
+                          '录下有声响的片段，由你听过之后自己标注',
                           style:
                               TextStyle(fontSize: 12, color: tokens.textMuted),
                         ),
@@ -470,9 +576,69 @@ class SleepSettingsPage extends ConsumerWidget {
                   IosToggle(
                     value: soundEnabled,
                     semanticLabel: '夜间声音录制',
-                    onChanged: (value) => _update(
-                      ref,
-                      AppSettingsCompanion(soundRecordingEnabled: Value(value)),
+                    onChanged: (value) =>
+                        _setSoundRecording(context, ref, value: value),
+                  ),
+                ],
+              ),
+            ),
+            // 占用读数：读不到就如实说读不到，不显示一个编出来的「0 B」。
+            IosListItem(
+              haptic: false,
+              child: Row(
+                children: [
+                  ListIconBadge(
+                    background: tokens.bgMuted,
+                    size: 36,
+                    child: AppIcons.wave(
+                        size: 17, color: tokens.textMuted, strokeWidth: 1.7),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '当前录音占用',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: tokens.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _usageSubtitle(usage),
+                          style:
+                              TextStyle(fontSize: 12, color: tokens.textMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            IosListItem(
+              onTap: () => _deleteAllRecordings(context, ref),
+              child: Row(
+                children: [
+                  ListIconBadge(
+                    // 令牌里只有 danger、没有 dangerSoft，低透明度底色按既有做法现算。
+                    background: tokens.danger.withValues(alpha: 0.12),
+                    size: 36,
+                    child: AppIcons.trash(
+                        size: 17, color: tokens.danger, strokeWidth: 1.8),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      '删除全部录音',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: tokens.danger,
+                      ),
                     ),
                   ),
                 ],
@@ -480,7 +646,54 @@ class SleepSettingsPage extends ConsumerWidget {
             ),
           ],
         ),
+        // **只在真的被拒过之后显示。** `record` 的 `hasPermission()` 本身会弹权限框，
+        // 没法当纯查询用，所以这里没有可读的权限状态，只有用户拨开关被拒这一条触发点。
+        if (micDenied) ...[
+          const SizedBox(height: 10),
+          IosListGroup(
+            onTap: () => ref.read(appSettingsLauncherProvider).open(),
+            semanticLabel: '去系统设置开启麦克风权限',
+            children: [
+              IosListItem(
+                haptic: false,
+                child: Row(
+                  children: [
+                    AppIcons.snore(
+                        size: 16, color: tokens.textMuted, strokeWidth: 1.8),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        '未获得麦克风权限。夜间声音录制需要麦克风才能录下声响，'
+                        '请到这里允许「夜深」使用麦克风。',
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.5,
+                          color: tokens.textMuted,
+                        ),
+                      ),
+                    ),
+                    AppIcons.chevronRight(
+                        size: 16, color: tokens.borderStrong, strokeWidth: 2),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
       ],
+    );
+  }
+
+  /// 占用读数的那行副标题。
+  ///
+  /// 三态都必须来自真实的读取结果：加载中说「正在计算」，**读不到就说读不到**，
+  /// 绝不用一个编出来的「0 B」把失败伪装成「已经清干净了」（与「清除缓存」同一条规则）。
+  static String _usageSubtitle(AsyncValue<int> usage) {
+    return usage.when(
+      loading: () => '正在计算占用…',
+      error: (_, __) => '暂时读不到占用',
+      data: (bytes) =>
+          bytes == 0 ? '还没有录到片段' : '已录片段占用的空间 · ${formatCacheSize(bytes)}',
     );
   }
 }

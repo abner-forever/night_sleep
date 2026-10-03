@@ -116,6 +116,10 @@ class DemoSeed {
                   analysisStatus: Value(clip.analysis == null
                       ? SoundAnalysisStatus.pending.id
                       : SoundAnalysisStatus.analysed.id),
+                  // 演示片段的 kind 是示例数据本身的一部分，等于说是「已经标过的」。
+                  // 不写这一列，整套演示数据会全部显示成「待标注」——那正是
+                  // `labeledAtUtc` 要区分的那件事。
+                  labeledAtUtc: Value(startedAt.toUtc()),
                   source: const Value(AppConfig.demoSource),
                 ),
               );

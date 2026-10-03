@@ -59,6 +59,7 @@ class SoundClip {
     this.analysisStatus = SoundAnalysisStatus.pending,
     this.source = 'recording',
     this.waveformEnvelope,
+    this.labeledAtUtc,
   });
 
   final String id;
@@ -81,18 +82,28 @@ class SoundClip {
 
   /// Normalised 0–1 amplitude per bar, [waveformBarCount] long.
   ///
-  /// **Null for every real recording**, deliberately. A real envelope has to
-  /// come from decoding the file, and painting a rhythm the audio may not have
-  /// is exactly the fabrication the spec forbids — so a real clip without an
-  /// analysed envelope draws neutral bars instead of a shape.
+  /// 两种来源：**真实录音**的包络是采集时实测的（切片时那段振幅序列归一化并
+  /// 重采样），存在 `sound_clips.waveform_envelope` 列里；**演示数据**的包络是
+  /// 合成的，见 [demoWaveformEnvelope]。
   ///
-  /// The one populated case is a demo night: those rows are entirely synthetic
-  /// (their transcripts and hypnograms are too), they are labelled as demo in
-  /// the UI, and they can be cleared in one action. See
-  /// [demoWaveformEnvelope].
+  /// 为 `null` 时界面画等高轨道，不给它编一个形状——「没有测量就不画」这条规则
+  /// 一个字没改，变的只是「真实录音现在有测量了」。包络落库而不是读取时解码文件，
+  /// 是因为片段被保留期限裁掉之后文件就没了，而形状仍然是真的。
   final List<double>? waveformEnvelope;
 
+  /// 用户听过并标注过这一段的时刻；`null` = 还没标过。
+  ///
+  /// 少这一列就没法把「用户标成了杂音」与「还没标过」分开：两者在 [kind] 里
+  /// 都是 [SoundEventKind.noise]。
+  final DateTime? labeledAtUtc;
+
   bool get hasPlayableAudio => localUri != null;
+
+  bool get isLabeled => labeledAtUtc != null;
+
+  /// 卡片上显示的那个词。**未标注不显示「杂音」**——那会把一个中性的占位值
+  /// 说成一个已经做过的判断。
+  String get labelText => isLabeled ? kind.label : '待标注';
 
   Duration get duration => Duration(milliseconds: durationMs);
 

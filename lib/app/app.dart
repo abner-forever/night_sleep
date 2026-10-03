@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,10 +24,13 @@ import '../features/settings/presentation/settings_page.dart';
 import '../features/settings/presentation/sleep_import_page.dart';
 import '../features/settings/presentation/sleep_settings_page.dart';
 import '../features/session/presentation/sleep_session_page.dart';
+import '../features/sleep/data/clip_pruning.dart';
+import '../features/sleep/data/clip_store.dart';
 import '../features/sleep/presentation/sheets/noise_sheet.dart';
 import '../features/stats/presentation/stats_page.dart';
 import 'app_shell.dart';
 import 'app_toast.dart';
+import 'night_recording.dart';
 
 final settingsProvider = StreamProvider<AppSetting>((ref) {
   return ref.watch(databaseProvider).watchSettings();
@@ -146,6 +151,44 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
   /// 于是开屏会在应用跑到一半时**重新冒出来**。今天没有人 invalidate
   /// `settingsProvider`，但那是随时可能被加上的调用。
   bool _settingsSeen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // 冷启动对账：会话可能是**重启之前**开的（`active_sessions` 那一行跨重启存活），
+    // 而进程一被杀，录音早就跟着停了。这里按开关与白噪音重新对齐一次——不这么做的话，
+    // 用户重启一次 App，剩下的半夜就再也不会被录。
+    //
+    // **它不是「假装还在录」**：`syncWithSession` 只负责去真的把录音起起来，起不来
+    // 界面就如实显示停止原因；界面读的始终是录音服务的实际状态，不是偏好值。
+    //
+    // 放在 `addPostFrameCallback` 里而不是直接调：这一步会去读库、甚至申请麦克风，
+    // 不该挡着第一帧。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(
+        ref.read(nightRecordingControllerProvider.notifier).syncWithSession(),
+      );
+      unawaited(_pruneRecordings());
+    });
+  }
+
+  /// 启动时清一次录音：超期的那几晚删文件、置空 `localUri`（行保留），
+  /// 以及删掉那些永远不会入库的孤儿文件。
+  ///
+  /// **两件都不该挡着启动，失败了也不该让应用起不来**——它们是打扫，不是功能。
+  /// 与 `syncWithSession` 并行跑：孤儿清理要分辨「还没入库」与「没人要了」，
+  /// 靠的是它自己去库里读那份会话清单，不依赖对账跑完没有。
+  Future<void> _pruneRecordings() async {
+    try {
+      final database = ref.read(databaseProvider);
+      final files = ref.read(clipFileStoreProvider);
+      await pruneExpiredRecordings(database: database, files: files);
+      await deleteOrphanRecordings(database: database, files: files);
+    } catch (error) {
+      debugPrint('清理录音失败：$error');
+    }
+  }
 
   void _selectTab(AppTab tab) {
     if (tab == ref.read(activeTabProvider)) return;

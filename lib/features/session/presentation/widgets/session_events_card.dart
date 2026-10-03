@@ -4,6 +4,7 @@ import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../app/night_recording.dart';
 import '../../../../app/noise_session.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/platform/reminders.dart';
@@ -11,6 +12,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/app_icons.dart';
 import '../../../../core/widgets/ios_controls.dart';
 import '../../../../core/widgets/wheel_picker.dart';
+import '../../../sleep/data/night_recorder.dart' show NightRecordingState;
 import '../../../sleep/domain/sleep_session.dart';
 import '../night_style.dart';
 
@@ -23,11 +25,12 @@ import '../night_style.dart';
 ///
 /// - **白噪音行**只在真的有声音在放时出现（原型 `{selectedNoise && …}`）；
 /// - **起床闹钟行**只在闹钟开着时出现（原型 `{alarmEnabled && …}`），右侧只写「已设置」；
-/// - **鼾声行**保留开关：原型那里是一个状态点，而状态点没有真实状态可显示——录音还没
-///   接入，画一个「正在聆听」的亮点是在宣称一件没发生的事（偏差 #31，产品红线）。
+/// - **鼾声行**保留开关，副标题改为录音服务的**实际状态**。偏差 #31 当初挡住这颗
+///   状态点，理由是「状态点没有真实状态可显示」；plan B 之后那个理由消失了——
+///   灯只在录音服务确实在录时亮，它现在说的是真话。
 ///
-/// **它不做任何测量。** 起床时间、闹钟开关、鼾声偏好、白噪音音量都是用户自己的
-/// 设定，没有一个数字是从睡眠里推断出来的。
+/// **它不做任何测量。** 片段计数来自录音服务实测到的片段条数；起床时间、闹钟开关、
+/// 鼾声偏好、白噪音音量都是用户自己的设定，没有一个数字是从睡眠里推断出来的。
 class SessionEventsCard extends ConsumerStatefulWidget {
   const SessionEventsCard({
     super.key,
@@ -64,8 +67,33 @@ class _SessionEventsCardState extends ConsumerState<SessionEventsCard> {
     await ref.read(databaseProvider).updateSettings(
           AppSettingsCompanion(soundRecordingEnabled: Value(value)),
         );
+    // 写完之后立刻让录音重新对齐：关掉开关就该当场停录，而不是录到这一晚结束。
+    // 一个「已经关掉却还在录」的麦克风是这一整块最不能有的状态。
+    await ref.read(nightRecordingControllerProvider.notifier).refresh();
     if (!mounted) return;
     setState(() => _recordingEnabled = value);
+  }
+
+  /// 鼾声那一行的副标题：**写录音服务的实际状态，不是偏好值**。
+  ///
+  /// 这行字从前是「尚未接入录音，开关只保存偏好」——plan B 落地后那句话成了假话。
+  /// 换成真实状态之后，界面上的每一个字都对应一件正在发生或确实没有发生的事；
+  /// 尤其是白噪音那段空档必须写出来，否则用户会以为自己整晚都被录着（规格 §六、§十一）。
+  String _recordingSubtitle(NightRecordingController recording) {
+    return switch (recording.status.state) {
+      NightRecordingState.recording => recording.clipCount == 0
+          ? '录音中 · 还没录到有声响的片段'
+          : '录音中 · 已录到 ${recording.clipCount} 段',
+      NightRecordingState.waitingForNoise => '白噪音播放中 · 暂不录音',
+      NightRecordingState.stopped => recording.status.reason ?? '录音已停止。',
+      NightRecordingState.idle => _recordingEnabled
+          // 开关开着却没在录：会话还没起来。与其说一句「已开启」，不如如实说
+          // 它现在没在录。
+          ? '已开启，但现在没有在录。'
+          // 措辞避开「未开启」三个字：这一页另一处状态字用的是它，两句话撞在一起
+          // 会让「哪一行在说哪件事」变得要靠猜。
+          : '没开。打开后会在夜里录下有声响的片段。',
+    };
   }
 
   /// 闹钟那一行的副标题。
@@ -89,6 +117,9 @@ class _SessionEventsCardState extends ConsumerState<SessionEventsCard> {
   Widget build(BuildContext context) {
     final session = widget.session;
     final noise = ref.watch(noiseSessionControllerProvider);
+    // 录音的**实际状态**，不是偏好值。它是 `ChangeNotifierProvider`（不是 drift 流），
+    // 订阅它不会在 widget 测试里留下 pending timer。
+    final recording = ref.watch(nightRecordingControllerProvider);
     final started = session.startAtUtc.toLocal();
     final wake = minutesToClock(session.wakeMinutes);
 
@@ -195,11 +226,15 @@ class _SessionEventsCardState extends ConsumerState<SessionEventsCard> {
             icon: AppIcons.snore(
                 size: 18, color: NightStyle.iconInk, strokeWidth: 1.5),
             title: '鼾声/梦话记录',
-            // plan A 阶段录音还没接入，如实标注。plan B 落地时删掉这句，
-            // 换成真实状态（规格 §六）。这行字是产品红线，一个字都不许改。
-            subtitle: '尚未接入录音，开关只保存偏好。',
+            // 副标题写**录音服务的实际状态**，不是那个偏好值。从前那句
+            // 「尚未接入录音，开关只保存偏好」在 plan B 落地后已经成了假话（偏差 #7
+            // 作废）；现在每一个字都对应一件正在发生或确实没发生的事。
+            subtitle: _recordingSubtitle(recording),
             // 最后一行不画分隔线（原型 `.sleep-event-row:last-child`）。
             isLast: true,
+            // 真在录的时候挂一盏灯。**它只在 `recording` 这一态亮**——一盏写着
+            // 「正在聆听」却什么都没在听的灯，正是偏差 #31 当初要挡的东西。
+            live: recording.status.isRecording,
             trailing: IosToggle(
               value: _recordingEnabled,
               semanticLabel: '鼾声/梦话记录',
@@ -237,7 +272,14 @@ class _EventRow extends StatelessWidget {
     required this.subtitle,
     required this.trailing,
     this.isLast = false,
+    this.live = false,
   });
+
+  /// 真在录的时候挂一盏灯。
+  ///
+  /// **只在录音服务确实处于录音态时为真**，不是把那个开关回显一遍——一盏写着
+  /// 「正在聆听」却什么都没在听的灯，正是偏差 #31 当初要挡的东西。
+  final bool live;
 
   /// 直接给一个 `Widget` 而不是构造器：「开始睡眠」「记录中」那几行本来能写成
   /// `const`，但 `AppIcons.*` 是普通函数、不是常量表达式，硬要留 `const` 就得给
@@ -277,13 +319,29 @@ class _EventRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: NightStyle.textStrong,
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: NightStyle.textStrong,
+                      ),
+                    ),
+                    if (live) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: const BoxDecoration(
+                          color: NightStyle.liveDot,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
                 const SizedBox(height: 3),
                 Text(

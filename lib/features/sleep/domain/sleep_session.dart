@@ -5,6 +5,8 @@
 /// 不是推断出来的。
 library;
 
+import 'clip_journal.dart';
+
 class SleepSession {
   const SleepSession({
     required this.startAtUtc,
@@ -14,6 +16,7 @@ class SleepSession {
     this.sceneId,
     this.noiseId,
     this.noiseVolume = 0.5,
+    this.clipJournal = const [],
     required this.createdAtUtc,
   });
 
@@ -34,6 +37,11 @@ class SleepSession {
   /// 正在播放的助眠音效 id，`null` 表示没选。
   final String? noiseId;
   final double noiseVolume;
+
+  /// 这一晚已经录到的片段。会话结束时它们才落成真正的 `SoundClips` 行——在那之前
+  /// 记录行还不存在，外键指不过去。跟着会话行走是为了让 App 被杀之后录音不丢，
+  /// 见 [ClipDraft] 的注释。
+  final List<ClipDraft> clipJournal;
 
   final DateTime createdAtUtc;
 

@@ -39,8 +39,9 @@ Future<void> showSleepDetailSheet(BuildContext context, SleepEntry entry) {
 /// Everything measured about one night.
 ///
 /// Blocks appear only when they have real content: a night with no hypnogram
-/// shows no stage section, and a night with no recording shows the "全程安静"
-/// state rather than an empty player.
+/// shows no stage section, and a night with no sound clips says so plainly
+/// rather than showing an empty player — and it says **only** that, without
+/// claiming a detection concluded the night was quiet.
 class DetailSheet extends ConsumerStatefulWidget {
   const DetailSheet({super.key, required this.entry});
 
@@ -384,7 +385,7 @@ class _DetailSheetState extends ConsumerState<DetailSheet> {
             Text(
               entry.hasSoundEvents
                   ? '声音记录 · ${entry.soundClips.length}条'
-                  : '声音记录 · 无异常',
+                  : '声音记录 · 无片段',
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
@@ -401,9 +402,26 @@ class _DetailSheetState extends ConsumerState<DetailSheet> {
                         size: 22, color: tokens.textMuted, strokeWidth: 1.5),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Text(
-                        '全程安静，无异常声音',
-                        style: TextStyle(fontSize: 14, color: tokens.textMuted),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // **不下没有依据的结论。** 原先这里写「全程安静，无异常
+                          // 声音」，把「跑过检测、结论是没有」与「这一晚根本没录」
+                          // 说成了同一件事——使用方就曾被它误导（他在 iPad 上以为
+                          // 录音开着，界面却像检测完了一样下了「安静」的结论）。
+                          // 零片段在两种情形下都是真的，所以只说零片段。
+                          Text(
+                            '这一晚没有声音片段',
+                            style: TextStyle(
+                                fontSize: 14, color: tokens.textMuted),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '可能是整夜安静，也可能是没有录音。',
+                            style: TextStyle(
+                                fontSize: 12, color: tokens.textMuted),
+                          ),
+                        ],
                       ),
                     ),
                   ],

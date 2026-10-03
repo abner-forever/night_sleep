@@ -41,6 +41,9 @@ abstract final class NightStyle {
 
   // ── 强调 ────────────────────────────────────────────────────────────────
   /// `.sleep-event-icon` 的图标色与底色。
+  /// 「录音中」那颗小灯。只在录音服务确实在录时出现。
+  static const liveDot = Color(0xFFFF6B6B);
+
   static const iconInk = Color(0xFFAEBDFF);
   static const iconFill = Color(0x1F7E91E9); // rgba(126,145,233,.12)
   /// `.sleep-event-state`（「记录中」「已设置」）。

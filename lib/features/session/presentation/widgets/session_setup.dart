@@ -4,6 +4,8 @@ import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../app/app_toast.dart';
+import '../../../../app/night_recording.dart';
 import '../../../../app/noise_session.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/platform/haptics.dart';
@@ -12,6 +14,7 @@ import '../../../../core/widgets/app_basics.dart';
 import '../../../../core/widgets/app_icons.dart';
 import '../../../../core/widgets/ios_controls.dart';
 import '../../../../core/widgets/wheel_picker.dart';
+import '../../../sleep/data/night_recorder.dart';
 import '../../../sleep/presentation/widgets/noise_controls.dart';
 import '../night_scene.dart';
 import '../night_style.dart';
@@ -95,12 +98,29 @@ class _SessionSetupBodyState extends ConsumerState<SessionSetupBody> {
   }
 
   /// 鼾声/梦话是**跨会话的偏好**，写的是 `AppSettings` 里那个唯一字段。
+  ///
+  /// **打开之前先要麦克风权限。** 被拒就回弹、不写偏好——与提醒开关那套完全一致：
+  /// 一个写着「开」而底下没有权限的开关，是这一整块最不能有的状态。关掉不需要权限，
+  /// 直接写。
   Future<void> _toggleRecording(bool value) async {
+    if (value) {
+      final granted = await ref.read(nightRecorderProvider).ensurePermission();
+      if (!mounted) return;
+      if (!granted) {
+        ref.read(toastProvider.notifier).show('没有麦克风权限，无法录制夜间声音。');
+        setState(() => _recordingEnabled = false);
+        return;
+      }
+    }
+
     await ref.read(databaseProvider).updateSettings(
           AppSettingsCompanion(soundRecordingEnabled: Value(value)),
         );
     if (!mounted) return;
     setState(() => _recordingEnabled = value);
+    // 会话可能已经在跑了（这一屏只在入睡前出现，但偏好是跨会话的）：重新对齐一次，
+    // 免得「刚打开开关却要等到下一晚才生效」。
+    await ref.read(nightRecordingControllerProvider.notifier).refresh();
   }
 
   @override
@@ -272,10 +292,11 @@ class _SessionSetupBodyState extends ConsumerState<SessionSetupBody> {
               icon: AppIcons.snore(
                   size: 19, color: NightStyle.iconInk, strokeWidth: 1.6),
               title: '鼾声检测',
-              // plan A 还没接录音，如实标注。**这行字是产品红线，一个字都不许改**
-              // （规格偏差 #7 / #31：原型那句「仅在本机识别并保存声音片段」是我们
-              // 不能说的一句话）。
-              subtitle: '尚未接入录音，开关只保存偏好。',
+              // **不能照抄原型那句「仅在本机识别并保存声音片段」**（偏差 #7 / #31）。
+              // 现在录音确实接了，但**没有自动识别**：录下来的是「有声响的片段」，
+              // 是鼾声还是梦话由用户自己听完之后标。说成「识别」就是当场吹一个
+              // 我们没有的能力。
+              subtitle: '录下有声响的片段，仅存本机；是鼾声还是梦话由你听过之后自己标。',
               isLast: true,
               trailing: IosToggle(
                 value: _recordingEnabled,

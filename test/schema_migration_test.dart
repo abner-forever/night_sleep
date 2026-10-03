@@ -721,6 +721,217 @@ void main() {
       expect((await second.activeSession())!.id, 'active');
     });
   });
+
+  /// 写出一份 v5 的库：一条片段行 + 一条会话行。这两张表正是 v6 要加列的地方。
+  Future<void> writeV5Database() async {
+    final v5 = _V5Database(NativeDatabase(file));
+    try {
+      await v5.customStatement(
+        "INSERT INTO sleep_records (id, start_at_utc, end_at_utc, time_zone_id, "
+        "quality, notes, tags_json, source, flagged_snore, flagged_talk, "
+        "flagged_restless, flagged_nightmare, created_at, updated_at) "
+        "VALUES ('r1', 1759000000, 1759026000, 'Asia/Shanghai', 4, '', '[]', "
+        "'session', 0, 0, 0, 0, 1759000000, 1759000000)",
+      );
+      await v5.customStatement(
+        "INSERT INTO sound_clips (id, record_id, kind, started_at_utc, "
+        "duration_ms, local_uri, transcript, analysis, analysis_status, source) "
+        "VALUES ('c1', 'r1', 'noise', 1759000100, 4200, "
+        "'/tmp/clips/c1.wav', NULL, NULL, 'pending', 'recording')",
+      );
+      await v5.customStatement(
+        "INSERT INTO active_sessions (id, start_at_utc, time_zone_id, "
+        "wake_minutes, alarm_enabled, noise_id, noise_volume, scene_id, "
+        "created_at) "
+        "VALUES ('active', 1759000000, 'Asia/Shanghai', 420, 1, 'rain', 0.35, "
+        "'galaxy', 1759000000)",
+      );
+    } finally {
+      await v5.close();
+    }
+  }
+
+  group('v5 → v6', () {
+    test('夹具确实是 v5，而升级后停在当前版本', () async {
+      await writeV5Database();
+      final v5 = _V5Database(NativeDatabase(file));
+      expect(await userVersion(v5), 5);
+      await v5.customStatement('SELECT 1');
+      await v5.close();
+
+      final db = openCurrent();
+      addTearDown(db.close);
+      await db.activeSession(); // 触发迁移
+      expect(await userVersion(db), db.schemaVersion);
+    });
+
+    test('既有片段行一个字段不差，三列读出来都是空的', () async {
+      await writeV5Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+
+      final clips = await db.allRecordingClips();
+      expect(clips, hasLength(1), reason: '加列把既有片段行弄丢了');
+      final clip = clips.single;
+      expect(clip.id, 'c1');
+      expect(clip.recordId, 'r1');
+      expect(clip.kind, 'noise');
+      expect(clip.durationMs, 4200);
+      expect(clip.localUri, '/tmp/clips/c1.wav');
+      expect(clip.source, 'recording');
+      // 三列都必须是可空的，且既有行读出来为空——这正是「还没标过 / 还没画过
+      // 包络 / 还没有待落库的片段」这三条语义能成立的前提。
+      expect(clip.waveformEnvelope, isNull);
+      expect(clip.labeledAtUtc, isNull);
+
+      final session = await db.activeSession();
+      expect(session, isNotNull, reason: '加列把既有会话行弄丢了');
+      expect(session!.wakeMinutes, 420);
+      expect(session.sceneId, 'galaxy');
+      expect(session.clipJournal, isNull);
+    });
+
+    test('迁移后可以写入并读回三列', () async {
+      await writeV5Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+      await db.activeSession(); // 触发迁移
+
+      await db.updateClipLabel(
+        'c1',
+        kind: 'snore',
+        labeledAtUtc: DateTime.utc(2026, 10, 3, 1, 2, 3),
+      );
+      await db.updateActiveSession(
+        const ActiveSessionsCompanion(clipJournal: Value('[{"id":"c2"}]')),
+      );
+
+      final clip = (await db.allRecordingClips()).single;
+      expect(clip.kind, 'snore');
+      // drift 在原生执行器上按 unix 秒存 DateTime，读回来的是**标记为本地时区**
+      // 的 `DateTime`——瞬时值不变，变的是 `DateTime.==` 会一并比较的那个标记。
+      // 所以这里比的是 `toUtc()`，不是裸值（`session_repository.dart` 记过同一个坑）。
+      expect(clip.labeledAtUtc!.toUtc(), DateTime.utc(2026, 10, 3, 1, 2, 3));
+      expect(
+        (await db.activeSession())!.clipJournal,
+        '[{"id":"c2"}]',
+      );
+    });
+
+    test('清理掉文件的片段把 local_uri 置空，行本身还在', () async {
+      await writeV5Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+      await db.activeSession(); // 触发迁移
+
+      await db.clearClipLocalUris(['c1']);
+
+      final clip = (await db.allRecordingClips()).single;
+      expect(clip.localUri, isNull, reason: '音频被裁掉后文件指针该清空');
+      expect(clip.id, 'c1', reason: '事件记录必须留着，不能整个片段凭空消失');
+    });
+
+    test('升级后的库再次打开不重跑迁移', () async {
+      await writeV5Database();
+      final first = openCurrent();
+      await first.activeSession(); // 触发迁移
+      await first.close();
+
+      final second = openCurrent();
+      addTearDown(second.close);
+      // 重跑会撞上 `duplicate column name: clip_journal`。
+      expect((await second.activeSession())!.id, 'active');
+    });
+  });
+
+  /// v6 那三列的补法**两条下界不一样**（`sound_clips` 从 v2 起再没重建过，
+  /// `active_sessions` 是 v4 才有的表），所以每条升上来的路都得单独走一遍。
+  ///
+  /// 这一组就是为那个 bug 而写的：最初把两条都写成 `from >= 5 && from < 6`，
+  /// v4 与 v3 的库升上来时会**整块跳过**，而 v4→v5 那段只加 `scene_id`，
+  /// 没有任何一段会补上这三列——升上来的库里根本没有这些列，直到有人录了一晚
+  /// 才在 `finish()` 里炸开。
+  group('旧库直升 v6', () {
+    /// 迁移之后这三列必须真的能用：写进去、读回来。只断言「能打开」是不够的——
+    /// 缺列时 drift 的报错发生在第一次碰它的那一刻，不在打开时。
+    Future<void> expectV6ColumnsUsable(AppDatabase db) async {
+      await db.saveRecord(
+        SleepRecordsCompanion.insert(
+          id: 'r-new',
+          startAtUtc: DateTime.utc(2026, 10, 3, 22),
+          endAtUtc: DateTime.utc(2026, 10, 4, 6),
+          createdAt: DateTime.utc(2026, 10, 3, 22),
+          updatedAt: DateTime.utc(2026, 10, 3, 22),
+        ),
+      );
+      await db.insertClips([
+        SoundClipsCompanion.insert(
+          id: 'c-new',
+          recordId: 'r-new',
+          kind: 'noise',
+          startedAtUtc: DateTime.utc(2026, 10, 4, 1),
+          durationMs: 3000,
+          waveformEnvelope: const Value('[0.1,0.9]'),
+        ),
+      ]);
+      await db.updateClipLabel(
+        'c-new',
+        kind: 'talk',
+        labeledAtUtc: DateTime.utc(2026, 10, 4, 8),
+      );
+      // 夹具里的老库不一定有会话行（v1 就没有），先确保有一行再写清单——
+      // `update` 打在空表上什么也不做，那样断言会以「读回来是 null」的形式
+      // 误报成「列没补上」。
+      await db.saveActiveSession(
+        ActiveSessionsCompanion.insert(
+          id: 'active',
+          startAtUtc: DateTime.utc(2026, 10, 3, 22),
+          wakeMinutes: 420,
+          createdAt: DateTime.utc(2026, 10, 3, 22),
+        ),
+      );
+      await db.updateActiveSession(
+        const ActiveSessionsCompanion(clipJournal: Value('[{"id":"x"}]')),
+      );
+
+      // 按 id 找，不用 `single`：夹具里本来就有别的片段行。
+      final clip =
+          (await db.allRecordingClips()).firstWhere((row) => row.id == 'c-new');
+      expect(clip.kind, 'talk');
+      expect(clip.waveformEnvelope, '[0.1,0.9]');
+      expect(clip.labeledAtUtc!.toUtc(), DateTime.utc(2026, 10, 4, 8));
+      expect((await db.activeSession())?.clipJournal, '[{"id":"x"}]');
+    }
+
+    test('v3 升上来：两列都补上了', () async {
+      await writeV3Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+      await db.allRecords(); // 触发迁移
+
+      await expectV6ColumnsUsable(db);
+    });
+
+    test('v4 升上来：两列都补上了', () async {
+      await writeV4Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+      await db.activeSession(); // 触发迁移
+
+      await expectV6ColumnsUsable(db);
+    });
+
+    test('v1 升上来：sound_clips 是这一轮新建的，不重复加列', () async {
+      await writeV1Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+      await db.allRecords(); // 触发迁移
+
+      // `from < 2` 那一支的 `createTable(soundClips)` 用的是当前表定义，一建出来
+      // 就带着新列——所以这里再多加一次就会是 `duplicate column name`。
+      await expectV6ColumnsUsable(db);
+    });
+  });
 }
 
 /// 2026-09-26 23:30 → 2026-09-27 07:00 in UTC, so the fixture does not depend on
@@ -1066,6 +1277,116 @@ class _V4Database extends AppDatabase {
               alarm_enabled INTEGER NOT NULL DEFAULT 0,
               noise_id TEXT,
               noise_volume REAL NOT NULL DEFAULT 0.5,
+              created_at INTEGER NOT NULL,
+              PRIMARY KEY (id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE app_settings (
+              id TEXT NOT NULL,
+              theme_mode TEXT NOT NULL DEFAULT 'system',
+              sleep_goal_minutes INTEGER NOT NULL DEFAULT 480,
+              bedtime_reminder_enabled INTEGER NOT NULL DEFAULT 0,
+              bedtime_reminder_minutes INTEGER,
+              wake_reminder_enabled INTEGER NOT NULL DEFAULT 0,
+              wake_reminder_minutes INTEGER,
+              sound_recording_enabled INTEGER NOT NULL DEFAULT 0,
+              onboarded INTEGER NOT NULL DEFAULT 0,
+              insight_provider TEXT,
+              insight_model TEXT,
+              PRIMARY KEY (id)
+            )
+          ''');
+        },
+      );
+}
+
+/// The schema as it shipped in v5: v4 plus `active_sessions.scene_id`.
+///
+/// 同样用裸 DDL 把形态冻住。`clip_journal` / `waveform_envelope` / `labeled_at_utc`
+/// 这三列一落进表类，用表类写的夹具就会悄悄开始代表 v6，v5→v6 那几条断言会在
+/// 迁移代码一行没跑的情况下全绿。
+class _V5Database extends AppDatabase {
+  _V5Database(super.executor);
+
+  @override
+  int get schemaVersion => 5;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) async {
+          await customStatement('''
+            CREATE TABLE sleep_records (
+              id TEXT NOT NULL,
+              start_at_utc INTEGER NOT NULL,
+              end_at_utc INTEGER NOT NULL,
+              time_zone_id TEXT NOT NULL DEFAULT 'UTC',
+              quality INTEGER,
+              notes TEXT NOT NULL DEFAULT '',
+              tags_json TEXT NOT NULL DEFAULT '[]',
+              source TEXT NOT NULL DEFAULT 'manual',
+              flagged_snore INTEGER NOT NULL DEFAULT 0,
+              flagged_talk INTEGER NOT NULL DEFAULT 0,
+              flagged_restless INTEGER NOT NULL DEFAULT 0,
+              flagged_nightmare INTEGER NOT NULL DEFAULT 0,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL,
+              PRIMARY KEY (id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE sleep_stage_segments (
+              id TEXT NOT NULL,
+              record_id TEXT NOT NULL
+                REFERENCES sleep_records (id) ON DELETE CASCADE,
+              stage TEXT NOT NULL,
+              start_at_utc INTEGER NOT NULL,
+              end_at_utc INTEGER NOT NULL,
+              source TEXT NOT NULL DEFAULT 'import',
+              PRIMARY KEY (id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE sound_clips (
+              id TEXT NOT NULL,
+              record_id TEXT NOT NULL
+                REFERENCES sleep_records (id) ON DELETE CASCADE,
+              kind TEXT NOT NULL,
+              started_at_utc INTEGER NOT NULL,
+              duration_ms INTEGER NOT NULL,
+              local_uri TEXT,
+              transcript TEXT,
+              analysis TEXT,
+              analysis_status TEXT NOT NULL DEFAULT 'pending',
+              source TEXT NOT NULL DEFAULT 'recording',
+              PRIMARY KEY (id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE insights (
+              id TEXT NOT NULL,
+              record_id TEXT
+                REFERENCES sleep_records (id) ON DELETE CASCADE,
+              kind TEXT NOT NULL DEFAULT 'record_summary',
+              content TEXT,
+              provider TEXT,
+              model TEXT,
+              score INTEGER,
+              generated_at_utc INTEGER NOT NULL,
+              status TEXT NOT NULL DEFAULT 'unavailable',
+              PRIMARY KEY (id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE active_sessions (
+              id TEXT NOT NULL,
+              start_at_utc INTEGER NOT NULL,
+              time_zone_id TEXT NOT NULL DEFAULT 'UTC',
+              wake_minutes INTEGER NOT NULL,
+              alarm_enabled INTEGER NOT NULL DEFAULT 0,
+              noise_id TEXT,
+              noise_volume REAL NOT NULL DEFAULT 0.5,
+              scene_id TEXT,
               created_at INTEGER NOT NULL,
               PRIMARY KEY (id)
             )

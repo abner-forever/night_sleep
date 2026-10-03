@@ -313,7 +313,12 @@ void main() {
       }
       expect(find.text('—'), findsNWidgets(3), reason: '未测量应显示破折号而不是数字');
       expect(find.textContaining('没有睡眠阶段数据'), findsOneWidget);
-      expect(find.textContaining('全程安静'), findsWidgets, reason: '无声音事件是真实结论');
+      // 「零片段」是真实结论，但它**不等于**「检测过、结果安静」——后半句把
+      // 「录过没听到」与「根本没录」说成了同一件事，使用方就曾被它误导
+      // （他在 iPad 上以为录音开着，界面却像检测完了一样下了「安静」的结论）。
+      expect(find.textContaining('无声音片段'), findsWidgets);
+      expect(find.textContaining('全程安静'), findsNothing,
+          reason: '不许再下那个没有依据的「安静」结论');
     });
 
     testWidgets('演示数据存在时给出可清除的来源提示', (tester) async {
@@ -855,8 +860,10 @@ void main() {
       expect(find.text('夜间声音录制'), findsOneWidget);
       expect(find.text('提醒会根据设置的时间在本机发送通知。'), findsOneWidget);
 
-      // 产品红线：录音还没接入，副标题不许跟着原型改成「检测打鼾、梦话并生成洞察」。
-      expect(find.textContaining('尚未接入录音'), findsOneWidget);
+      // 产品红线：副标题不许声称能自动检测打鼾 / 梦话（那是我们没有的能力）。
+      // 旧那句「尚未接入录音」在录音接上之后成了假话，也必须消失。
+      expect(find.textContaining('尚未接入录音'), findsNothing);
+      expect(find.text('录下有声响的片段，由你听过之后自己标注'), findsOneWidget);
       expect(find.textContaining('检测打鼾、梦话并生成洞察'), findsNothing);
     });
 
