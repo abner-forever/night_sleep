@@ -233,6 +233,37 @@ void main() {
       expect(InsightProviderId.fromId('deepseek'), InsightProviderId.deepseek);
     });
   });
+
+  group('服务商能力', () {
+    test('只有实测过的服务商才拿到余额 / 对话地址', () async {
+      final deepseek = providerFor(InsightProviderId.deepseek);
+      expect(deepseek.supportsBalance, isTrue);
+      expect(deepseek.supportsChat, isTrue);
+      expect(deepseek.balanceUri, 'https://api.deepseek.com/user/balance');
+      expect(deepseek.chatUri, 'https://api.deepseek.com/chat/completions');
+
+      // 没有公开的余额接口，所以没得查——不是漏做。
+      final openai = providerFor(InsightProviderId.openai);
+      expect(openai.supportsBalance, isFalse);
+      expect(openai.balanceUri, isNull);
+
+      // Anthropic 的 Messages API 形状不同且没有 key 可实测，两个都不接。
+      // 这条断言是防「顺手补一个没跑过的地址」的护栏。
+      final claude = providerFor(InsightProviderId.claude);
+      expect(claude.supportsChat, isFalse);
+      expect(claude.supportsBalance, isFalse);
+      expect(claude.chatUri, isNull);
+      expect(claude.balanceUri, isNull);
+    });
+
+    test('支持对话就一定能带 JSON 请求头发起请求', () async {
+      for (final provider in kInsightProviders.where((p) => p.supportsChat)) {
+        final headers = provider.completionHeaders('sk-test');
+        expect(headers['Content-Type'], 'application/json');
+        expect(headers.values.join(), contains('sk-test'));
+      }
+    });
+  });
 }
 
 Future<ModelFetchFailure> _captureFailure(Future<void> Function() body) async {

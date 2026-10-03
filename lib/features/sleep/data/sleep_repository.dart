@@ -193,6 +193,38 @@ class SleepRepository {
     });
   }
 
+  /// Stores a model-written summary, replacing whatever the record had.
+  ///
+  /// The row id is derived from the record id — the same convention
+  /// `demo_seed.dart` uses — so one record can only ever hold one insight and
+  /// a regenerate is an upsert rather than a second row that
+  /// `allInsightsByRecord` would then pick between arbitrarily.
+  ///
+  /// Failures are deliberately **not** written: a bad request must not erase a
+  /// good insight the user already had. See 偏差 #47.
+  Future<void> saveInsight({
+    required String recordId,
+    required String content,
+    required String provider,
+    required String model,
+    int? score,
+    required DateTime generatedAtUtc,
+  }) {
+    return _db.into(_db.insights).insertOnConflictUpdate(
+          db.InsightsCompanion(
+            id: Value('$recordId-insight'),
+            recordId: Value(recordId),
+            kind: const Value('record_summary'),
+            content: Value(content),
+            provider: Value(provider),
+            model: Value(model),
+            score: Value(score),
+            generatedAtUtc: Value(generatedAtUtc.toUtc()),
+            status: Value(InsightStatus.ok.id),
+          ),
+        );
+  }
+
   Future<void> delete(String id) => _db.deleteRecord(id);
 
   Future<void> deleteDemoData() => _db.deleteDemoData();

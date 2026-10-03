@@ -9,6 +9,7 @@ import 'app/reminder_sync.dart';
 import 'core/config/app_config.dart';
 import 'core/database/app_database.dart';
 import 'core/platform/reminders.dart';
+import 'features/settings/data/insight_credentials.dart';
 import 'features/sleep/data/demo_seed.dart';
 
 Future<void> main() async {
@@ -26,10 +27,16 @@ Future<void> main() async {
     enabled: AppConfig.demoDataEnabled,
   );
 
+  // 密钥在钥匙串里，启动时读一次。**必须在这里 await**，不能让 provider 自己
+  // 异步补：那会留下一个「输入框先空一下」的窗口（详见 `insightApiKeySeedProvider`）。
+  // `read()` 内部把「读不到」和「没有」归成同一个结果，所以这里不会把启动带下水。
+  final insightApiKey = (await const SecureInsightKeyStore().read()) ?? '';
+
   runApp(
     ProviderScope(
       overrides: [
         databaseProvider.overrideWithValue(database),
+        insightApiKeySeedProvider.overrideWithValue(insightApiKey),
         // Web 不能走这条：`defaultTargetPlatform` 在 Web 上报告的是**宿主操作系统**，
         // 所以 `reminderSchedulerProvider` 自己的 `kIsWeb` 守卫会被这个 override 绕过。
         reminderSchedulerProvider.overrideWithValue(

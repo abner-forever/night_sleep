@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../app/app.dart';
 import '../../../../app/app_toast.dart';
 import '../../../../core/config/app_config.dart';
+// `show` 只取这一个类型：整份 `app_database.dart` 里有一个 drift 生成的
+// `Insight` 行类，与本文件用的领域模型 `Insight` 同名。
+import '../../../../core/database/app_database.dart' show AppSetting;
 import '../../../../core/platform/haptics.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/app_tokens.dart';
@@ -11,8 +15,13 @@ import '../../../../core/widgets/app_basics.dart';
 import '../../../../core/widgets/app_icons.dart';
 import '../../../../core/widgets/app_sheet.dart';
 import '../../../../core/widgets/confirm_dialog.dart';
+import '../../../settings/data/insight_credentials.dart';
+import '../../../settings/data/insight_service.dart';
+import '../../../settings/data/model_catalog.dart';
 import '../../data/sleep_repository.dart';
+import '../../domain/insight_prompt.dart';
 import '../../domain/sleep_entry.dart';
+import '../../domain/sleep_insight.dart';
 import '../../domain/sleep_stage.dart';
 import '../widgets/score_ring.dart';
 import '../widgets/stage_chart.dart';
@@ -43,6 +52,116 @@ class DetailSheet extends ConsumerStatefulWidget {
 
 class _DetailSheetState extends ConsumerState<DetailSheet> {
   String? _expandedClipId;
+
+  /// The sheet's own copy of the entry. Regenerating an insight writes to the
+  /// database *and* here: the sheet was handed a value, not a stream, so
+  /// without this the new summary would only appear after closing and
+  /// reopening.
+  late SleepEntry _entry = widget.entry;
+
+  bool _generating = false;
+
+  /// 生成失败的原因，显示在区块内。失败**不写库、不覆盖**已有洞察——
+  /// 一次网络抖动不该把用户手里的结论抹掉（偏差 #47）。
+  String? _generateError;
+
+  /// What a generation would use right now, or null when something is missing.
+  ///
+  /// Built from values passed in rather than read here: `build` must `watch` (so
+  /// the button appears the moment the key is filled in) while the tap handler
+  /// must `read` (`ref.watch` outside the build phase is not a subscription and
+  /// is not allowed).
+  ///
+  /// The provider and model come from [resolveInsightSelection], which applies
+  /// the same defaults the settings page shows. Reading the raw columns here
+  /// instead is what made this sheet tell a user with a working key that they
+  /// had not configured anything.
+  _Generation? _generation(String apiKey, AppSetting? settings) {
+    final selection = resolveInsightSelection(
+      providerId: settings?.insightProvider,
+      model: settings?.insightModel,
+    );
+    if (!selection.isRunnable || apiKey.trim().isEmpty) return null;
+    return _Generation(provider: selection.provider, model: selection.model!);
+  }
+
+  /// Why there is no button, phrased so the user knows which single thing to
+  /// fix. 「去配置」 with no noun is what made a working setup look broken.
+  String _blockedReason(AppSetting? settings) {
+    final selection = resolveInsightSelection(
+      providerId: settings?.insightProvider,
+      model: settings?.insightModel,
+    );
+    if (!selection.provider.supportsChat) {
+      return '${selection.provider.label} 暂不支持生成洞察，可在设置 · 睡眠洞察里换一个服务商。';
+    }
+    if (selection.model == null) {
+      return '还没有可用模型，请先在设置 · 睡眠洞察里点一次「获取可用模型」。';
+    }
+    return '「重新生成」需要 API Key：去设置 · 睡眠洞察填好并点一次「连通性测试」，'
+        '回来就能用了。';
+  }
+
+  Future<void> _regenerate() async {
+    final generation = _generation(
+      ref.read(insightApiKeyProvider),
+      ref.read(settingsProvider).valueOrNull,
+    );
+    if (generation == null) return;
+    final provider = generation.provider;
+    final model = generation.model;
+
+    setState(() {
+      _generating = true;
+      _generateError = null;
+    });
+
+    try {
+      final prompt = buildRecordSummaryPrompt(_entry);
+      final generated = await generateSummary(
+        provider: provider,
+        model: model,
+        apiKey: ref.read(insightApiKeyProvider),
+        systemPrompt: prompt.system,
+        userPrompt: prompt.user,
+        client: ref.read(insightHttpClientProvider),
+      );
+      final now = DateTime.now().toUtc();
+      await ref.read(sleepRepositoryProvider).saveInsight(
+            recordId: _entry.id,
+            content: generated.summary,
+            provider: provider.label,
+            model: model,
+            score: generated.score,
+            generatedAtUtc: now,
+          );
+      if (!mounted) return;
+      setState(() {
+        _generating = false;
+        _entry = _entry.copyWith(
+          insight: Insight(
+            id: '${_entry.id}-insight',
+            recordId: _entry.id,
+            content: generated.summary,
+            provider: provider.label,
+            model: model,
+            score: generated.score,
+            generatedAtUtc: now,
+            status: InsightStatus.ok,
+          ),
+        );
+      });
+      // 首页与统计读的是 `sleepEntriesProvider`，而它只监听记录表；
+      // 洞察行写进去不会自动推新值，必须显式失效。
+      ref.invalidate(sleepEntriesProvider);
+    } on InsightFailure catch (failure) {
+      if (!mounted) return;
+      setState(() {
+        _generating = false;
+        _generateError = failure.message;
+      });
+    }
+  }
 
   /// Demo rows are samples, not the user's own data, and they are the only rows
   /// that carry a measured hypnogram. Editing one would leave a record that is
@@ -77,9 +196,21 @@ class _DetailSheetState extends ConsumerState<DetailSheet> {
   @override
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
-    final entry = widget.entry;
+    final entry = _entry;
     final score = entry.score;
-    final insightText = entry.insightText ?? entry.estimatedSummary;
+    // The tag has to describe the text printed next to it, so both come from
+    // the same place: model output when the model produced usable content,
+    // otherwise the local rule-based summary. A model insight that came back
+    // without a score still shows here — only the score falls back to the
+    // local rules (see `SleepEntry.scoreSource`), never the text.
+    final modelText = entry.insightText;
+    final insightText = modelText ?? entry.estimatedSummary;
+    final isModelInsight = modelText != null;
+    final appSettings = ref.watch(settingsProvider).valueOrNull;
+    final generation = _generation(
+      ref.watch(insightApiKeyProvider),
+      appSettings,
+    );
 
     return AppSheet(
       scrollable: true,
@@ -292,64 +423,116 @@ class _DetailSheetState extends ConsumerState<DetailSheet> {
               ],
 
             // ── Insight ────────────────────────────────────────────────────
-            if (insightText != null) ...[
-              const SizedBox(height: 16),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: tokens.accentSoft,
-                  borderRadius: BorderRadius.circular(AppRadii.panel),
-                  border:
-                      Border.all(color: tokens.accent.withValues(alpha: 0.19)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        AppIcons.ai(
-                            size: 15, color: tokens.accent, strokeWidth: 1.8),
-                        const SizedBox(width: 8),
-                        Text(
-                          '睡眠洞察',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: tokens.accent,
-                          ),
+            //
+            // 常显，不再是「有内容才出现」：这一块现在挂着「重新生成」入口，
+            // 而最需要它的场景恰恰是「这一晚还什么都没有」的记录。
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: tokens.accentSoft,
+                borderRadius: BorderRadius.circular(AppRadii.panel),
+                border:
+                    Border.all(color: tokens.accent.withValues(alpha: 0.19)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      AppIcons.ai(
+                          size: 15, color: tokens.accent, strokeWidth: 1.8),
+                      const SizedBox(width: 8),
+                      Text(
+                        '睡眠洞察',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: tokens.accent,
                         ),
-                        if (entry.isEstimated) ...[
-                          const SizedBox(width: 8),
-                          Tag(
-                            label: '本地估算',
-                            background: tokens.bgMuted,
-                            foreground: tokens.textMuted,
-                            fontSize: 12,
-                          ),
-                        ],
+                      ),
+                      if (isModelInsight || entry.isEstimated) ...[
+                        const SizedBox(width: 8),
+                        Tag(
+                          label: isModelInsight ? '模型生成' : '本地估算',
+                          background: tokens.bgMuted,
+                          foreground: tokens.textMuted,
+                          fontSize: 12,
+                        ),
                       ],
+                    ],
+                  ),
+                  if (isModelInsight && entry.providerLabel.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      '${entry.providerLabel} · ${entry.insight?.model ?? ''}',
+                      style: TextStyle(fontSize: 11, color: tokens.textMuted),
                     ),
+                  ],
+                  const SizedBox(height: 8),
+                  Text(
+                    insightText ?? '这一晚还没有洞察。',
+                    style: TextStyle(
+                      fontSize: 14,
+                      height: 1.5,
+                      color: insightText == null
+                          ? tokens.textMuted
+                          : tokens.textSecondary,
+                    ),
+                  ),
+                  if (isModelInsight) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      '由 ${entry.providerLabel} 生成，属模型推断，不构成医疗建议。',
+                      style: TextStyle(fontSize: 12, color: tokens.textMuted),
+                    ),
+                  ] else if (entry.isEstimated) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      '该评分为本地规则估算，不构成医疗建议。',
+                      style: TextStyle(fontSize: 12, color: tokens.textMuted),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  // **按钮常驻**。此前是「跑不了就整个不渲染」，结果用户填好了
+                  // key 也只看到一行字，无从判断是自己没配对还是功能没做
+                  // —— 这条被连着报回来两次。改成一个变灰的按钮 + 下方一句
+                  // 指名道姓的说明，与 `PrimaryAction` 的禁用态同一套做法：
+                  // 不假装可用，但把入口和原因都摆在明面上。
+                  _InsightAction(
+                    label: _generating ? '生成中…' : '重新生成',
+                    busy: _generating,
+                    enabled: generation != null,
+                    // 生成中禁用，避免连点发出多次计费请求。
+                    onTap:
+                        _generating || generation == null ? null : _regenerate,
+                  ),
+                  if (generation == null) ...[
                     const SizedBox(height: 8),
                     Text(
-                      insightText,
+                      _blockedReason(appSettings),
                       style: TextStyle(
-                        fontSize: 14,
+                        fontSize: 12,
                         height: 1.5,
-                        color: tokens.textSecondary,
+                        color: tokens.textMuted,
                       ),
                     ),
-                    if (entry.isEstimated) ...[
-                      const SizedBox(height: 10),
-                      Text(
-                        '该评分为本地规则估算，不构成医疗建议。',
-                        style: TextStyle(fontSize: 12, color: tokens.textMuted),
-                      ),
-                    ],
                   ],
-                ),
+                  if (_generateError != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      _generateError!,
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.5,
+                        color: tokens.danger,
+                      ),
+                    ),
+                  ],
+                ],
               ),
-            ],
+            ),
 
             // ── Notes ──────────────────────────────────────────────────────
             if (entry.notes.trim().isNotEmpty) ...[
@@ -534,4 +717,84 @@ class _StatTile extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 「重新生成」按钮。
+///
+/// 与洞察配置页那三个动作同一套观感（胶囊 + 转圈），但底色用卡片自身的
+/// 强调色系而不是 `accentSoft`：它嵌在已经铺了 `accentSoft` 的洞察卡里，
+/// 同色会糊成一片。
+class _InsightAction extends StatelessWidget {
+  const _InsightAction({
+    required this.label,
+    this.onTap,
+    this.busy = false,
+    this.enabled = true,
+  });
+
+  final String label;
+  final VoidCallback? onTap;
+  final bool busy;
+
+  /// False draws the muted "can't run yet" state. The caller pairs it with a
+  /// line saying exactly what is missing — never leave a disabled control
+  /// unexplained.
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppTokens.of(context);
+    return Opacity(
+      opacity: enabled ? 1 : 0.55,
+      child: Pressable(
+        onTap: onTap,
+        haptic: false,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: enabled ? tokens.bgCard : tokens.bgMuted,
+            borderRadius: BorderRadius.circular(AppRadii.pill),
+            border: Border.all(
+              color: enabled
+                  ? tokens.accent.withValues(alpha: 0.35)
+                  : tokens.border,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (busy) ...[
+                const SizedBox(
+                  width: 11,
+                  height: 11,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 6),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: enabled ? tokens.accent : tokens.textMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The provider and model a 「重新生成」 would use.
+///
+/// Only ever constructed when the call can actually run — a key is present,
+/// the provider speaks the OpenAI-compatible protocol, and a model resolves.
+/// Absence of this object *is* the "no button" state.
+class _Generation {
+  const _Generation({required this.provider, required this.model});
+
+  final InsightProvider provider;
+  final String model;
 }

@@ -3,6 +3,120 @@
 本文件记录「夜深」项目规格的版本变更。规格正文见
 [docs/superpowers/specs/2026-09-28-night-sleep-design.md](docs/superpowers/specs/2026-09-28-night-sleep-design.md)。
 
+## 3.7（2026-10-03）
+
+**洞察服务从「只选服务商与模型」推进到真能查、能测、能生成——并订正偏差 #3 里一条已被推翻的前提。**
+
+### 一条实测推翻的前提
+
+偏差 #3 原文写「不显示余额」的理由是「**无服务商提供可调用的余额接口**」。2026-10-03
+用真实 key 实测：
+
+| 请求 | 结果 |
+| --- | --- |
+| `GET https://api.deepseek.com/models` | 200 |
+| `GET https://api.deepseek.com/user/balance` | 200，`{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"…"}]}` |
+| `POST https://api.deepseek.com/chat/completions`（`response_format: json_object`） | 200，`content` 是合法 JSON `{"score":88,"summary":"…"}` |
+| 同一个接口 `max_tokens: 16` | 200，但 **`content` 是空串**，正文全在 `reasoning_content` |
+| 错误 key | 401，且**响应体里带回 key 的掩码形式** |
+
+所以：#3 的理由对 DeepSeek 不再成立，改写（原型那三个演示余额仍然不采用）；
+「连通性测试不能要求正文非空」，否则推理模型永远测出失败；「生成必须给足 `max_tokens`
+并用 JSON 模式」。
+
+### 改了什么
+
+- **余额查询**（`fetchProviderBalance`）：DeepSeek 上线「查询余额」，点一下现拉现显
+  （`¥41.90` 这样的读数直接来自服务商）。金额**原样保留字符串**，不转 `double` 再格式化。
+  OpenAI / Claude 没有可调用接口，维持「余额查询未接入」的灰胶囊。
+- **连通性测试**（`pingProvider`）：用当前服务商 + 当前模型发一次 `max_tokens: 16` 的真实
+  对话请求。判定是「200 且返回补全结构」，**正文为空也算连通**——界面上把这句话写出来了。
+- **重新生成**（详情页）：睡眠详情「睡眠洞察」区块改为**常显**，任意一晚都可生成模型总结，
+  走 JSON 模式拿 `{score, summary}`，落库（固定 id `'$recordId-insight'`，upsert）。
+  **失败只在页内报错，不写库、不覆盖已有洞察。**
+- **会话内密钥**：`insightApiKeyProvider` 把 API Key 从配置页的输入框提到会话内存，
+  详情页因此拿到同一把钥匙。**仍然不落盘**，#8 那条红线未动。
+- **Claude 不接连通性与生成**（偏差 #46）：Messages API 形状不同且没有 key 可实测，
+  `chatUri` / `balanceUri` 留 `null`，界面如实标注——不写没跑过的代码。
+- **顺手修掉一个会被本轮引爆的既有缺陷**：`SleepEntry.scoreSource` 此前只看 `isUsable`，
+  「模型写了总结但没给分」的洞察会把评分整个吞掉（详情页评分环凭空消失）。现改为
+  **只有带回评分的洞察才顶掉本地估算**。
+- **用户实机报回后补修：详情页根本不给「重新生成」按钮。** 根因是同一个设置被读了两遍：
+  `AppSettings.insightProvider` / `insightModel` 在全新安装时**就是 `null`**（用户从没被迫选过
+  什么，DeepSeek 与其内置模型是设置页**显示的默认值**），而详情页读的是**裸列**——它看到 null
+  就判定「未配置」，于是把按钮换成了「去配置」提示。一个已经填好 key、余额查询与连通性测试
+  都跑通的用户因此看不到入口。修法是新增 `resolveInsightSelection()`：**同一份默认值解析**，
+  配置页与详情页共用，两处再也不会对「选中的是哪个模型」有不同说法。同时把那句提示改成
+  **指名差的是哪一样**（API Key / 可用模型 / 服务商不支持），不再只说「去配置」。
+  回归用例：`全新安装（provider / model 都还是 null）也照样给按钮`。
+- **第二次实机反馈后补修两条**（这次是查了用户机器上的真实库才定的性：`app_settings`
+  存着 `deepseek / deepseek-v4-pro`，说明设置一直是对的；`insights.provider` 全部是
+  `demo`，说明一次都没生成成功过——真正缺的是**密钥本身**，它在会话内存里，而调试期间
+  重启了几次 app）：
+  1. **设置根页那一行改走 `resolveInsightSelection()`，并把密钥状态说出来**：
+     `${服务商} · ${模型}`，密钥不在时补「未填 API Key（重启后需重填）」。
+     此前它读裸列、且对密钥只字不提，用户只会看到一句与事实不符的「未配置」。
+  2. **详情页的「重新生成」按钮改为常驻**：跑不了时变灰，下方一句指名道姓的说明
+     （差 API Key / 差可用模型 / 服务商不支持），点它不发请求。此前是「跑不了就整个
+     不渲染」，用户填好了 key 也只看到一行字，分不清是自己没配对还是功能没做
+     —— 这条被连着报回来两次。做法与 `PrimaryAction` 的禁用态一致：不假装可用，
+     但把入口和原因都摆在明面上。
+
+### API Key 接上平台安全存储（偏差 #8 落地）
+
+前两条修完之后还剩最后一根刺：密钥只活在会话内存里，**每次重启都要重填**。这正是
+规格 M4 第 3 条要求而当时只能如实标注「尚未接入」的那一半，本版补上。
+
+- 引入 `flutter_secure_storage`（iOS / macOS 钥匙串、Android Keystore）。存储收在一个
+  `InsightKeyStore` 接口后面，测试用内存替身，平台细节只有一处实现。
+- **启动时在 `main()` 里 await 读一次**再交给 provider，而不是让 notifier 自己异步补：
+  `Notifier.build()` 必须同步返回，异步补值会留下一个「输入框先空一下」的窗口。
+- 写入去重（值没变不重复写钥匙串），**不用防抖 Timer**（会在 widget 测试里留下
+  pending timer）；写失败被吞掉且**不记日志**——这一次运行照旧可用，只是下次启动要重填。
+- 新增「清除密钥」入口：能存下来就得能删掉。
+- **macOS 上刻意关掉 data protection keychain**（`usesDataProtectionKeychain: false`）：
+  开着它就必须加 `keychain-access-groups`，而那需要 provisioning profile，插件 README
+  写明加了之后**构建产物只能在构建它的那台 Mac 上启动**。本项目不跨应用共享，用不上。
+- 规格同步：偏差 #8 改写、M4 第 3 条、§6 依赖表、§9 测试矩阵、README「未实现」表与
+  「验证记录」。
+
+**验证**：新增 `test/insight_credentials_test.dart` 6 条；`flutter analyze` 零问题；
+`flutter test` **470/470**。另在 macOS 上跑了一次性 `integration_test` 做钥匙串往返
+（写 / 读 / 覆盖写 / 删），并用 `security find-generic-password` 确认条目确实进了系统钥匙串，
+**再另起一个进程读回同一串值**——「重启后仍在」由此成立。脚本跑完已删。
+
+**一条实测出来的代价，已记进偏差 #8 与 README**：`flutter build macos --debug` 是**临时签名**
+（`Signature=adhoc` / `TeamIdentifier=not set`），designated requirement 就是 cdhash，
+**每重编一次哈希就变**，于是旧钥匙串条目的 ACL 对不上、下次读会弹一次系统授权框
+（点「始终允许」即把新哈希写进 ACL）。已实测确认：用写入时的同一个二进制启动不弹框，
+只有「写完之后又重编过」才弹。正常使用遇不到，开发期每次重建会遇到一次。
+
+### 验证
+
+- `dart format .` / `flutter analyze`（零问题）/ `flutter test` **459 项全绿**。
+- 新增 3 个测试文件与 2 组 widget 用例；另有活体冒烟（临时脚本，跑完已删）：用真实 key
+  打真接口，余额 `¥41.90`、连通性通过、生成返回 `score=82` 与一段中文总结。
+- 变异验证：`scoreSource` 退回只看 `isUsable`、连通性判定改成要求非空正文，
+  对应用例均变红。
+
+### 设置页新增「清除缓存」（「关于」上方）
+
+**清的是什么，先说清楚**：只清 `getTemporaryDirectory()` 下**可再生成的临时文件**——
+白噪音的 8 个 WAV 循环（各约 860 KB，首次播放时合成）与导出时写给系统分享面板的
+CSV / JSON 副本。**刻意不碰**三样东西，因为每一样都有自己的去处：睡眠记录 / 数据库与录音
+走「删除全部本地数据」，钥匙串里的 API Key 走「清除密钥」。三条清理路径各自只干一件事，
+否则用户点「清除缓存」时会以为自己的记录没了。
+
+- 副标题显示**真实占用**；读不到就说「暂时读不到占用」，**绝不显示一个编出来的 `0 B`**
+  （那会让人以为已经清干净了）。点完显示「已清除 6.7 MB 缓存。」并变成「暂无缓存」。
+- 删除策略是**清空临时目录**，不是按文件名匹配：临时目录存在的前提就是里面的东西都能丢，
+  而按前缀列的清单在写入方以后多写一种文件时会悄悄漏掉它。
+- 用真实文件系统测真实实现（只把目录换成测试自己建的临时目录）；`FileAppCache` 为此
+  留了一个只给测试用的目录注入口。**实测**：macOS 上 8 个 WAV 读出 6.7 MB，清完目录为空。
+
+**未做**：Claude 的对话与余额；余额的持久化与历史曲线；发送前的「将要发送哪些数据」
+逐项确认界面（见规格 §7）。
+
 ## 3.6（2026-10-03）
 
 **确认弹窗改用 iOS 系统组件 `CupertinoAlertDialog`，推翻偏差 #20 里「不引入 `flutter/cupertino.dart`」的裁定。**

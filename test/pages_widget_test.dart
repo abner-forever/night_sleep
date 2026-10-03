@@ -1,9 +1,13 @@
+import 'dart:convert';
+
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:night_sleep/app/app.dart';
 import 'package:night_sleep/app/app_shell.dart';
 import 'package:night_sleep/core/database/app_database.dart';
@@ -21,6 +25,9 @@ import 'package:night_sleep/features/log/presentation/log_page.dart';
 import 'package:night_sleep/features/settings/presentation/appearance_settings_page.dart';
 import 'package:night_sleep/features/settings/presentation/demo_data_page.dart';
 import 'package:night_sleep/features/settings/presentation/export_page.dart';
+import 'package:night_sleep/features/settings/data/app_cache.dart';
+import 'package:night_sleep/features/settings/data/insight_credentials.dart';
+import 'package:night_sleep/features/settings/data/insight_service.dart';
 import 'package:night_sleep/features/settings/presentation/insight_config_page.dart';
 import 'package:night_sleep/features/settings/presentation/settings_page.dart';
 import 'package:night_sleep/features/settings/presentation/sleep_import_page.dart';
@@ -98,6 +105,7 @@ void main() {
     Size surface = const Size(430, 2600),
     SleepSession? activeSession,
     DateTime? clock,
+    List<Override> overrides = const [],
   }) async {
     tester.view.physicalSize = surface;
     tester.view.devicePixelRatio = 1.0;
@@ -116,6 +124,7 @@ void main() {
           activeSessionProvider.overrideWith((ref) => activeSession),
           // 冻住「现在」，好让「已睡 3h 42m」这类读数与跑测试的日期无关。
           if (clock != null) homeNowProvider.overrideWithValue(() => clock),
+          ...overrides,
         ],
         child: MaterialApp(theme: AppTheme.light(), home: home),
       ),
@@ -133,6 +142,7 @@ void main() {
     Size surface = const Size(430, 2600),
     SleepSession? activeSession,
     DateTime? clock,
+    List<Override> overrides = const [],
   }) {
     return pumpWithOverrides(
       tester,
@@ -142,6 +152,7 @@ void main() {
       surface: surface,
       activeSession: activeSession,
       clock: clock,
+      overrides: overrides,
     );
   }
 
@@ -182,8 +193,10 @@ void main() {
     WidgetTester tester,
     Widget page, {
     List<SleepEntry> entries = const [],
+    List<Override> overrides = const [],
   }) {
-    return pumpWithOverrides(tester, page, entries: entries);
+    return pumpWithOverrides(tester, page,
+        entries: entries, overrides: overrides);
   }
 
   /// 手动补录表单现在是**推入页**：保存走 `Navigator.pop`。
@@ -596,6 +609,7 @@ void main() {
         '睡眠洞察',
         '睡眠数据导出',
         '删除全部本地数据',
+        '清除缓存',
       ]) {
         expect(find.text(label), findsOneWidget, reason: '根页少了「$label」这一行');
       }
@@ -607,6 +621,67 @@ void main() {
       expect(find.text('就寝提醒'), findsNothing);
       expect(find.text('起床提醒'), findsNothing);
       expect(find.text('夜间声音录制'), findsNothing);
+    });
+
+    testWidgets('清除缓存显示真实占用，清完变成「暂无缓存」', (tester) async {
+      final cache = _FakeAppCache(bytes: 7 * 1024 * 1024);
+      await pumpPage(
+        tester,
+        const SettingsPage(),
+        overrides: [appCacheProvider.overrideWithValue(cache)],
+      );
+
+      expect(find.text('清除缓存'), findsOneWidget);
+      expect(find.textContaining('7.0 MB'), findsOneWidget);
+
+      await tester.tap(find.text('清除缓存'));
+      await tester.pumpAndSettle();
+
+      expect(cache.cleared, isTrue);
+      // 清除结果必须落在这一行上：提示条挂在 AppScaffold，而这里只挂了页面本身，
+      // 断言「清完之后这一行不再谎报占用」才是这条用例真正要守的东西。
+      expect(find.text('暂无缓存'), findsOneWidget);
+      expect(find.textContaining('7.0 MB'), findsNothing);
+    });
+
+    testWidgets('读不到占用时如实说读不到，不编一个 0 B', (tester) async {
+      await pumpPage(
+        tester,
+        const SettingsPage(),
+        overrides: [
+          appCacheProvider.overrideWithValue(_FakeAppCache(fails: true)),
+        ],
+      );
+
+      expect(find.text('暂时读不到占用'), findsOneWidget);
+      expect(find.text('暂无缓存'), findsNothing);
+    });
+
+    testWidgets('睡眠洞察那一行不谎报「未配置」，并说清密钥在不在', (tester) async {
+      // 用户实机报回来的一条：填好 key、余额与连通性都跑通了，根页却仍写着
+      // 「未配置 · 当前使用本地规则估算」。库里那两列在全新安装时**就是 null**
+      // （DeepSeek 与其内置模型只是默认值），读裸列会把能用的配置说成没配置。
+      await pumpPage(tester, const SettingsPage());
+
+      expect(find.textContaining('DeepSeek · deepseek-flash'), findsOneWidget);
+      expect(find.textContaining('未填 API Key'), findsOneWidget);
+      expect(find.textContaining('未配置'), findsNothing);
+    });
+
+    testWidgets('填好密钥后，那一行不再提「未填 API Key」', (tester) async {
+      // 密钥是会话内存里的，这一行是它唯一的可见状态：填了就该消失，
+      // 否则用户会以为没保存上。
+      await pumpPage(
+        tester,
+        const SettingsPage(),
+        overrides: [
+          insightApiKeyProvider
+              .overrideWith(() => _FrozenInsightKey('sk-test')),
+        ],
+      );
+
+      expect(find.textContaining('DeepSeek · deepseek-flash'), findsOneWidget);
+      expect(find.textContaining('未填 API Key'), findsNothing);
     });
 
     testWidgets('版本号取自构建信息而不是写死的常量', (tester) async {
@@ -825,7 +900,7 @@ void main() {
       expect(left, greaterThanOrEqualTo(16), reason: '手机宽度下应有 16px 内边距');
     });
 
-    testWidgets('洞察配置页有内边距并标注未接入项', (tester) async {
+    testWidgets('洞察配置页有内边距并给出实测支持的动作', (tester) async {
       await pumpRoute(tester, const InsightConfigPage());
 
       expect(find.text('洞察服务配置'), findsWidgets);
@@ -834,9 +909,15 @@ void main() {
       expect(find.text('模型'), findsOneWidget);
       expect(find.text('API Key'), findsOneWidget);
       expect(find.text('DeepSeek'), findsOneWidget);
-      // Honest states: no fake balance, and the key is not persisted yet.
-      expect(find.text('余额查询未接入'), findsOneWidget);
-      expect(find.textContaining('尚未接入安全存储'), findsOneWidget);
+      // DeepSeek 的余额与对话接口都在 2026-10-03 用真实 key 实测过，两个按钮
+      // 因此是真的可点；而「未接入」只留给没有可调用接口的服务商。
+      expect(find.text('查询余额'), findsOneWidget);
+      expect(find.text('连通性测试'), findsOneWidget);
+      expect(find.text('余额查询未接入'), findsNothing);
+      // 密钥进钥匙串，且这句话必须说清去了哪里——「存在内存里、重启即丢」已经
+      // 不是事实了，留着它就是撒谎。
+      expect(find.textContaining('系统钥匙串'), findsOneWidget);
+      expect(find.textContaining('重启即丢失'), findsNothing);
       expect(find.textContaining('安全提示'), findsOneWidget);
 
       expectProperlyRendered(tester, '洞察服务配置');
@@ -912,6 +993,99 @@ void main() {
         hasLength(entries.length),
         reason: '取消不得删除任何演示行',
       );
+    });
+
+    testWidgets('查询余额把读数显示在按钮上', (tester) async {
+      await pumpRoute(
+        tester,
+        const InsightConfigPage(),
+        overrides: [
+          insightApiKeyProvider
+              .overrideWith(() => _FrozenInsightKey('sk-test')),
+          insightHttpClientProvider.overrideWithValue(
+            MockClient(
+              (request) async => http.Response.bytes(
+                utf8.encode(jsonEncode({
+                  'is_available': true,
+                  'balance_infos': [
+                    {'currency': 'CNY', 'total_balance': '42.51'},
+                  ],
+                })),
+                200,
+              ),
+            ),
+          ),
+        ],
+      );
+
+      await tester.tap(find.text('查询余额'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('余额 ¥42.51'), findsOneWidget);
+      expect(find.text('查询余额'), findsNothing);
+    });
+
+    testWidgets('有密钥时才出现「清除密钥」，清了就消失', (tester) async {
+      // 密钥一旦能跨重启留存，就必须给得出一个删除入口。
+      final store = _FakeInsightKeyStore();
+      await pumpRoute(
+        tester,
+        const InsightConfigPage(),
+        overrides: [
+          insightKeyStoreProvider.overrideWithValue(store),
+        ],
+      );
+      expect(find.text('清除密钥'), findsNothing, reason: '没密钥就没有可清的');
+
+      await tester.enterText(find.byType(TextField), 'sk-typed');
+      // 用 pump 而不是 `pumpEventQueue()`：widget 测试跑在 FakeAsync 里，
+      // 真实事件队列永远不会推进，那个调用会直接挂死。
+      await tester.pumpAndSettle();
+      expect(find.text('清除密钥'), findsOneWidget);
+      // 写钥匙串是异步的，但只跨微任务，pump 之后就落定。
+      expect(store.value, 'sk-typed');
+
+      await tester.tap(find.text('清除密钥'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('清除密钥'), findsNothing);
+      expect(find.textContaining('已清除密钥'), findsOneWidget);
+      expect(store.value, isNull);
+    });
+
+    testWidgets('连通性测试成功后在页内说明结果，并讲清楚空正文也算通', (tester) async {
+      http.Request? seen;
+      await pumpRoute(
+        tester,
+        const InsightConfigPage(),
+        overrides: [
+          insightApiKeyProvider
+              .overrideWith(() => _FrozenInsightKey('sk-test')),
+          insightHttpClientProvider.overrideWithValue(
+            MockClient((request) async {
+              seen = request;
+              return http.Response.bytes(
+                utf8.encode(jsonEncode({
+                  'choices': [
+                    {
+                      'message': {'content': ''},
+                    }
+                  ],
+                })),
+                200,
+              );
+            }),
+          ),
+        ],
+      );
+
+      await tester.tap(find.text('连通性测试'));
+      await tester.pumpAndSettle();
+
+      expect(seen!.url.path, endsWith('/chat/completions'));
+      expect(find.textContaining('连通正常'), findsOneWidget);
+      // 推理模型会只吐推理过程：这条说明必须在，否则用户会以为空回复是失败。
+      expect(find.textContaining('正文为空'), findsOneWidget);
     });
 
     testWidgets('展开下拉菜单不依赖卡片内部裁剪', (tester) async {
@@ -1006,4 +1180,52 @@ void main() {
       expectInset(tester);
     });
   });
+}
+
+/// 相当于用户在设置页里已经填好的密钥：会话内存里预置一个值。
+class _FrozenInsightKey extends InsightApiKeyNotifier {
+  _FrozenInsightKey(this._value);
+
+  final String _value;
+
+  @override
+  String build() => _value;
+}
+
+/// 应用缓存的内存替身：widget 测试里没有文件系统通道，也不该真去删东西。
+class _FakeAppCache implements AppCache {
+  _FakeAppCache({this.bytes = 0, this.fails = false});
+
+  int bytes;
+  final bool fails;
+  bool cleared = false;
+
+  @override
+  Future<int> size() async {
+    if (fails) throw StateError('no temp directory');
+    return cleared ? 0 : bytes;
+  }
+
+  @override
+  Future<int> clear() async {
+    if (fails) throw StateError('no temp directory');
+    cleared = true;
+    final freed = bytes;
+    bytes = 0;
+    return freed;
+  }
+}
+
+/// 钥匙串的内存替身：widget 测试里没有平台通道。
+class _FakeInsightKeyStore implements InsightKeyStore {
+  String? value;
+
+  @override
+  Future<String?> read() async => value;
+
+  @override
+  Future<void> write(String value) async => this.value = value;
+
+  @override
+  Future<void> clear() async => value = null;
 }

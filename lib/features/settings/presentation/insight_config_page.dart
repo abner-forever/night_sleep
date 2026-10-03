@@ -11,6 +11,8 @@ import '../../../core/widgets/app_menu_field.dart';
 import '../../../core/widgets/glass_surface.dart';
 import '../../../core/widgets/ios_controls.dart';
 import '../../../core/widgets/subpage.dart';
+import '../data/insight_credentials.dart';
+import '../data/insight_service.dart';
 import '../data/model_catalog.dart';
 
 /// Insight service configuration.
@@ -18,7 +20,15 @@ import '../data/model_catalog.dart';
 /// The provider and model selection is persisted. The API key is **not** written
 /// anywhere yet: the spec requires platform secure storage for it, and keeping
 /// it out of SQLite is what stops it reaching exports and backups. Until secure
-/// storage lands, the field is a session-only scratchpad and says so.
+/// storage lands the field writes to a session-only in-memory holder
+/// ([insightApiKeyProvider]) and says so — that holder is also what lets the
+/// sleep-detail sheet generate a summary without asking for the key again.
+///
+/// Three things can be done from here, and each one is only offered where it
+/// actually works: 「获取可用模型」 (`GET /models`), 「连通性测试」 (one minimal
+/// completion), and 「查询余额」 (`GET /user/balance`, DeepSeek only). Providers
+/// without a verified endpoint show an inert 「未接入」 pill instead of a button
+/// that fails — see 偏差 #3 and #46.
 ///
 /// The model list belongs to the provider, not to us. A curated list is shown
 /// until something is fetched, marked with the date it was checked;
@@ -40,6 +50,19 @@ class _InsightConfigPageState extends ConsumerState<InsightConfigPage> {
   List<String>? _fetchedModels;
   bool _fetching = false;
 
+  /// The most recent balance reading, or null before the first query. Cleared
+  /// with the model list when the provider changes — one provider's money is
+  /// not another's.
+  ProviderBalance? _balance;
+  bool _checkingBalance = false;
+
+  bool _pinging = false;
+
+  /// True while any of the three actions is in flight. They all use the same
+  /// key and the same page-level notice, so letting two run at once would
+  /// produce two writers racing for one message slot.
+  bool get _busy => _fetching || _checkingBalance || _pinging;
+
   /// 最近一次获取失败的原因，显示在页内。全局 toast 挂在 AppScaffold，二级页
   /// push 在它之上，会把提示条整个盖住——失败反馈必须留在本页，否则界面只会
   /// 表现为「点了没反应」（转圈停下之外毫无变化）。
@@ -50,6 +73,14 @@ class _InsightConfigPageState extends ConsumerState<InsightConfigPage> {
   /// 与 [_error] 互斥：每次取模型、切换服务商都先把两者清空，且只设置其中一个，
   /// 因此页面上最多只出现一条提示。
   String? _success;
+
+  @override
+  void initState() {
+    super.initState();
+    // 密钥活在 provider 里而不是这个页面里：离开再回来（或从详情页生成洞察）
+    // 都要拿得到同一把。页面只是它的一个视图，`dispose` 不会把它抹掉。
+    _keyController.text = ref.read(insightApiKeyProvider);
+  }
 
   @override
   void dispose() {
@@ -65,7 +96,24 @@ class _InsightConfigPageState extends ConsumerState<InsightConfigPage> {
   List<String> get _modelOptions {
     final fetched = _fetchedModels;
     if (fetched != null) return fetched;
-    return [for (final model in providerFor(_providerId).curated) model.id];
+    return curatedModelIds(providerFor(_providerId));
+  }
+
+  /// The model a request would actually use. [stored] is passed in rather than
+  /// read here so `build` can keep watching the settings stream while the
+  /// action handlers read it once.
+  ///
+  /// Delegates to [resolveInsightModel] so this page and the sleep-detail sheet
+  /// can never disagree about which model is "the one selected" — that
+  /// disagreement is what hid the 「重新生成」 button.
+  String? _modelFrom(String? stored) =>
+      resolveInsightModel(options: _modelOptions, stored: stored);
+
+  String get _balanceLabel {
+    final balance = _balance;
+    if (balance == null) return '查询余额';
+    if (!balance.isAvailable) return '账户不可用';
+    return '余额 ${balance.display}';
   }
 
   Future<void> _update(AppSettingsCompanion values) {
@@ -82,7 +130,8 @@ class _InsightConfigPageState extends ConsumerState<InsightConfigPage> {
     try {
       final models = await fetchProviderModels(
         provider: providerFor(id),
-        apiKey: _keyController.text,
+        apiKey: ref.read(insightApiKeyProvider),
+        client: ref.read(insightHttpClientProvider),
       );
       if (!mounted) return;
       setState(() {
@@ -95,11 +144,86 @@ class _InsightConfigPageState extends ConsumerState<InsightConfigPage> {
       if (stored == null || !models.contains(stored)) {
         await _update(AppSettingsCompanion(insightModel: Value(models.first)));
       }
-    } on ModelFetchFailure catch (failure) {
+    } on InsightFailure catch (failure) {
       // 失败必须看得见。此前异常只往被盖住的全局 toast 里写，首页以外看不到。
       if (!mounted) return;
       setState(() {
         _fetching = false;
+        _error = failure.message;
+      });
+    }
+  }
+
+  /// Reads the account balance. Only offered where the provider publishes one
+  /// (DeepSeek); everyone else keeps the honest 「未接入」 pill.
+  Future<void> _checkBalance() async {
+    setState(() {
+      _checkingBalance = true;
+      _error = null;
+      _success = null;
+    });
+    try {
+      final balance = await fetchProviderBalance(
+        provider: providerFor(_providerId),
+        apiKey: ref.read(insightApiKeyProvider),
+        client: ref.read(insightHttpClientProvider),
+      );
+      if (!mounted) return;
+      setState(() {
+        _balance = balance;
+        _checkingBalance = false;
+      });
+    } on InsightFailure catch (failure) {
+      if (!mounted) return;
+      setState(() {
+        _checkingBalance = false;
+        // 读数失败就把上一次的读数一起清掉：留着它，用户会以为那是现在的余额。
+        _balance = null;
+        _error = failure.message;
+      });
+    }
+  }
+
+  /// 清掉钥匙串里的密钥。用户既然能把它存下来，就得能把它拿掉。
+  Future<void> _clearKey() async {
+    await ref.read(insightApiKeyProvider.notifier).clear();
+    if (!mounted) return;
+    _keyController.clear();
+    setState(() {
+      // 余额是拿密钥读出来的，密钥没了就不该继续挂在页面上。
+      _balance = null;
+      _error = null;
+      _success = '已清除密钥。';
+    });
+  }
+
+  /// Sends one minimal completion to prove key + model + network all work.
+  Future<void> _ping() async {
+    final provider = providerFor(_providerId);
+    final model =
+        _modelFrom(ref.read(settingsProvider).valueOrNull?.insightModel) ?? '';
+    setState(() {
+      _pinging = true;
+      _error = null;
+      _success = null;
+    });
+    try {
+      await pingProvider(
+        provider: provider,
+        model: model,
+        apiKey: ref.read(insightApiKeyProvider),
+        client: ref.read(insightHttpClientProvider),
+      );
+      if (!mounted) return;
+      setState(() {
+        _pinging = false;
+        _success = '连通正常：${provider.label} · $model。'
+            '推理模型可能只返回推理过程、正文为空，这同样算连通。';
+      });
+    } on InsightFailure catch (failure) {
+      if (!mounted) return;
+      setState(() {
+        _pinging = false;
         _error = failure.message;
       });
     }
@@ -111,10 +235,11 @@ class _InsightConfigPageState extends ConsumerState<InsightConfigPage> {
     final provider = providerFor(_providerId);
     final options = _modelOptions;
     final storedModel = ref.watch(settingsProvider).valueOrNull?.insightModel;
-    final model = storedModel != null && options.contains(storedModel)
-        ? storedModel
-        : (options.isEmpty ? null : options.first);
+    final model = _modelFrom(storedModel);
     final curated = _fetchedModels == null;
+    // 从 notifier 读而不是从输入框读：输入框每敲一下都会推 state，这里才跟着
+    // rebuild，「清除密钥」才会在填上之后出现、清掉之后消失。
+    final keySet = ref.watch(insightApiKeyProvider).trim().isNotEmpty;
 
     return Subpage(
       backLabel: '设置',
@@ -175,6 +300,9 @@ class _InsightConfigPageState extends ConsumerState<InsightConfigPage> {
                         final picked = kInsightProviders[index];
                         setState(() {
                           _fetchedModels = null;
+                          // 一个服务商的余额不是另一个的：切过去就把读数清掉，
+                          // 否则会挂着上一个服务商的钱数。
+                          _balance = null;
                           _error = null;
                           _success = null;
                         });
@@ -207,58 +335,37 @@ class _InsightConfigPageState extends ConsumerState<InsightConfigPage> {
                 ],
               ),
               const SizedBox(height: 10),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              Text(
+                curated
+                    ? (provider.curated.isEmpty
+                        ? '未内置模型名：${provider.curationSource}'
+                        : '内置列表核实于 ${provider.curated.first.checkedOn}，'
+                            '可能已过期；点右侧可拉取实时列表。')
+                    : '列表来自 ${provider.label} 的实时返回。',
+                style: TextStyle(
+                  fontSize: 11,
+                  height: 1.45,
+                  color: tokens.textMuted,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
-                  Expanded(
-                    child: Text(
-                      curated
-                          ? (provider.curated.isEmpty
-                              ? '未内置模型名：${provider.curationSource}'
-                              : '内置列表核实于 ${provider.curated.first.checkedOn}，'
-                                  '可能已过期；点右侧可拉取实时列表。')
-                          : '列表来自 ${provider.label} 的实时返回。',
-                      style: TextStyle(
-                        fontSize: 11,
-                        height: 1.45,
-                        color: tokens.textMuted,
-                      ),
-                    ),
+                  _ActionPill(
+                    label: _fetching ? '获取中…' : '获取可用模型',
+                    busy: _fetching,
+                    onTap: _busy ? null : _fetchModels,
                   ),
-                  const SizedBox(width: 10),
-                  Pressable(
-                    onTap: _fetching ? null : _fetchModels,
-                    haptic: false,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: tokens.accentSoft,
-                        borderRadius: BorderRadius.circular(AppRadii.pill),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (_fetching) ...[
-                            const SizedBox(
-                              width: 11,
-                              height: 11,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                            const SizedBox(width: 6),
-                          ],
-                          Text(
-                            _fetching ? '获取中…' : '获取可用模型',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: tokens.accent,
-                            ),
-                          ),
-                        ],
-                      ),
+                  // Only where we have a verified endpoint; Claude keeps the
+                  // honest 「暂不支持」 absence rather than a button that fails.
+                  if (provider.supportsChat)
+                    _ActionPill(
+                      label: _pinging ? '测试中…' : '连通性测试',
+                      busy: _pinging,
+                      onTap: _busy ? null : _ping,
                     ),
-                  ),
                 ],
               ),
               const SizedBox(height: 16),
@@ -284,6 +391,11 @@ class _InsightConfigPageState extends ConsumerState<InsightConfigPage> {
                         obscureText: !_showKey,
                         autocorrect: false,
                         enableSuggestions: false,
+                        // 每次改动都写进会话内存的 provider：详情页生成洞察时
+                        // 要用同一把钥匙。只写内存，不落库、不落日志。
+                        onChanged: (value) => ref
+                            .read(insightApiKeyProvider.notifier)
+                            .update(value),
                         style: TextStyle(
                           fontSize: 14,
                           color: tokens.textPrimary,
@@ -323,36 +435,32 @@ class _InsightConfigPageState extends ConsumerState<InsightConfigPage> {
               const SizedBox(height: 12),
               Divider(height: 1, color: tokens.border),
               const SizedBox(height: 12),
-              Row(
+              Text(
+                '密钥存在系统钥匙串里（iOS / macOS 钥匙串、Android Keystore），'
+                '不写入数据库、日志与导出文件；重启后仍在。',
+                style: TextStyle(fontSize: 12, color: tokens.textMuted),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
-                  Expanded(
-                    child: Text(
-                      '密钥仅在当前会话内存中，尚未接入安全存储，重启即丢失。',
-                      style: TextStyle(fontSize: 12, color: tokens.textMuted),
+                  if (provider.supportsBalance)
+                    _ActionPill(
+                      label: _balanceLabel,
+                      busy: _checkingBalance,
+                      onTap: _busy ? null : _checkBalance,
+                    )
+                  else
+                    // 没有可调用的余额接口就如实说没有：不做假按钮，也不显示
+                    // 一个我们读不到的余额（偏差 #3）。
+                    const _ActionPill(label: '余额查询未接入', enabled: false),
+                  // 密钥一旦能跨重启留存，就必须给得出一个删除入口。
+                  if (keySet)
+                    _ActionPill(
+                      label: '清除密钥',
+                      onTap: _busy ? null : _clearKey,
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  // No provider exposes a balance endpoint we can call, so the
-                  // control is present but inert.
-                  Opacity(
-                    opacity: 0.55,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: tokens.bgMuted,
-                        borderRadius: BorderRadius.circular(AppRadii.pill),
-                      ),
-                      child: Text(
-                        '余额查询未接入',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: tokens.textMuted,
-                        ),
-                      ),
-                    ),
-                  ),
                 ],
               ),
               const SizedBox(height: 16),
@@ -415,6 +523,68 @@ class _InsightConfigPageState extends ConsumerState<InsightConfigPage> {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// The pill-shaped action used for every provider call on this page.
+///
+/// Three actions share one look on purpose: fetching models, testing
+/// connectivity and reading the balance are all "press this, wait, get told
+/// what happened", and the page shows their results in one place.
+class _ActionPill extends StatelessWidget {
+  const _ActionPill({
+    required this.label,
+    this.onTap,
+    this.busy = false,
+    this.enabled = true,
+  });
+
+  final String label;
+  final VoidCallback? onTap;
+  final bool busy;
+
+  /// False renders the inert "not available here" state — used for providers
+  /// with no balance endpoint. Never wire an inert pill to a real action.
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppTokens.of(context);
+    return Opacity(
+      opacity: enabled ? 1 : 0.55,
+      child: Pressable(
+        onTap: enabled ? onTap : null,
+        haptic: false,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: enabled ? tokens.accentSoft : tokens.bgMuted,
+            borderRadius: BorderRadius.circular(AppRadii.pill),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (busy) ...[
+                const SizedBox(
+                  width: 11,
+                  height: 11,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 6),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: enabled ? tokens.accent : tokens.textMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

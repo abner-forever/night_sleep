@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,6 +10,7 @@ import '../../../app/app_shell.dart';
 import '../../../app/app_toast.dart';
 import '../../../app/session_teardown.dart';
 import '../../../core/config/app_config.dart';
+import '../../../core/database/app_database.dart' show AppSetting;
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_basics.dart';
@@ -15,7 +18,28 @@ import '../../../core/widgets/app_icons.dart';
 import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/ios_controls.dart';
 import '../../sleep/data/sleep_repository.dart';
+import '../data/app_cache.dart';
+import '../data/insight_credentials.dart';
+import '../data/model_catalog.dart';
 import 'appearance_settings_page.dart';
+
+/// 根页「睡眠洞察」那一行的副标题。
+///
+/// 走 [resolveInsightSelection]，与配置页、详情页**同一份默认值解析**：库里
+/// `insightProvider` / `insightModel` 在全新安装时就是 `null`（DeepSeek 与其内置
+/// 模型只是默认值），读裸列会把「能用的配置」显示成「未配置」——这正是用户报回来的
+/// 「填了 key 却说未配置」。密钥那一半单独说：它在钥匙串里（偏差 #8），
+/// 有没有配齐只有这一行看得见。
+String _insightSubtitle(AppSetting? settings, bool keySet) {
+  final selection = resolveInsightSelection(
+    providerId: settings?.insightProvider,
+    model: settings?.insightModel,
+  );
+  final model = selection.model ?? '无可用模型';
+  final base = '${selection.provider.label} · $model';
+  if (keySet) return base;
+  return '$base · 未填 API Key';
+}
 
 /// Settings — the root of the settings tab.
 ///
@@ -24,9 +48,10 @@ import 'appearance_settings_page.dart';
 /// 二级页（`/settings/appearance`、`/settings/sleep`）——根页因此短到一屏放得下。
 ///
 /// 原型根页只有「外观 / 睡眠设置 / 睡眠数据导入 / 睡眠洞察 / 关于」五条，本实现
-/// 另有四条必须保留的入口（原型没有、但规格或既有能力要求）：
-/// **导出**（偏差 #18）、**删除全部本地数据**（规格 §7）、**演示数据**（调试构建）
-/// 三条收进「数据与隐私」；**罗盘**并入「常用」。
+/// 另有五条必须保留的入口（原型没有、但规格或既有能力要求）：
+/// **导出**（偏差 #18）、**删除全部本地数据**（规格 §7）、**演示数据**（调试构建）、
+/// **清除缓存**（v3.7，清的是可再生成的临时文件）四条收进「数据与隐私」；
+/// **罗盘**并入「常用」。
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
 
@@ -67,6 +92,9 @@ class SettingsPage extends ConsumerWidget {
     final entries = ref.watch(sleepEntriesProvider).valueOrNull ?? const [];
     final demoCount =
         entries.where((entry) => entry.source == AppConfig.demoSource).length;
+    // 密钥在钥匙串里，界面上没有别处能看出「配没配」。这一行必须把它说出来，
+    // 否则用户只会看到「未配置」而不知道差的是哪一样。
+    final insightKeySet = ref.watch(insightApiKeyProvider).trim().isNotEmpty;
 
     final themeMode = settings?.themeMode ?? 'system';
     final goalHours = (settings?.sleepGoalMinutes ?? 480) / 60;
@@ -133,9 +161,7 @@ class SettingsPage extends ConsumerWidget {
               icon: AppIcons.ai(
                   size: 18, color: tokens.accentViolet, strokeWidth: 1.8),
               title: '睡眠洞察',
-              subtitle: settings?.insightProvider == null
-                  ? '未配置 · 当前使用本地规则估算'
-                  : '${settings!.insightProvider} · ${settings.insightModel ?? ''}',
+              subtitle: _insightSubtitle(settings, insightKeySet),
               onTap: () => context.go('/settings/insight'),
             ),
           ],
@@ -190,6 +216,9 @@ class SettingsPage extends ConsumerWidget {
                 subtitle: demoCount == 0 ? '仅调试构建可见' : '$demoCount 条示例记录',
                 onTap: () => context.go('/settings/demo'),
               ),
+            // 「关于」上方的最后一行。清的是**可再生成的临时文件**，不碰记录、
+            // 录音与密钥——那三样各自有去处，见 `app_cache.dart` 的说明。
+            const _ClearCacheRow(),
           ],
         ),
         const SizedBox(height: 22),
@@ -250,6 +279,92 @@ class SettingsPage extends ConsumerWidget {
 }
 
 /// 一条**导航行**：图标底板 + 两行文案 + 右侧箭头，整行可点。
+/// 「清除缓存」那一行。
+///
+/// 有状态是因为占用大小要先读一次文件系统。读不到时**如实说读不到**，不显示
+/// 一个编出来的「0 B」——那会让人以为已经清干净了。
+class _ClearCacheRow extends ConsumerStatefulWidget {
+  const _ClearCacheRow();
+
+  @override
+  ConsumerState<_ClearCacheRow> createState() => _ClearCacheRowState();
+}
+
+class _ClearCacheRowState extends ConsumerState<_ClearCacheRow> {
+  int? _bytes;
+  bool _reading = true;
+  bool _failed = false;
+  bool _clearing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_read());
+  }
+
+  Future<void> _read() async {
+    try {
+      final bytes = await ref.read(appCacheProvider).size();
+      if (!mounted) return;
+      setState(() {
+        _bytes = bytes;
+        _failed = false;
+        _reading = false;
+      });
+    } on Object {
+      if (!mounted) return;
+      setState(() {
+        _failed = true;
+        _reading = false;
+      });
+    }
+  }
+
+  Future<void> _clear() async {
+    if (_clearing) return;
+    setState(() => _clearing = true);
+    try {
+      final freed = await ref.read(appCacheProvider).clear();
+      if (!mounted) return;
+      setState(() {
+        _clearing = false;
+        _bytes = 0;
+      });
+      ref.read(toastProvider.notifier).show(
+            freed > 0 ? '已清除 ${formatCacheSize(freed)} 缓存。' : '没有可清除的缓存。',
+          );
+      // 清完再量一次：万一有删不掉的（正在播放的那个 WAV），读数才对得上。
+      await _read();
+    } on Object {
+      if (!mounted) return;
+      setState(() => _clearing = false);
+      ref.read(toastProvider.notifier).show('清除失败，请稍后再试。');
+    }
+  }
+
+  String get _subtitle {
+    if (_clearing) return '正在清除…';
+    if (_reading) return '正在计算占用…';
+    if (_failed) return '暂时读不到占用';
+    final bytes = _bytes ?? 0;
+    if (bytes == 0) return '暂无缓存';
+    return '白噪音音频等可再生成的临时文件 · ${formatCacheSize(bytes)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppTokens.of(context);
+    return _NavRow(
+      background: tokens.bgMuted,
+      icon:
+          AppIcons.sparkle(size: 18, color: tokens.textMuted, strokeWidth: 1.8),
+      title: '清除缓存',
+      subtitle: _subtitle,
+      onTap: _clear,
+    );
+  }
+}
+
 class _NavRow extends StatelessWidget {
   const _NavRow({
     required this.background,

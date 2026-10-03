@@ -67,6 +67,28 @@ class SleepEntry {
   final DateTime createdAtUtc;
   final DateTime updatedAtUtc;
 
+  /// Returns a copy with a freshly generated [insight].
+  ///
+  /// Replaces only when [insight] is non-null — there is no "clear the
+  /// insight" caller, and a nullable `??` parameter that cannot express the
+  /// difference between "keep" and "erase" is a bug waiting to happen.
+  SleepEntry copyWith({Insight? insight}) => SleepEntry(
+        id: id,
+        startAtUtc: startAtUtc,
+        endAtUtc: endAtUtc,
+        timeZoneId: timeZoneId,
+        quality: quality,
+        notes: notes,
+        tags: tags,
+        source: source,
+        loggedEvents: loggedEvents,
+        stages: stages,
+        soundClips: soundClips,
+        insight: insight ?? this.insight,
+        createdAtUtc: createdAtUtc,
+        updatedAtUtc: updatedAtUtc,
+      );
+
   // ── Derived timing ────────────────────────────────────────────────────────
 
   Duration get duration => endAtUtc.difference(startAtUtc);
@@ -144,7 +166,15 @@ class SleepEntry {
   bool get isManualEntry => !hasStages && !hasSoundEvents;
 
   ScoreSource get scoreSource {
-    if (insight?.isUsable ?? false) return ScoreSource.modelInsight;
+    // **只有带回评分的模型洞察才顶掉本地估算。**
+    //
+    // 此前这里只看 `isUsable`，于是「模型写了总结但没给分数」的洞察会把评分整个
+    // 吞掉：`score` 取 `insight!.score` 得到 null，本地估算那一条又轮不到，
+    // 详情页的评分环就此消失。模型没给分就照旧用本地规则算分，两者都不是「编」。
+    final insight = this.insight;
+    if (insight != null && insight.isUsable && insight.score != null) {
+      return ScoreSource.modelInsight;
+    }
     // **未评分就没有评分。**
     //
     // 这一条必须排在 `isManualEntry` 之前：`estimateScore` 的质量项占 35 分权重，

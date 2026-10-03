@@ -51,6 +51,8 @@ class InsightProvider {
     required this.modelsUri,
     required this.curated,
     required this.curationSource,
+    this.chatUri,
+    this.balanceUri,
   });
 
   final InsightProviderId id;
@@ -62,7 +64,24 @@ class InsightProvider {
   /// Where the curated list came from, or why there isn't one.
   final String curationSource;
 
+  /// OpenAI-compatible `POST /chat/completions`, or null when this
+  /// implementation cannot talk to the provider at all.
+  ///
+  /// Null is a deliberate, documented gap rather than a bug: Anthropic's
+  /// Messages API takes a different request *and* response shape, and no key
+  /// for it was available to verify against, so no code was written for it.
+  /// See 偏差 #46 in the spec.
+  final String? chatUri;
+
+  /// Where the provider publishes the account balance, or null when it has no
+  /// callable balance endpoint. See 偏差 #3.
+  final String? balanceUri;
+
   String get label => id.label;
+
+  bool get supportsChat => chatUri != null;
+
+  bool get supportsBalance => balanceUri != null;
 
   Map<String, String> authHeaders(String apiKey) => switch (id) {
         InsightProviderId.claude => {
@@ -74,6 +93,13 @@ class InsightProvider {
         // `/models`.
         _ => {'Authorization': 'Bearer $apiKey'},
       };
+
+  /// Auth headers plus a JSON content type, for the OpenAI-compatible `POST`s
+  /// in `insight_service.dart`. Only ever called when [supportsChat].
+  Map<String, String> completionHeaders(String apiKey) => {
+        ...authHeaders(apiKey),
+        'Content-Type': 'application/json',
+      };
 }
 
 /// `GET /models` on each provider, checked 2026-09-27.
@@ -82,10 +108,17 @@ class InsightProvider {
 /// documentation is behind a bot wall, so **no** OpenAI models are listed rather
 /// than guessed. Point the OpenAI entry at a key and use 「获取可用模型」.
 const List<InsightProvider> kInsightProviders = [
+  // chatUri / balanceUri 是否**实测过**，逐条注明——这三行决定了界面上哪些按钮
+  // 会真的发请求，写没跑过的地址等于让应用当场撒谎。
   InsightProvider(
     id: InsightProviderId.deepseek,
     modelsUri: 'https://api.deepseek.com/models',
     curationSource: 'https://api-docs.deepseek.com/quick_start/pricing',
+    // 两者都在 2026-10-03 用真实 key 打过 200：余额返回
+    // `{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"42.51",…}]}`，
+    // 对话返回 `{"choices":[{"message":{…}}]}`。
+    chatUri: 'https://api.deepseek.com/chat/completions',
+    balanceUri: 'https://api.deepseek.com/user/balance',
     curated: [
       CuratedModel('deepseek-flash', '2026-09-27'),
       CuratedModel('deepseek-v4-pro', '2026-09-27'),
@@ -95,6 +128,9 @@ const List<InsightProvider> kInsightProviders = [
     id: InsightProviderId.openai,
     modelsUri: 'https://api.openai.com/v1/models',
     curationSource: 'OpenAI 文档未能核实，故不内置任何模型名',
+    // OpenAI 兼容协议，与 DeepSeek 共用同一条代码路径；但**没有 key 实测过**，
+    // 见 README「验证记录」。余额接口没有公开文档，故不接。
+    chatUri: 'https://api.openai.com/v1/chat/completions',
     curated: [],
   ),
   InsightProvider(
@@ -102,6 +138,8 @@ const List<InsightProvider> kInsightProviders = [
     modelsUri: 'https://api.anthropic.com/v1/models',
     curationSource:
         'https://platform.claude.com/docs/en/about-claude/models/overview',
+    // 刻意留空：Messages API 的请求与响应形状都与 OpenAI 兼容协议不同，
+    // 而手边没有可实测的 key。不写没跑过的代码，见偏差 #46。
     curated: [
       CuratedModel('claude-sonnet-5', '2026-09-27'),
       CuratedModel('claude-opus-5-5', '2026-09-27'),
@@ -114,10 +152,76 @@ const List<InsightProvider> kInsightProviders = [
 InsightProvider providerFor(InsightProviderId id) =>
     kInsightProviders.firstWhere((provider) => provider.id == id);
 
+/// The curated model ids, i.e. what to offer before a live list is fetched.
+List<String> curatedModelIds(InsightProvider provider) =>
+    [for (final model in provider.curated) model.id];
+
+/// Picks the model a request would use out of [options], keeping [stored] only
+/// while the provider still offers it.
+String? resolveInsightModel({
+  required List<String> options,
+  String? stored,
+}) {
+  if (stored != null && options.contains(stored)) return stored;
+  return options.isEmpty ? null : options.first;
+}
+
+/// The provider and model the app would actually use.
+class InsightSelection {
+  const InsightSelection({required this.provider, required this.model});
+
+  final InsightProvider provider;
+
+  /// Null only when the provider serves no curated model and none was fetched.
+  final String? model;
+
+  bool get isRunnable => provider.supportsChat && model != null;
+}
+
+/// Resolves the selection from the persisted settings row, **applying the same
+/// defaults the settings page displays**.
+///
+/// This exists because of a real bug. `AppSettings.insightProvider` and
+/// `insightModel` are legitimately null on a fresh install — the user never had
+/// to pick anything, since DeepSeek and its curated models are the defaults the
+/// settings page shows. The detail sheet used to read the raw columns, so it
+/// saw null, concluded "not configured", and offered no 「重新生成」 button to a
+/// user who had already filled in a working key and successfully run both the
+/// balance query and the connectivity test. Two readings of one setting is the
+/// defect; this is the single reading.
+InsightSelection resolveInsightSelection({
+  String? providerId,
+  String? model,
+}) {
+  final provider = providerFor(
+    InsightProviderId.fromId(providerId) ?? InsightProviderId.deepseek,
+  );
+  return InsightSelection(
+    provider: provider,
+    model: resolveInsightModel(
+      options: curatedModelIds(provider),
+      stored: model,
+    ),
+  );
+}
+
+/// A provider request that failed for a reason worth showing the user.
+///
+/// One marker for every call this app makes to a provider — model list,
+/// balance, connectivity, generation — so the settings page can report all of
+/// them the same way without catching bare `Exception`s and accidentally
+/// swallowing a programming error.
+abstract interface class InsightFailure implements Exception {
+  /// Already user-facing Chinese text. Never contains the API key or any part
+  /// of the provider's response body.
+  String get message;
+}
+
 /// Why a model list request failed, in terms the user can act on.
-class ModelFetchFailure implements Exception {
+class ModelFetchFailure implements InsightFailure {
   const ModelFetchFailure(this.message);
 
+  @override
   final String message;
 
   @override
