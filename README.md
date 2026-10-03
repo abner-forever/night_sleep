@@ -144,9 +144,11 @@ test/                  领域计算与页面测试
 - **删除图标与确认弹窗**（v2.6）：应用内两处删除入口改用**自绘的垃圾桶图标**
   （`AppIcons.trash`，替换此前借用的播放控制「停止」方块），「删除全部本地数据」那一行另补
   `tokens.danger` 语义色的图标底板。三处危险操作（删除记录、删除全部数据、**清除演示数据**）
-  统一走**按项目令牌自绘的 iOS 风格确认弹窗**（`core/widgets/confirm_dialog.dart` 的
-  `showConfirmDialog`）——不引入 `flutter/cupertino.dart`（它自带系统配色与圆角，会绕过
-  `AppTokens`）。「清除演示数据」此前**没有二次确认**，本版补上。
+  统一走 `core/widgets/confirm_dialog.dart` 的 `showConfirmDialog`。该弹窗 v2.6 起是按令牌
+  自绘，**v3.6 起改用 iOS 系统组件 `CupertinoAlertDialog`**——布局、模糊表面、圆角、分隔线与
+  弹簧转场交给 SDK，代价是**弹窗底色与分隔线色不再来自 `AppTokens`**（亮度、动作色
+  `accent` / `danger`、蒙层色仍接令牌；取舍见规格偏差 #20）。「清除演示数据」此前**没有二次
+  确认**，v2.6 补上。
 - **禁用按钮的页内反馈**（v2.6）：`PrimaryAction` 的 `onTap` 为空即禁用态——不再画启用态的
   顶边高光与蓝色投影、不触发触觉，但会接住点击并回调 `onBlockedTap`。导入页据此在按钮下方
   给出**页内**说明（这是二级页，全局 toast 会被外壳盖住）。启用态观感不变。
@@ -357,7 +359,21 @@ Bundle ID、Android application ID 与发布账号保持 Flutter 默认占位配
 
 本机环境：macOS 14.8.9（23J631，Intel），Flutter 3.47.5 stable。
 
-**v3.5（2026-10-03：设置页信息架构重排 + 两个新二级页 + 开屏页）最近一次复跑：**
+**v3.6（2026-10-03：确认弹窗改用 iOS 系统组件）最近一次复跑：**
+
+- `dart format .` → 无额外改动；`flutter analyze` → **No issues found**
+- `flutter test` → **424/424 通过**。本轮只重写 `test/confirm_dialog_test.dart`（仍是 7 条，
+  断言对象从「自绘特征」换成「系统组件特征」：`CupertinoAlertDialog` 在位、取消/蒙层返回
+  `false`、确认返回 `true`、取消在左确认在右、破坏性取 `danger` 非破坏性取 `accent`、
+  深色下亮度跟随应用而非系统）。三处调用方一字未改，`pages_widget_test.dart` 与
+  `record_edit_delete_test.dart` 里依赖文案/可见性的确认用例**直接复用、无需改动**。
+  **已变异验证**：把实现退回 HEAD 的自绘版本，「系统组件」「破坏性取 danger」「深色亮度」
+  3 条立刻变红，而 4 条返回语义/按钮次序的用例与实现无关、保持绿。
+- **构建**：本轮**没有重跑任何构建**，只跑了 `flutter test` 与 `flutter analyze`。
+- **未目视核对**：新弹窗底色是半透明材质叠在模糊背景上，浅色/深色下的实际观感与它同全仓
+  其余玻璃材质的协调度**只有几何/结构断言**，需人工核对（同 v3.5 设置页的待办）。
+
+**上一版（v3.5，2026-10-03：设置页信息架构重排 + 两个新二级页 + 开屏页）复跑：**
 
 - `dart format .` → 无额外改动；`flutter analyze` → **No issues found**
 - `flutter test` → **424/424 通过**（本轮净增 9 条：新增开屏 5 条；设置页那两组重写后

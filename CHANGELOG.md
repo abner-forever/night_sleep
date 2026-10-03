@@ -3,6 +3,28 @@
 本文件记录「夜深」项目规格的版本变更。规格正文见
 [docs/superpowers/specs/2026-09-28-night-sleep-design.md](docs/superpowers/specs/2026-09-28-night-sleep-design.md)。
 
+## 3.6（2026-10-03）
+
+**确认弹窗改用 iOS 系统组件 `CupertinoAlertDialog`，推翻偏差 #20 里「不引入 `flutter/cupertino.dart`」的裁定。**
+
+v2.6 起的实现是「按项目令牌自绘的 iOS 风格弹窗」——`showGeneralDialog` + `DecoratedBox` 卡片 +
+手画的两条 0.5 发丝分隔线 + 手写转场。当时的理由成立且未变：`CupertinoAlertDialog` 自带系统配色，
+会绕过 `AppTokens`，与「设计令牌只有一份」冲突。**这次按用户明确要求以系统组件为准**：布局、模糊
+表面、圆角、0.3 分隔线、文字排版与 `1.3 → 1.0` 的弹簧转场全部交给 SDK。
+
+代价如实记——**弹窗底色（半透明 `0xCCF2F2F2` / `0xCC2D2D2D`）、分隔线色（`CupertinoColors.separator`）、
+圆角不再来自 `AppTokens`**。能接回令牌的都接回：亮度取 `Theme.of(context).brightness`（不取
+`MediaQuery.platformBrightness`，否则外观设成深色时弹窗会是浅底）、`primaryColor → tokens.accent`、
+两个动作的 `textStyle.color → accent` / `danger`（`CupertinoDialogAction.textStyle` 在系统色解析
+**之后**才 merge，能盖掉写死的 `systemRed`）、蒙层色 `tokens.overlayScrim`。
+
+**行为契约冻结**：`showConfirmDialog` 签名与返回值语义不变，三处调用方（删除记录 / 删除全部本地
+数据 / 清除演示数据）一字未改；点蒙层仍可关闭且返回 `false`（系统默认 `barrierDismissible: false`，
+这里显式传 `true` 保留原语义）。
+
+`test/confirm_dialog_test.dart` 重写为钉「系统组件特征」，7 条；变异验证：退回自绘实现会让其中
+3 条变红，4 条返回语义/按钮次序用例与实现无关、保持绿。
+
 ## 3.5（2026-10-03）
 
 **照更新后的原型重排设置页，并补上冷启动的开屏页。**
@@ -467,6 +489,8 @@ schema v3**；`DemoSeed.install` 四条写入路径全部改成 upsert（幂等�
 **自绘的垃圾桶**。同时把应用内**三处**危险操作统一到**按令牌自绘的 iOS 风格确认弹窗**
 （不引入 `flutter/cupertino.dart`，它自带系统配色、会绕过 `AppTokens`）；
 第三处「清除演示数据」此前**根本没有二次确认，点一下就删**。偏差 #12 随之修订，新增偏差 #20。
+（**后续变更**：v3.6 起确认弹窗改用系统 `CupertinoAlertDialog`，本条的「按令牌自绘」裁定被推翻，
+见 3.6 条目与偏差 #20 现行版本。）
 
 ⑥ **深色模式下记录页的事件图标看不见**。根因是四个调用点漏传 `color:`，
 `AppIcons.glyph` 退回硬编码的黑色，而该值被**文本替换进 SVG 的 `stroke`** 再交给
