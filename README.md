@@ -217,27 +217,27 @@ Android 尚无平台目录，因此未接入传感器。方向精度与权限行
 | AI 洞察服务 | 未接入。服务商/模型选择可持久化；API Key 仅存内存，安全存储未接入；余额查询未接入 |
 | Android 平台 | 平台目录未生成（`.metadata` 只有 ios / macos / web）。接入时需补 `RECEIVE_BOOT_COMPLETED` 权限与 `ScheduledNotificationReceiver` / `ScheduledNotificationBootReceiver` 两个 receiver（否则设备重启后提醒不再重排），以及录音的 `RECORD_AUDIO` 权限与 `FOREGROUND_SERVICE_MICROPHONE` 前台服务（后台录音，plan B） |
 
-## 真机安装（需要你自己做的一步）
+## 真机安装
 
-本机钥匙串里没有代码签名证书，Xcode 也没登录 Apple ID，所以 `flutter build ios`（真机包）
-会停在：
+签名已在本机配好：钥匙串里有 `Apple Development: 1661287843@qq.com` 证书，Xcode 已登录该
+Apple ID，工程里写死了 `DEVELOPMENT_TEAM = UK9L3XHV39`。所以 `flutter run -d <设备 id>`
+理论上可直接装到真机——**但真机安装本身尚未实测**。
 
-```
-No valid code signing certificates were found
-```
-
-这一步是账号级的，必须在 Xcode 里交互完成：
+换机器 / 换 Apple ID 时需要在 Xcode 里重配一次（本步是账号级的，只能交互完成）：
 
 1. `open ios/Runner.xcworkspace`
 2. Xcode → Settings → Accounts → `+` → 登录你的 Apple ID
 3. 左侧选 Runner target → Signing & Capabilities → 勾选 *Automatically manage signing*，
    在 Team 里选你的团队（免费 Apple ID 也可以，会生成个人开发证书）
 
-完成后我就能直接 `flutter run -d <设备 id>` 装到你手机上。
+未配好时 `flutter build ios`（真机包）会停在
+`No valid code signing certificates were found`。
 
 ⚠️ 另一个可能的前提：本机 Xcode 是 **16.2（iOS 18.2 SDK）**，而你的 iPhone 跑的是
-**iOS 27.0**。签名解决后，如果安装时报 *Unsupported OS version*，那就是 Xcode 太旧，
-需要换成带 iOS 27 SDK 的版本。
+**iOS 27.0**。如果安装时报 *Unsupported OS version*，那就是 Xcode 太旧，需要换成带
+iOS 27 SDK 的版本。
+
+> 工程文件已随 Xcode 16 升到新的对象格式（`objectVersion 60`），**旧版 Xcode 打不开**。
 
 ## 界面截图巡检
 
@@ -315,7 +315,7 @@ export FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn   # 引擎产物
 
 flutter build macos --debug
 flutter build ios --simulator --no-codesign                     # 无需签名
-flutter build ios --no-codesign                                 # 真机包，仍需在 Xcode 里配开发团队
+flutter build ios --no-codesign                                 # 真机包；签名已配好，可加 --no-codesign 跳过
 ```
 
 - **代理是可选的**：若直连拉不到引擎产物、或 SPM 的 git 克隆超时，再补上本机代理
@@ -324,12 +324,12 @@ flutter build ios --no-codesign                                 # 真机包，�
   `FLUTTER_STORAGE_BASE_URL` 直连跑通的——所以别把代理当成前提写进脚本。
 - `sqlite3` 的构建钩子偶发 GitHub Releases 下载超时，原样重跑即过。
 
-真机包在签名前会停下：需要在 Xcode 的 Runner target 里选择你的 Apple 开发团队。
+真机签名已配好（团队 `UK9L3XHV39`，见「真机安装」）；若要跳过签名仍可加 `--no-codesign`。
 
 ## 平台配置
 
-Bundle ID、Android application ID、签名和发布账号保持 Flutter 默认占位配置
-（`com.example.nightSleep`），待项目方提供后配置。**通知权限仅在用户打开提醒开关时申请**
+Bundle ID、Android application ID 与发布账号保持 Flutter 默认占位配置
+（`com.example.nightSleep`），待项目方提供后配置；真机签名团队已配置（见「真机安装」）。**通知权限仅在用户打开提醒开关时申请**
 （未在首次启动时弹窗）；麦克风权限仍未申请；除「获取可用模型」外不上传任何数据
 （导出会把文件交给系统分享面板，**去向由你选择**，应用自己不发起传输）。
 

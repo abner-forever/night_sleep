@@ -81,6 +81,18 @@ passed`；去掉「建目录」那一行、并清掉缓存目录后，同一条�
 巡检随即停摆。因此**巡检全趟通过仍未验证**，与 v3.0 / v3.2 / v3.3 那几条同类；顺带把
 「跑巡检前先 `caffeinate -d`」写进了 README 的注意点。
 
+**同日补记：iOS 工程随 Xcode 升到新格式，真机签名已配好（构建/工具链，非产品能力）。**
+
+在 Xcode 里配开发团队时，工程被一并升级：`objectVersion` 54 → 60、`LastUpgradeCheck`
+1510 → 1620，`Runner.xcscheme` 与 `Main.storyboard` 换成新版格式（storyboard 只重排了
+XML，渲染结果不变）。新增 `DEVELOPMENT_TEAM = UK9L3XHV39`。**Xcode 顺手做了两处本意之外
+的改动，已还原**：三处配置列表的默认配置被从 `Release` 改成 `Profile`（改回 `Release`），
+并生成了一个空的 `Runner.entitlements`（连同 `CODE_SIGN_ENTITLEMENTS` 一起删除——空
+entitlements 不挂任何能力，留着只会误导）。钥匙串里现有
+`Apple Development: 1661287843@qq.com` 证书、Xcode 已登录该 Apple ID，README 的
+「真机安装」及相关两处据此改写。**真机安装本身仍未实测。** 工程已是非旧版格式，
+**旧版 Xcode 打不开**。
+
 ## 3.2（2026-10-02）
 
 会话页按新原型（Figma Make 的 `SleepView`「睡眠进行中」态）重建。**范围只到这一页**：
