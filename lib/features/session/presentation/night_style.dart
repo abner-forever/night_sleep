@@ -207,8 +207,12 @@ abstract final class NightStyle {
       MediaQuery.sizeOf(context).width <= 390;
 
   /// `@media (min-height: 860px)`：入睡前态 hero 从 230 撑到 **285**。
-  static bool tallHero(BuildContext context) =>
-      MediaQuery.sizeOf(context).height >= 860;
+  ///
+  /// **2026-10-03 起不再是布尔判断**：原型那条媒体查询量的是浏览器视口，而我们能用的
+  /// 高度是**扣掉上下安全区之后**的（874 高的机型只剩 781，却仍满足 `>= 860`，于是白拿
+  /// 285，把下面那颗按钮顶出屏幕）。现在只留下这个上限值，由 `session_setup.dart`
+  /// 按「上半区剩下的高度」连续取值；下限是 hero 自己的内容高度（三段文案约 210）。
+  static const heroTallHeight = 285.0;
 
   /// deck 里各段的行内边距：常规 16，窄屏 13。
   static const deckGutter = 16.0;

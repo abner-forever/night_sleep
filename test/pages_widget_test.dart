@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:drift/native.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -642,11 +643,52 @@ void main() {
       await tester.tap(find.text('清除缓存'));
       await tester.pumpAndSettle();
 
+      // **v3.10 起先过二次确认**：没点「清除」之前一个文件都不许删。
+      expect(
+        find.byType(CupertinoAlertDialog),
+        findsOneWidget,
+        reason: '清除缓存是不可撤销的删除，必须先弹确认',
+      );
+      expect(cache.cleared, isFalse, reason: '弹窗还没确认，什么都不该删');
+
+      await tester.tap(find.text('清除'));
+      await tester.pumpAndSettle();
+
       expect(cache.cleared, isTrue);
       // 清除结果必须落在这一行上：提示条挂在 AppScaffold，而这里只挂了页面本身，
       // 断言「清完之后这一行不再谎报占用」才是这条用例真正要守的东西。
       expect(find.text('暂无缓存'), findsOneWidget);
       expect(find.textContaining('7.0 MB'), findsNothing);
+    });
+
+    testWidgets('清除缓存：取消（或点蒙层）之后一个文件都不删', (tester) async {
+      final cache = _FakeAppCache(bytes: 7 * 1024 * 1024);
+      await pumpPage(
+        tester,
+        const SettingsPage(),
+        overrides: [appCacheProvider.overrideWithValue(cache)],
+      );
+
+      await tester.tap(find.text('清除缓存'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+
+      expect(cache.cleared, isFalse, reason: '点了取消还删，等于没有这道闸');
+      expect(
+        find.textContaining('7.0 MB'),
+        findsOneWidget,
+        reason: '取消之后占用读数必须原样留着',
+      );
+
+      // 点蒙层同样算取消（与另外四处确认弹窗一致）。
+      await tester.tap(find.text('清除缓存'));
+      await tester.pumpAndSettle();
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+
+      expect(cache.cleared, isFalse);
+      expect(find.byType(CupertinoAlertDialog), findsNothing);
     });
 
     testWidgets('读不到占用时如实说读不到，不编一个 0 B', (tester) async {

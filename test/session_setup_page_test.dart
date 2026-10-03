@@ -14,6 +14,7 @@ import 'package:night_sleep/core/widgets/ios_controls.dart';
 import 'package:night_sleep/features/session/presentation/night_scene.dart';
 import 'package:night_sleep/features/session/presentation/sleep_session_page.dart';
 import 'package:night_sleep/features/session/presentation/widgets/night_backdrop.dart';
+import 'package:night_sleep/features/session/presentation/widgets/session_setup.dart';
 import 'package:night_sleep/features/session/presentation/widgets/sleep_moon_mark.dart';
 import 'package:night_sleep/features/sleep/data/noise_player.dart';
 import 'package:night_sleep/features/sleep/data/noise_asset.dart';
@@ -344,9 +345,12 @@ void main() {
     });
   });
 
-  /// 最终生效层里的两条媒体查询（`index.css:1937` 起）：窄屏把 deck 的内边距收到 13
-  /// 并让常用白噪音四格竖排；高屏把 hero 从 230 撑到 285。
-  group('最终生效层的两条媒体查询', () {
+  /// 最终生效层的媒体查询（`index.css:1937` 起）：窄屏把 deck 的内边距收到 13，
+  /// 并让常用白噪音四格竖排。
+  ///
+  /// **原本还有第二条**（高屏把 hero 从 230 撑到 285），2026-10-03 起不再是布尔判断，
+  /// 见下面「hero 的高度按可用高度连续取值」那条。
+  group('最终生效层的媒体查询：窄屏 deck', () {
     testWidgets('窄屏（375）四格改竖排：图标在上、标签在下', (tester) async {
       await pumpSetup(tester, size: const Size(375, 2000));
 
@@ -386,7 +390,7 @@ void main() {
       );
     });
 
-    testWidgets('高屏（≥860）hero 撑到 285，矮屏是 230', (tester) async {
+    testWidgets('hero 的高度按可用高度连续取值', (tester) async {
       Future<double> heroHeight(WidgetTester tester) async {
         final box = find.ancestor(
           of: find.byType(SleepMoonOrbit),
@@ -396,26 +400,106 @@ void main() {
       }
 
       await pumpSetup(tester);
-      expect(await heroHeight(tester), 285,
-          reason: '2000 高的视口走 min-height: 860 那支');
+      expect(await heroHeight(tester), 285, reason: '2000 高的视口给得下设计的高屏值');
 
-      // 矮屏：230 那个下限不再生效（三段文案本身就有 ~256 高），但**必须比 285 矮**——
-      // 这一条挡的是「把 285 写死、不再看屏高」。
+      // 矮屏：**必须比 285 矮**（挡「把 285 写死」），但也**不能压到三段文案以下**
+      // （挡「为了塞下一屏把文案挤没」）。
       await pumpSetup(tester, size: const Size(430, 800));
-      expect(await heroHeight(tester), lessThan(285),
-          reason: '矮屏不该拿到高屏那支的 285');
+      final short = await heroHeight(tester);
+      expect(short, lessThan(285), reason: '矮屏不该拿到高屏那支的 285');
+      expect(short, greaterThanOrEqualTo(210),
+          reason: '月亮 + 三段文案本身就约 210 高，低于它就是压内容了');
+    });
+  });
+
+  /// 底部安全区与「一屏放下」的护栏。
+  ///
+  /// 用户 2026-10-03 报的：手机底部那颗「开始睡眠」被安全区切掉一截。两件事分开钉——
+  ///
+  ///  * **硬要求**：按钮在**任何**机型上都完整落在底部安全区之上（它不参与滚动）；
+  ///  * **软要求**：常见机型上整页不滚动（上半区的 `maxScrollExtent == 0`）。
+  ///
+  /// 安全区取 59 / 34，与带灵动岛的 iPhone 一致。
+  group('底部安全区与一屏放下', () {
+    Future<void> pumpPhone(WidgetTester tester, Size logical) async {
+      tester.view.padding = const FakeViewPadding(top: 59, bottom: 34);
+      addTearDown(tester.view.reset);
+      await pumpSetup(tester, size: logical);
+    }
+
+    /// 底部安全区在这一批用例里的上沿（屏幕坐标）。
+    const safeTop = 34.0;
+
+    Rect buttonRect(WidgetTester tester) => tester.getRect(
+          find
+              .ancestor(
+                of: find.text('开始睡眠'),
+                matching: find.byType(Container),
+              )
+              .first,
+        );
+
+    double upperScrollExtent(WidgetTester tester) {
+      final scroll = find.descendant(
+        of: find.byType(SessionSetupBody),
+        matching: find.byType(SingleChildScrollView),
+      );
+      return tester
+          .widget<SingleChildScrollView>(scroll)
+          .controller!
+          .position
+          .maxScrollExtent;
+    }
+
+    for (final size in const [
+      Size(393, 852), // iPhone 15 / 16 基础款
+      Size(402, 874), // iPhone 16 Pro
+      Size(430, 932), // 大屏
+    ]) {
+      testWidgets(
+          '${size.width.toInt()}×${size.height.toInt()}：一屏放下，'
+          '按钮在安全区之上', (tester) async {
+        await pumpPhone(tester, size);
+
+        expect(
+          buttonRect(tester).bottom,
+          lessThan(size.height - safeTop),
+          reason: '按钮不能被底部安全区切掉',
+        );
+        expect(
+          upperScrollExtent(tester),
+          0,
+          reason: '这一档机型上整页应当一屏放下、一点都不用滚',
+        );
+      });
+    }
+
+    testWidgets('矮屏（375×667）放不下时：卡片可以滚，按钮照样不被切', (tester) async {
+      await pumpPhone(tester, const Size(375, 667));
+
+      expect(upperScrollExtent(tester), greaterThan(0),
+          reason: '这一档确实放不下，上半区应当可滚');
+      expect(
+        buttonRect(tester).bottom,
+        lessThan(667 - safeTop),
+        reason: '**放不下也不许把按钮挤进安全区**——这是这条修复的本体',
+      );
     });
   });
 
   testWidgets('宽屏下两态内容居中限宽 680', (tester) async {
     await pumpSetup(tester, size: const Size(1200, 2000));
 
-    final page = find.byType(SleepSessionPage);
-    final listView =
-        find.descendant(of: page, matching: find.byType(ListView)).first;
-    expect(tester.getSize(listView).width, 680);
+    // 量内容列本身。**不能再用 `ListView.first`**：v3.10 起入睡前态是一条
+    // `SingleChildScrollView`（钉底按钮 + 上半区），`.first` 会落到卡片里那条
+    // 横向滚动的场景选择器上，量到的宽度是「680 − 两侧 20 − 卡片描边」。
+    final content = find.descendant(
+      of: find.byType(SleepSessionPage),
+      matching: find.byType(SessionSetupBody),
+    );
+    expect(tester.getSize(content).width, 680);
     expect(
-      tester.getCenter(listView).dx,
+      tester.getCenter(content).dx,
       600,
       reason: '限宽之后要居中，不是靠左',
     );

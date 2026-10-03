@@ -283,6 +283,8 @@ class SettingsPage extends ConsumerWidget {
 ///
 /// 有状态是因为占用大小要先读一次文件系统。读不到时**如实说读不到**，不显示
 /// 一个编出来的「0 B」——那会让人以为已经清干净了。
+///
+/// **清之前要过二次确认**（v3.10 起）：删是不可撤销的，哪怕删的只是可再生成的临时文件。
 class _ClearCacheRow extends ConsumerStatefulWidget {
   const _ClearCacheRow();
 
@@ -322,6 +324,23 @@ class _ClearCacheRowState extends ConsumerState<_ClearCacheRow> {
 
   Future<void> _clear() async {
     if (_clearing) return;
+
+    // 与另外四处删除一样过二次确认（用户 2026-10-03 要求补上这道闸）。
+    //
+    // **文案要把范围说清**：这一行叫「清除缓存」，但用户心里那个词是「清缓存会不会
+    // 把记录清了」，所以不写「数据」这种含糊词，直接点名删的是什么、不动的又是什么。
+    // 破坏性取 `true`：删掉的东西本身不可撤销（哪怕它们可以再生成）。
+    final confirmed = await showConfirmDialog(
+      context,
+      title: '清除缓存？',
+      message: '只删掉导出副本这类可以再生成的临时文件，睡眠记录与录音片段都不会动。'
+          '删除后无法恢复。',
+      confirmLabel: '清除',
+      destructive: true,
+    );
+    if (confirmed != true) return;
+    if (!mounted) return;
+
     setState(() => _clearing = true);
     try {
       final freed = await ref.read(appCacheProvider).clear();

@@ -131,23 +131,76 @@ class _SessionSetupBodyState extends ConsumerState<SessionSetupBody> {
         kNoiseOptions.firstWhere((option) => option.id == id),
     ];
 
-    return ListView(
-      controller: widget.scrollController,
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+    return Column(
       children: [
-        _header(),
-        _hero(context),
-        _deck(noise, quick),
-        _startButton(),
-        const Text(
-          '屏幕将保持暗色，轻触夜景即可切换氛围',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 11,
-            color: NightStyle.startNoteInk,
+        // 上半区：标签 / hero / 卡片。
+        //
+        // **它自己拿掉底部动作区之后的高度**，`LayoutBuilder` 量得到，所以下面那
+        // 条 hero 高度的算式不需要猜按钮区有多高。
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, upper) {
+              // hero 分到的高度 = 上半区减去标签行与卡片。上限是设计的高屏值 285；
+              // 挤不下时它矮到自己的内容高度（三段文案约 210），再挤就交给外面这层
+              // 滚动兜底——**卡片被滚掉一角，也好过按钮被安全区切掉一截**。
+              final heroSlot =
+                  (upper.maxHeight - _kHeaderHeight - _kDeckReserve)
+                      .clamp(0.0, NightStyle.heroTallHeight);
+
+              return SingleChildScrollView(
+                controller: widget.scrollController,
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: upper.maxHeight),
+                  child: Column(
+                    // 富余的量分给 hero 上下的间隙——卡片始终紧跟着按钮，
+                    // 不会被推到屏幕中间去（原型里 `.sleep-mode-shell` 居中，
+                    // 而这样得到的观感与它一致）。
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _header(),
+                      _hero(heroSlot),
+                      _deck(noise, quick),
+                    ],
+                  ),
+                ),
+              );
+            },
           ),
         ),
+        // 底部动作区**不参与滚动**，钉在安全区之上：任何机型上，
+        // 「开始睡眠」都不会被底部安全区切掉一截（用户 2026-10-03 报的）。
+        _footer(),
       ],
+    );
+  }
+
+  /// 顶部标签行的高度（`_header` 里那个 `SizedBox`）。
+  static const _kHeaderHeight = 40.0;
+
+  /// 卡片给 hero 让位时按这个数预留。
+  ///
+  /// **宁可高估**：高估只是把 hero 的留白挪到它上下的间隙里（看不出差别），
+  /// 低估才会让卡片被滚到下面去。402 宽机型上实测卡片高 399。
+  static const _kDeckReserve = 410.0;
+
+  /// 「开始睡眠」+ 底部提示。钉在安全区之上，底部留白 = 安全区 + 20。
+  Widget _footer() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      child: Column(
+        children: [
+          _startButton(),
+          const Text(
+            '屏幕将保持暗色，轻触夜景即可切换氛围',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 11,
+              color: NightStyle.startNoteInk,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -180,46 +233,48 @@ class _SessionSetupBodyState extends ConsumerState<SessionSetupBody> {
 
   /// 晚安 → 准备好休息了吗？ → 放下今天，让夜晚慢下来。
   ///
-  /// 最小高按原型的 `@media (min-height: 860px)` 取值：矮屏 230、高屏 285。
-  Widget _hero(BuildContext context) {
+  /// 高度由上一层的余量给（见 `build` 里的 `heroSlot`），不再是原型的
+  /// `@media (min-height: 860px)` 那个二值判断：原型那条媒体查询量的是**浏览器视口**，
+  /// 而这里量的是**扣掉安全区之后**的可用高度——照抄它就会在 874 高的机型上白拿
+  /// 285（屏幕高度过线、真实可用只有 781），把按钮顶出屏幕。
+  ///
+  /// 余量给多少就是多少（上限 285、下限是这几段文案自己的高度），
+  /// 所以**空气是余量的结果、不是写死的下限**：够高就松，挤到极限就一点不剩，
+  /// 再挤由外层滚动兜底，而不是继续压文案。
+  Widget _hero(double slot) {
     return ConstrainedBox(
-      constraints: BoxConstraints(
-        minHeight: NightStyle.tallHero(context) ? 285 : 230,
-      ),
-      child: const Padding(
-        padding: EdgeInsets.fromLTRB(0, 24, 0, 22),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SleepMoonOrbit(size: 102),
-            SizedBox(height: 15),
-            Text(
-              '晚安',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.8,
-                color: NightStyle.greetingInk,
-              ),
+      constraints: BoxConstraints(minHeight: slot),
+      child: const Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SleepMoonOrbit(size: 102),
+          SizedBox(height: 15),
+          Text(
+            '晚安',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.8,
+              color: NightStyle.greetingInk,
             ),
-            SizedBox(height: 5),
-            Text(
-              '准备好休息了吗？',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 29,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -1.16, // -.04em × 29
-                color: NightStyle.textPrimary,
-              ),
+          ),
+          SizedBox(height: 5),
+          Text(
+            '准备好休息了吗？',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 29,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -1.16, // -.04em × 29
+              color: NightStyle.textPrimary,
             ),
-            SizedBox(height: 7),
-            Text(
-              '放下今天，让夜晚慢下来。',
-              style: TextStyle(fontSize: 14, color: NightStyle.heroBodyInk),
-            ),
-          ],
-        ),
+          ),
+          SizedBox(height: 7),
+          Text(
+            '放下今天，让夜晚慢下来。',
+            style: TextStyle(fontSize: 14, color: NightStyle.heroBodyInk),
+          ),
+        ],
       ),
     );
   }

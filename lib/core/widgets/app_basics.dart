@@ -266,6 +266,12 @@ class PrimaryAction extends StatelessWidget {
         semanticLabel: semanticLabel ?? label,
         child: Container(
           constraints: const BoxConstraints(minHeight: 58),
+          // 子层裁进按钮的圆角里。下面那条顶边高光只有 1px 高，装不下 16px 的圆角
+          // ——Flutter 会把圆角压成 0.5px，等于直角，两端于是横向溢出到按钮轮廓之外。
+          // 深色主题下黑底把那两截衬成白刺，就是「顶部白线、左右上角尤其明显」。
+          //
+          // 裁剪层落在 DecoratedBox 之内：投影照旧画在裁剪层外面，不受影响。
+          clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             gradient: tokens.primaryActionGradient,
             borderRadius: BorderRadius.circular(AppRadii.panel),

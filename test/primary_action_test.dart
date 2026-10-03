@@ -190,6 +190,41 @@ void main() {
       expect(opacityOf(tester), 1, reason: '启用态不能被调成半透明');
     });
 
+    testWidgets('顶边高光被裁进圆角，不从左右上角溢出', (tester) async {
+      await tester.pumpWidget(host(PrimaryAction(label: '导入', onTap: () {})));
+
+      // 高光是一条 1px 高的直条，装不下 16px 的圆角——Flutter 会把它的圆角压到
+      // 0.5px（等于直角），两端于是横着伸出按钮轮廓，深色主题下就是那两根白刺。
+      final clip = find.descendant(
+        of: find.byType(PrimaryAction),
+        matching: find.byType(ClipPath),
+      );
+      expect(clip, findsOneWidget, reason: '按钮必须把子层裁进圆角');
+      expect(
+        find.descendant(of: clip, matching: litHighlight()),
+        findsOneWidget,
+        reason: '高光必须落在裁剪层之内，不能被留在轮廓外面',
+      );
+
+      final size = tester.getSize(clip);
+      final path = tester.widget<ClipPath>(clip).clipper!.getClip(size);
+      expect(
+        path.contains(const Offset(1, 0.5)),
+        isFalse,
+        reason: '左上圆角之外的像素必须被裁掉',
+      );
+      expect(
+        path.contains(Offset(size.width - 1, 0.5)),
+        isFalse,
+        reason: '右上圆角之外的像素必须被裁掉',
+      );
+      expect(
+        path.contains(Offset(size.width / 2, 0.5)),
+        isTrue,
+        reason: '顶边正中那截高光必须留着，别把整条都裁没了',
+      );
+    });
+
     testWidgets('点击调用 onTap', (tester) async {
       var taps = 0;
       await tester.pumpWidget(

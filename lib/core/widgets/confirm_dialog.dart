@@ -5,8 +5,9 @@ import '../theme/app_tokens.dart';
 
 /// 二次确认弹窗，直接用 iOS 系统组件 [CupertinoAlertDialog]。
 ///
-/// 应用内三处危险操作统一走它：删除单条记录、删除全部本地数据、清除演示数据。
-/// 调用方只认返回值，不关心实现。
+/// 应用内**五处**不可撤销的删除统一走它：删除单条记录、删除全部本地数据、
+/// 清除演示数据、删除全部录音（v3.9）、清除缓存（v3.10）。调用方只认返回值，
+/// 不关心实现。
 ///
 /// **历史**：本组件一度是「按令牌自绘的 iOS 风格盒子」（`showGeneralDialog` +
 /// `DecoratedBox` 卡片 + 手画的两条发丝分隔线 + 手写转场）。那是为了守住「设计令牌
@@ -27,7 +28,7 @@ import '../theme/app_tokens.dart';
 /// **返回值只有 `true` / `false`**：取消与点蒙层一律 `false`，调用方可以继续写
 /// `if (confirmed != true) return;`。
 ///
-/// **点蒙层可关闭是保留行为**：系统 alert 默认 `barrierDismissible: false`，但三处
+/// **点蒙层可关闭是保留行为**：系统 alert 默认 `barrierDismissible: false`，但各处
 /// 调用方与既有测试都依赖「点蒙层 = 取消」，这里显式传 `true` 维持原语义。
 Future<bool> showConfirmDialog(
   BuildContext context, {

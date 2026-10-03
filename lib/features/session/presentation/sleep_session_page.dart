@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -130,7 +131,7 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage> {
     // 暗色」），而应用主题可能是浅色。包一层 dark `Theme` 之后，复用的共享组件
     // （白噪音宫格 / 音量条 / 时长 chip / `IosToggle` / `EmptyState`）照常从
     // `AppTokens` 取深色值，不必给它们抄第二份。
-    return Theme(
+    final page = Theme(
       data: AppTheme.dark(),
       child: Scaffold(
         // 透明，让夜景背景透出来；这个 Scaffold 只为 Material 祖先与键盘内边距
@@ -179,6 +180,13 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage> {
           ],
         ),
       ),
+    );
+
+    // 状态栏另行声明成浅色前景：这一页常暗，而系统状态栏跟的是**应用主题**的明暗
+    // ——亮色主题下时间是黑字，压在满屏夜景上等于没有。
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light,
+      child: page,
     );
   }
 

@@ -216,6 +216,12 @@ SQLite 无法给已有表直接加外键，必须重建表。drift 2.35.0 的 `M
 **已排除**：`IosListGroup` 分隔线（本页未用）、`Container` 的 top 边框（全文件无任何 `Border`）、
 `GlassSurface` 描边（在卡片外圈，且上方间隙无亮线）。
 
+**后续变更（v3.10）**：这条高光**没有删掉**——启用态仍按本节结论保留它。但它的**几何缺陷**
+在 v3.10 一并修掉：高光只有 1px 高，装不下 16px 的圆角，Flutter 会把它的圆角压成 0.5px
+（等于直角），两端于是横向溢出按钮轮廓——深色主题下黑底把那两截衬成左右上角的白刺
+（用户 2026-10-03 报的「顶部白线、圆角处明显」）。改为把子层裁进圆角
+（`Container.clipBehavior`），见主规格 §2.2「主按钮」与 v3.10 变更记录。
+
 ### 点击无反馈根因（已确认）
 
 `sleep_import_page.dart:203` 是 `onTap: null`，`Pressable` 会把 `onTapDown/Cancel/Up/Tap`
