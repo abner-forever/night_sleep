@@ -92,7 +92,7 @@ void main() {
   ///
   /// **已知不足**：只在「找不到」时才滚，挡不住「找到了但点不到」——`ListView` 的
   /// cacheExtent 会建出屏幕外一点的内容，而悬浮标签条**盖在内容之上**，
-  /// 「洞察服务配置」实测落在 y=821.8、屏高 874，正好被那条胶囊压住。
+  /// 「睡眠洞察」实测落在 y=821.8、屏高 874，正好被那条胶囊压住。
   /// 试过补 `ensureVisible` + 额外 `drag`，结果整趟巡检卡死（2026-10-02），已回退；
   /// 那一步的代价由 [step] 的复位兜住，不连坐。
   Future<void> tapText(WidgetTester tester, String text) async {
@@ -331,14 +331,27 @@ void main() {
       await Future<void>.delayed(hold);
     });
 
+    // v3.5 起外观与睡眠设置各是一个二级页，根页只剩导航行。
+    await step(tester, 'settings-appearance', () async {
+      await tapText(tester, '外观');
+      await Future<void>.delayed(hold);
+      await goBack(tester);
+    });
+
+    await step(tester, 'settings-sleep', () async {
+      await tapText(tester, '睡眠设置');
+      await Future<void>.delayed(hold);
+      await goBack(tester);
+    });
+
     await step(tester, 'settings-import', () async {
-      await tapText(tester, '小米手环睡眠数据');
+      await tapText(tester, '睡眠数据导入');
       await Future<void>.delayed(hold);
       await goBack(tester);
     });
 
     await step(tester, 'settings-insight', () async {
-      await tapText(tester, '洞察服务配置');
+      await tapText(tester, '睡眠洞察');
       await Future<void>.delayed(hold);
       await goBack(tester);
     });

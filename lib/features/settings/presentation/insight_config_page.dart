@@ -7,6 +7,7 @@ import '../../../core/database/app_database.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_basics.dart';
 import '../../../core/widgets/app_icons.dart';
+import '../../../core/widgets/app_menu_field.dart';
 import '../../../core/widgets/glass_surface.dart';
 import '../../../core/widgets/ios_controls.dart';
 import '../../../core/widgets/subpage.dart';
@@ -163,7 +164,7 @@ class _InsightConfigPageState extends ConsumerState<InsightConfigPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: _MenuField(
+                    child: AppMenuField(
                       label: '服务商',
                       value: provider.label,
                       options: [
@@ -190,7 +191,7 @@ class _InsightConfigPageState extends ConsumerState<InsightConfigPage> {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: _MenuField(
+                    child: AppMenuField(
                       label: '模型',
                       value: model ?? '先获取可用模型',
                       options: options,
@@ -413,125 +414,6 @@ class _InsightConfigPageState extends ConsumerState<InsightConfigPage> {
             style: TextStyle(fontSize: 12, height: 1.5, color: tokens.accent),
           ),
         ],
-      ],
-    );
-  }
-}
-
-/// `ai-select-trigger` / `ai-select-menu` — a compact dropdown.
-///
-/// The menu is rendered by [PopupMenuButton] rather than as a positioned child.
-/// The card this sits in is a [GlassSurface], whose `ClipRRect` would clip an
-/// in-tree overlay, so the design's floating menu has to live in the app
-/// overlay instead.
-class _MenuField extends StatelessWidget {
-  const _MenuField({
-    required this.label,
-    required this.value,
-    required this.options,
-    required this.selected,
-    required this.onPick,
-    this.enabled = true,
-  });
-
-  final String label;
-  final String value;
-  final List<String> options;
-  final String? selected;
-  final ValueChanged<int> onPick;
-  final bool enabled;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AppTokens.of(context);
-
-    final field = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: tokens.bgInput,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: enabled ? tokens.textPrimary : tokens.textMuted,
-              ),
-            ),
-          ),
-          AppIcons.chevronDown(
-            size: 15,
-            color: tokens.textMuted,
-            strokeWidth: 2,
-          ),
-        ],
-      ),
-    );
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: tokens.textMuted,
-          ),
-        ),
-        const SizedBox(height: 6),
-        // "Nothing to choose from yet" is a real state — a provider whose list
-        // has not been fetched — and an empty popup would read as a broken
-        // control rather than an un-fetched one.
-        if (!enabled)
-          field
-        else
-          PopupMenuButton<int>(
-            tooltip: '',
-            position: PopupMenuPosition.under,
-            color: tokens.bgCardSolid,
-            elevation: 8,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: tokens.border),
-            ),
-            onSelected: onPick,
-            itemBuilder: (context) => [
-              for (var i = 0; i < options.length; i++)
-                PopupMenuItem<int>(
-                  value: i,
-                  height: 42,
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          options[i],
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: options[i] == selected
-                                ? tokens.accent
-                                : tokens.textPrimary,
-                          ),
-                        ),
-                      ),
-                      if (options[i] == selected)
-                        AppIcons.check(
-                          size: 14,
-                          color: tokens.accent,
-                          strokeWidth: 2.5,
-                        ),
-                    ],
-                  ),
-                ),
-            ],
-            child: field,
-          ),
       ],
     );
   }

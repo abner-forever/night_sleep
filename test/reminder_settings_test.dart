@@ -14,6 +14,7 @@ import 'package:night_sleep/core/theme/app_theme.dart';
 import 'package:night_sleep/core/widgets/ios_controls.dart';
 import 'package:night_sleep/core/widgets/wheel_picker.dart';
 import 'package:night_sleep/features/settings/presentation/settings_page.dart';
+import 'package:night_sleep/features/settings/presentation/sleep_settings_page.dart';
 import 'package:night_sleep/features/sleep/data/noise_player.dart';
 import 'package:night_sleep/features/sleep/data/noise_synth.dart';
 import 'package:night_sleep/features/sleep/data/sleep_repository.dart';
@@ -137,9 +138,15 @@ void main() {
         insightModel: null,
       );
 
-  /// [SettingsPage] 是标签页，真机上确实活在壳的 Scaffold 里，所以这里给一个。
-  Future<void> pumpSettings(
+  /// 挂载一个设置页面。
+  ///
+  /// **提醒与声音检测在 v3.5 已搬进 `/settings/sleep`**，所以提醒相关的用例挂
+  /// [SleepSettingsPage]；「删除全部本地数据」那一行还留在设置根页，它单独挂
+  /// [SettingsPage]。两页都是推入式页面，各自带 `Subpage`（有 `Scaffold` 与
+  /// `Material` 祖先），这里再套一层只为贴近真机（标签页确实活在壳的 Scaffold 里）。
+  Future<void> pumpPage(
     WidgetTester tester,
+    Widget page,
     ReminderScheduler scheduler, {
     NoisePlayer? player,
   }) async {
@@ -158,7 +165,7 @@ void main() {
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
-          home: const Scaffold(body: SettingsPage()),
+          home: Scaffold(body: page),
         ),
       ),
     );
@@ -166,6 +173,20 @@ void main() {
     settingsStream.add(settings());
     await tester.pumpAndSettle();
   }
+
+  Future<void> pumpSettings(
+    WidgetTester tester,
+    ReminderScheduler scheduler, {
+    NoisePlayer? player,
+  }) =>
+      pumpPage(tester, const SleepSettingsPage(), scheduler, player: player);
+
+  Future<void> pumpRootSettings(
+    WidgetTester tester,
+    ReminderScheduler scheduler, {
+    NoisePlayer? player,
+  }) =>
+      pumpPage(tester, const SettingsPage(), scheduler, player: player);
 
   /// 把某一项的新值回投给界面，**模拟写库回流**。
   ///
@@ -190,10 +211,12 @@ void main() {
 
   /// 提示条的文字。
   ///
-  /// 测试树里**没有** `ToastOverlay`——它活在应用外壳 `AppScaffold` 里，而这个
-  /// 测试只挂了 `SettingsPage`。所以不能用 `find.text`，只能直接读 provider。
+  /// 测试树里**没有** `ToastOverlay`——它活在应用外壳 `AppScaffold` 里，而这里只挂了
+  /// 一个设置页。所以不能用 `find.text`，只能直接读 provider。
+  ///
+  /// 从 `Scaffold` 取容器即可，不必知道挂的是哪一页（提醒页与根页都套了它）。
   String? toastOf(WidgetTester tester) => ProviderScope.containerOf(
-        tester.element(find.byType(SettingsPage)),
+        tester.element(find.byType(Scaffold).first),
       ).read(toastProvider);
 
   testWidgets('权限被拒时开关回弹且不写库', (tester) async {
@@ -374,7 +397,8 @@ void main() {
 
     final scheduler = _FakeScheduler(grants: true);
     final player = _FakeNoisePlayer();
-    await pumpSettings(tester, scheduler, player: player);
+    // 「删除全部本地数据」留在设置**根页**，提醒控件才在睡眠设置页。
+    await pumpRootSettings(tester, scheduler, player: player);
 
     await tester.scrollUntilVisible(find.text('删除全部本地数据'), 300);
     await tester.tap(find.text('删除全部本地数据'));

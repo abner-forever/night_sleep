@@ -11,17 +11,21 @@ import 'package:night_sleep/core/theme/app_theme.dart';
 import 'package:night_sleep/core/theme/app_tokens.dart';
 import 'package:night_sleep/core/widgets/app_basics.dart';
 import 'package:night_sleep/core/widgets/app_icons.dart';
+import 'package:night_sleep/core/widgets/app_menu_field.dart';
 import 'package:night_sleep/core/widgets/glass_surface.dart';
 import 'package:night_sleep/core/widgets/ios_controls.dart';
 import 'package:night_sleep/core/widgets/top_fade.dart';
 import 'package:night_sleep/features/home/presentation/home_page.dart';
 import 'package:night_sleep/features/compass/presentation/compass_page.dart';
 import 'package:night_sleep/features/log/presentation/log_page.dart';
+import 'package:night_sleep/features/settings/presentation/appearance_settings_page.dart';
 import 'package:night_sleep/features/settings/presentation/demo_data_page.dart';
 import 'package:night_sleep/features/settings/presentation/export_page.dart';
 import 'package:night_sleep/features/settings/presentation/insight_config_page.dart';
 import 'package:night_sleep/features/settings/presentation/settings_page.dart';
 import 'package:night_sleep/features/settings/presentation/sleep_import_page.dart';
+import 'package:night_sleep/features/settings/presentation/sleep_settings_page.dart';
+import 'package:night_sleep/features/settings/presentation/widgets/goal_slider.dart';
 import 'package:night_sleep/features/sleep/data/demo_seed.dart';
 import 'package:night_sleep/features/sleep/data/session_repository.dart';
 import 'package:night_sleep/features/sleep/data/sleep_repository.dart';
@@ -574,40 +578,35 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
-    testWidgets('分组齐全，未接入的能力有明确说明', (tester) async {
+    testWidgets('根页只剩三段导航行，控件都收进了二级页', (tester) async {
       await pumpPage(tester, const SettingsPage());
 
-      expect(find.text('外观模式'), findsOneWidget);
-      expect(find.text('睡眠目标'), findsOneWidget);
-      expect(find.text('小米手环睡眠数据'), findsOneWidget);
-      expect(find.text('就寝提醒'), findsOneWidget);
-      expect(find.text('起床提醒'), findsOneWidget);
-      expect(find.text('夜间声音录制'), findsOneWidget);
-      expect(find.text('洞察服务配置'), findsOneWidget);
-      expect(find.text('删除全部本地数据'), findsOneWidget);
+      expect(find.text('常用'), findsOneWidget);
+      expect(find.text('数据与智能'), findsOneWidget);
+      expect(find.text('数据与隐私'), findsOneWidget);
+      expect(find.text('关于'), findsOneWidget);
 
-      // Capability gaps must be stated rather than implied as working.
-      expect(find.textContaining('尚未接入录音'), findsOneWidget);
-      expect(find.textContaining('鼾声、梦话仍由手机夜间录音检测'), findsOneWidget);
-    });
-
-    testWidgets('关于卡片的文字在卡片内水平居中', (tester) async {
-      await pumpPage(tester, const SettingsPage());
-
-      final card = find.ancestor(
-        of: find.text('睡眠记录与分析'),
-        matching: find.byType(GlassSurface),
-      );
-      expect(card, findsWidgets, reason: '找不到关于卡片');
-
-      final centre = tester.getCenter(card.first).dx;
-      for (final label in ['夜深', '睡眠记录与分析']) {
-        expect(
-          tester.getCenter(find.text(label)).dx,
-          moreOrLessEquals(centre, epsilon: 1),
-          reason: '「$label」没有在卡片内居中——Column 在 Stack 的宽松约束下静缩并被左锚定了',
-        );
+      // 原型那五条 + 我们必须保留的四条（导出是偏差 #18、删除全部数据是规格 §7、
+      // 演示数据是调试期功能、罗盘是本实现新增）。
+      for (final label in [
+        '外观',
+        '睡眠设置',
+        '罗盘',
+        '睡眠数据导入',
+        '睡眠洞察',
+        '睡眠数据导出',
+        '删除全部本地数据',
+      ]) {
+        expect(find.text(label), findsOneWidget, reason: '根页少了「$label」这一行');
       }
+
+      // 控件**不在**根页上：外观与睡眠目标既然收进了二级页，根页就不该再出现
+      // 它们，否则同一条设置在两个层级各有一份可改的入口。
+      expect(find.text('外观模式'), findsNothing);
+      expect(find.text('睡眠目标'), findsNothing);
+      expect(find.text('就寝提醒'), findsNothing);
+      expect(find.text('起床提醒'), findsNothing);
+      expect(find.text('夜间声音录制'), findsNothing);
     });
 
     testWidgets('版本号取自构建信息而不是写死的常量', (tester) async {
@@ -615,26 +614,10 @@ void main() {
 
       // `setMockInitialValues` 直接填 `PackageInfo` 的静态缓存，测试不必
       // 走平台通道（测试环境里那条通道没有实现）。
+      expect(find.text('夜深'), findsOneWidget);
+      expect(find.text('睡眠记录与分析'), findsOneWidget);
       expect(find.text('v0.1.0 (1)'), findsOneWidget);
       expect(find.text('v2.0.0'), findsNothing, reason: '版本号又退回写死的常量了');
-    });
-
-    testWidgets('外观模式切换写回数据库', (tester) async {
-      await pumpPage(tester, const SettingsPage());
-
-      await tester.tap(find.text('深色'));
-      await tester.pumpAndSettle();
-
-      expect((await database.getSettings()).themeMode, 'dark');
-    });
-
-    testWidgets('睡眠目标步进器写回数据库', (tester) async {
-      await pumpPage(tester, const SettingsPage());
-
-      await tester.tap(find.text('+'));
-      await tester.pumpAndSettle();
-
-      expect((await database.getSettings()).sleepGoalMinutes, 510);
     });
 
     testWidgets('删除全部数据前要求二次确认', (tester) async {
@@ -689,6 +672,139 @@ void main() {
     // Sub-pages are pushed outside the tab shell, so they must apply the
     // content padding themselves. Before this was fixed they rendered
     // edge-to-edge and looked broken next to the tab pages.
+    testWidgets('外观页：行内下拉切换写回数据库', (tester) async {
+      await pumpRoute(tester, const AppearanceSettingsPage());
+
+      expectProperlyRendered(tester, '显示模式');
+      expect(find.text('随设备外观自动切换'), findsOneWidget);
+      expect(find.text('选择「跟随系统」后，外观会随设备的浅色或深色模式自动变化。'), findsOneWidget);
+
+      // 触发器与菜单项的文字相同，先点触发器（第一个）。
+      await tester.tap(find.text('跟随系统').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('深色'));
+      await tester.pumpAndSettle();
+
+      expect((await database.getSettings()).themeMode, 'dark');
+    });
+
+    testWidgets('外观页：下拉的箭头贴在触发器右端', (tester) async {
+      await pumpRoute(tester, const AppearanceSettingsPage());
+
+      // 行内版式没有 flex 子项，靠 `minWidth` 撑出来的富余宽度不显式分配的话
+      // 会全留在右边，箭头就浮在文字后面。这一条钉住「箭头贴右」。
+      final field = find.byType(AppMenuField);
+      final chevron =
+          find.descendant(of: field, matching: find.byType(SvgPicture));
+      expect(field, findsOneWidget);
+      expect(chevron, findsOneWidget, reason: '下拉触发器里找不到箭头');
+
+      // 触发器左右各 12px 内边距，箭头右缘因此应当落在距右端 12px 处。
+      expect(
+        tester.getRect(field).right - tester.getRect(chevron).right,
+        moreOrLessEquals(12, epsilon: 1),
+        reason: '箭头没有贴住下拉的右端',
+      );
+    });
+
+    testWidgets('睡眠目标：快捷按钮与滑块都写回数据库', (tester) async {
+      await pumpRoute(tester, const SleepSettingsPage());
+
+      expectProperlyRendered(tester, '每晚睡眠目标');
+      expect(find.text('在成年人推荐的睡眠范围内'), findsOneWidget);
+
+      await tester.tap(find.text('9 小时'));
+      await tester.pumpAndSettle();
+      expect((await database.getSettings()).sleepGoalMinutes, 540);
+    });
+
+    testWidgets('睡眠目标滑块：按 0.5 小时吸附，两端不越界', (tester) async {
+      await pumpRoute(tester, const SleepSettingsPage());
+
+      final slider = find.byType(GoalSlider);
+      expect(slider, findsOneWidget);
+      final rect = tester.getRect(slider);
+
+      // 若干个中间位置：落库的分钟数必须永远是 30 的整数倍（吸附到 0.5 小时）。
+      for (final fraction in [0.13, 0.37, 0.61, 0.88]) {
+        await tester.tapAt(
+          Offset(rect.left + rect.width * fraction, rect.center.dy),
+        );
+        await tester.pumpAndSettle();
+        final minutes = (await database.getSettings()).sleepGoalMinutes;
+        expect(minutes % 30, 0,
+            reason: '滑块在 $fraction 处落库 $minutes 分钟，没有吸附到 0.5 小时');
+        expect(minutes, inInclusiveRange(300, 720));
+      }
+
+      // 两端夹住：按在轨道尽头之外（滑块只走到两端各让出的半个滑块处）
+      // 也停在 5 / 12 小时，不会越界。
+      await tester.tapAt(Offset(rect.right - 1, rect.center.dy));
+      await tester.pumpAndSettle();
+      expect((await database.getSettings()).sleepGoalMinutes, 720);
+
+      await tester.tapAt(Offset(rect.left + 1, rect.center.dy));
+      await tester.pumpAndSettle();
+      expect((await database.getSettings()).sleepGoalMinutes, 300);
+    });
+
+    testWidgets('睡眠目标滑块：读屏的增大 / 减小一步就是 0.5 小时', (tester) async {
+      await pumpRoute(tester, const SleepSettingsPage());
+
+      final handle = tester.ensureSemantics();
+      final node = tester.getSemantics(find.byType(GoalSlider));
+      // `tap` / `scrollLeft` / `scrollRight` 是 `GestureDetector` 自己并上来的动作，
+      // 一并写进期望里：这一条要钉的是**滑块语义与步长**，不是「没有别的动作」。
+      expect(
+          node,
+          matchesSemantics(
+            isSlider: true,
+            label: '每晚睡眠目标',
+            value: '8 小时',
+            increasedValue: '8 小时 30 分钟',
+            decreasedValue: '7 小时 30 分钟',
+            hasTapAction: true,
+            hasIncreaseAction: true,
+            hasDecreaseAction: true,
+            hasScrollLeftAction: true,
+            hasScrollRightAction: true,
+          ));
+      handle.dispose();
+    });
+
+    testWidgets('睡眠设置页把提醒与声音检测都收在一起，并保留两条红线', (tester) async {
+      await pumpRoute(tester, const SleepSettingsPage());
+
+      expectProperlyRendered(tester, '就寝提醒');
+      expect(find.text('起床提醒'), findsOneWidget);
+      expect(find.text('夜间声音录制'), findsOneWidget);
+      expect(find.text('提醒会根据设置的时间在本机发送通知。'), findsOneWidget);
+
+      // 产品红线：录音还没接入，副标题不许跟着原型改成「检测打鼾、梦话并生成洞察」。
+      expect(find.textContaining('尚未接入录音'), findsOneWidget);
+      expect(find.textContaining('检测打鼾、梦话并生成洞察'), findsNothing);
+    });
+
+    testWidgets('睡眠目标数值在卡片内水平居中', (tester) async {
+      await pumpRoute(tester, const SleepSettingsPage());
+
+      // `GlassSurface` 把子项画在 `Stack` 里，非 position 子项拿到的是宽松约束；
+      // `Column` 会在那种约束下缩到最宽子项的宽度并被左锚定，
+      // `crossAxisAlignment: center` 只在那一段宽度内居中，整块看着就是偏左。
+      final card = find.ancestor(
+        of: find.text('5 小时'),
+        matching: find.byType(GlassSurface),
+      );
+      expect(card, findsWidgets, reason: '找不到睡眠目标卡片');
+
+      final centre = tester.getCenter(card.first).dx;
+      expect(
+        tester.getCenter(find.text('在成年人推荐的睡眠范围内')).dx,
+        moreOrLessEquals(centre, epsilon: 1),
+        reason: '目标反馈没有在卡片内居中——Column 在 Stack 的宽松约束下静缩并被左锚定了',
+      );
+    });
+
     testWidgets('数据导入页有内边距并说明适配器待接入', (tester) async {
       await pumpRoute(tester, const SleepImportPage());
 

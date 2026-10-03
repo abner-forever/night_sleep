@@ -13,11 +13,14 @@ import '../features/log/presentation/log_edit_page.dart';
 import '../features/log/presentation/log_new_page.dart';
 import '../features/log/presentation/review_page.dart';
 import '../features/onboarding/presentation/onboarding_overlay.dart';
+import '../features/onboarding/presentation/splash_screen.dart';
+import '../features/settings/presentation/appearance_settings_page.dart';
 import '../features/settings/presentation/demo_data_page.dart';
 import '../features/settings/presentation/export_page.dart';
 import '../features/settings/presentation/insight_config_page.dart';
 import '../features/settings/presentation/settings_page.dart';
 import '../features/settings/presentation/sleep_import_page.dart';
+import '../features/settings/presentation/sleep_settings_page.dart';
 import '../features/session/presentation/sleep_session_page.dart';
 import '../features/sleep/presentation/sheets/noise_sheet.dart';
 import '../features/stats/presentation/stats_page.dart';
@@ -45,6 +48,15 @@ final _router = GoRouter(
       path: '/',
       builder: (context, state) => const AppScaffold(),
       routes: [
+        // 外观与睡眠设置是 v3.5 从设置根页收进来的两个二级页：根页只留导航行。
+        GoRoute(
+          path: 'settings/appearance',
+          builder: (context, state) => const AppearanceSettingsPage(),
+        ),
+        GoRoute(
+          path: 'settings/sleep',
+          builder: (context, state) => const SleepSettingsPage(),
+        ),
         GoRoute(
           path: 'settings/import',
           builder: (context, state) => const SleepImportPage(),
@@ -120,6 +132,21 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
   /// route-transition effect.
   bool _ringHasPlayed = false;
 
+  /// 开屏页的时间轴是否播完。
+  ///
+  /// 它是 **State 字段而不是 provider**：`AppScaffold` 是 `/` 这条路由的 builder，
+  /// push 子页时它留在 Navigator 里、State 被复用，所以这个标记不会在来回跳转时重置；
+  /// 而放进 provider 一旦被 invalidate，开屏就会重播。
+  bool _splashFinished = false;
+
+  /// 设置是否已经读到过结论（成功或失败都算）。
+  ///
+  /// 记成「见过一次就再也不翻回去」的**单向**标记，而不是每次都去看
+  /// `settingsAsync.isLoading`：后者在 provider 被 invalidate 时会重新变回 true，
+  /// 于是开屏会在应用跑到一半时**重新冒出来**。今天没有人 invalidate
+  /// `settingsProvider`，但那是随时可能被加上的调用。
+  bool _settingsSeen = false;
+
   void _selectTab(AppTab tab) {
     if (tab == ref.read(activeTabProvider)) return;
     ref.read(activeTabProvider.notifier).state = tab;
@@ -142,9 +169,22 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
   @override
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
-    final settings = ref.watch(settingsProvider).valueOrNull;
-    final showOnboarding = settings != null && !settings.onboarded;
+    final settingsAsync = ref.watch(settingsProvider);
+    final settings = settingsAsync.valueOrNull;
     final tab = ref.watch(activeTabProvider);
+
+    // **开屏要等设置读到第一帧才收起，不能只看计时器。**
+    //
+    // `settingsProvider` 是异步流：只看计时器的话，它还没吐出第一帧时外壳就先露出来，
+    // 引导页随后再盖上去——用户看到的是「闪一下主界面再跳出引导」。
+    //
+    // 用 `isLoading` 而不是 `valueOrNull != null`：读取**失败**时也算「有结论了」，
+    // 否则库里一出错，开屏就永远收不起来（`AsyncValue` 的 `isLoading` 在
+    // data / error 两种终态下都是 false）。结果记进 [_settingsSeen]，之后不再翻回去。
+    if (!settingsAsync.isLoading) _settingsSeen = true;
+    final splashVisible = !_splashFinished || !_settingsSeen;
+    final showOnboarding =
+        !splashVisible && settings != null && !settings.onboarded;
 
     return Scaffold(
       backgroundColor: tokens.bgBase,
@@ -175,6 +215,15 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
                         const AppSettingsCompanion(onboarded: Value(true)),
                       );
                 },
+              ),
+            // 开屏**排在最后**：它要盖住外壳与引导页。
+            //
+            // 原型里两者的 `z-index` 都是 200，而引导页在 DOM 里更靠后，于是首次
+            // 启动时引导页把开屏**整个盖住**、开屏等于没播。那是原型的层叠疏漏，
+            // 这里按显然的意图做：先开屏、后引导（见规格偏差表）。
+            if (splashVisible)
+              SplashScreen(
+                onFinished: () => setState(() => _splashFinished = true),
               ),
           ],
         ),
