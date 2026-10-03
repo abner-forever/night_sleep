@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -67,7 +68,25 @@ class NoisePlayer {
       // already crossfaded, so repeats do not click.
       await _audio.setLoopMode(LoopMode.one);
       await _audio.setVolume(volume.clamp(0.0, 1.0));
-      await _audio.play();
+      // **起播不能 `await`。** `AudioPlayer.play()` 的 Future 要等「播放结束或被
+      // 暂停 / 停止」才完成（`just_audio` 的公开契约；darwin 侧由 `pause:` 与
+      // `complete` 两个回调兑现，见 just_audio 的 `AudioPlayer.m`），而这里循环的是
+      // 一个 20 秒的源，永远不会结束——await 它就是死等。2026-10-03 在 macOS 上实测：
+      // await 之后 6 秒仍不返回（`playing=true`、`ProcessingState.ready`，声音早就
+      // 出来了），一直等到有人调 `stop()` 才放行。
+      //
+      // 死等的代价不只是慢：`_current` 永远赋不上，界面停在「没选中」；而等用户点了
+      // 「关闭」把这个 await 放行时，它反倒接着往下走，把状态翻成「正在播放」——
+      // 一条彻头彻尾的假状态。
+      //
+      // 起播请求本身被平台拒绝（播放器已释放、解码器打不开）时它会抛错，而这个 Future
+      // 已经没人 await 了：接住它，别让它变成「未处理的异步错误」打到控制台。**能报给
+      // 用户的失败在 `_ensureFile` 与 `setFilePath` 那两步就已经抛出去了**；剩下的
+      // 一种失败——音频会话激活不了——`just_audio` 自己会吞掉（它还同时让这个 Future
+      // 永不完成），这里也就无从知道，如实记在这里，不假装能看见。
+      unawaited(_audio.play().catchError((Object error) {
+        debugPrint('助眠音起播请求失败：$error');
+      }));
       _current = kind;
     } on NoisePlaybackFailure {
       rethrow;
@@ -103,6 +122,14 @@ class NoisePlayer {
     final file = File(p.join(directory.path, 'noise-${kind.id}.wav'));
     if (!file.existsSync()) {
       try {
+        // **先建目录**：macOS 上 `getTemporaryDirectory()` 返回的是
+        // `~/Library/Caches/<bundle id>`，而 `path_provider_foundation` 只保证
+        // `getApplicationSupportDirectory()` 与 `getApplicationCacheDirectory()`
+        // 会顺手建目录，**temp 这一支不建**。全新安装上那个目录并不存在，
+        // 直接往里写就是 `PathNotFoundException (errno = 2)`——渲染得再对，
+        // 声音也出不来（`export_sharer.dart` 里那次临时目录写入就带着这一行，
+        // 所以它一直没事）。目录已存在时是空操作，不额外付代价。
+        await directory.create(recursive: true);
         // 50–130ms of DSP and ~860 KB: off the main isolate, so picking a sound
         // does not drop frames, and it is only paid once per sound per install.
         final bytes = await compute(_generateLoop, kind.id);
