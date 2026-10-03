@@ -65,19 +65,19 @@ void main() {
       wakeMinutes: 6 * 60 + 45,
       alarmEnabled: true,
       sceneId: 'galaxy',
-      noiseId: 'rain',
+      noiseId: 'stream',
       noiseVolume: 0.35,
     );
 
     expect(session.wakeMinutes, 405);
     expect(session.alarmEnabled, isTrue);
     expect(session.sceneId, 'galaxy');
-    expect(session.noiseId, 'rain');
+    expect(session.noiseId, 'stream');
     expect(session.noiseVolume, 0.35);
 
     final stored = (await repo.load())!;
     expect(stored.sceneId, 'galaxy', reason: '草稿要真落库，不能只活在返回值里');
-    expect(stored.noiseId, 'rain');
+    expect(stored.noiseId, 'stream');
     expect(stored.noiseVolume, 0.35);
     expect(stored.alarmEnabled, isTrue);
   });
@@ -117,8 +117,8 @@ void main() {
 
   test('update 可以把 noiseId 显式清回 null', () async {
     await repo.start(now: start.toLocal());
-    await repo.update(noiseId: 'rain');
-    expect((await repo.load())!.noiseId, 'rain');
+    await repo.update(noiseId: 'stream');
+    expect((await repo.load())!.noiseId, 'stream');
 
     await repo.update(noiseId: null);
     expect((await repo.load())!.noiseId, isNull, reason: '取消选择必须能存下去');

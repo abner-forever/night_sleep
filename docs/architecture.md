@@ -69,5 +69,8 @@ Drift + SQLite，schema v3（`schemaVersion => 3`，`onUpgrade` 在 `app_databas
   下拉选择器统一走 `core/widgets/app_menu_field.dart` 的 `AppMenuField`（菜单由
   `PopupMenuButton` 渲染到应用 overlay，树内会被 `GlassSurface` 的 `ClipRRect` 裁掉）。
 - `AppHaptics` 在 macOS 桌面 / Web 上是 no-op，与原型 guarded `try/catch` 一致。
-- 助眠音效是**实时合成**的（`noise_synth.dart`：22050Hz、20 秒循环、等功率接缝交叉淡化、
-  按种类固定种子），不打包任何第三方音频。
+- 助眠音效是**打包的实景录音**（2026-10-03 起）：`assets/noise/` 下 5 条 `.m4a`
+  （单声道 22.05 kHz 80 kbps，44–75 秒循环，接缝的 2 秒等功率交叉淡化在生成时烘焙进文件），
+  由 `tool/generate_noise_assets.dart` 生成，`noise_player.dart` 用 `setAsset` 播放。
+  **原 DSP 合成器 `noise_synth.dart` 已删除。** 素材的可商用授权**尚未落实**，
+  发布前必须确认或更换——见 [specs/2026-10-03-noise-real-recordings-design.md](superpowers/specs/2026-10-03-noise-real-recordings-design.md) §3.1。

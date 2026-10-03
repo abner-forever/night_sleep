@@ -28,7 +28,7 @@ void main() {
   }
 
   test('占用统计递归进子目录，不只是顶层', () async {
-    await writeFile('noise-rain.wav', 2048);
+    await writeFile('export-sleep.csv', 2048);
     await writeFile('export/night.csv', 1024);
     await writeFile('export/night.json', 512);
 
@@ -40,7 +40,7 @@ void main() {
   });
 
   test('清除把文件与子目录一起删掉，并报出释放的字节数', () async {
-    await writeFile('noise-rain.wav', 2048);
+    await writeFile('export-sleep.csv', 2048);
     await writeFile('export/night.csv', 1024);
 
     final freed = await cache.clear();
@@ -51,7 +51,7 @@ void main() {
   });
 
   test('清两次不会第二次报出一个假的数字', () async {
-    await writeFile('noise-rain.wav', 2048);
+    await writeFile('export-sleep.csv', 2048);
     expect(await cache.clear(), 2048);
     expect(await cache.clear(), 0);
   });

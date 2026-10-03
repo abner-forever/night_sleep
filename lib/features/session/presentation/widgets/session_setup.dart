@@ -71,8 +71,13 @@ class SessionSetupBody extends ConsumerStatefulWidget {
 class _SessionSetupBodyState extends ConsumerState<SessionSetupBody> {
   bool _recordingEnabled = false;
 
-  /// 原型的「常用白噪音」四格：`['rain','ocean','brown','fan']`，顺序照抄。
-  static const _quickIds = ['rain', 'ocean', 'brown', 'fan'];
+  /// 「常用白噪音」四格。
+  ///
+  /// **不再照抄原型。** 原型那四条是 `['rain','ocean','brown','fan']`，其中三个 id
+  /// （`rain` / `brown` / `fan`）随合成器一起删掉了——那三种没有实景录音，
+  /// 见 `kNoiseOptions` 的注释。现在取水 / 火 / 林 / 空气各一条，
+  /// 把与「海浪」同属水系的「溪流」让出来。
+  static const _quickIds = ['ocean', 'fire', 'forest', 'wind'];
 
   @override
   void initState() {

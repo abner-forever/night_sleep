@@ -5,11 +5,15 @@ import 'package:path_provider/path_provider.dart';
 
 /// 应用自己产生的**临时文件**：删掉不丢任何用户数据，下次用到时再生成。
 ///
-/// 具体是两样东西，都在 `getTemporaryDirectory()` 下面（macOS 上就是
-/// `~/Library/Caches/<bundle id>`，这一层由 `noise_player.dart` 的注释核实过）：
+/// 现在只有一样东西，在 `getTemporaryDirectory()` 下面（macOS 上就是
+/// `~/Library/Caches/<bundle id>`）：
 ///
-///  * 白噪音的 8 个 WAV 循环，各约 860 KB，首次播放时合成（`noise_player.dart`）；
 ///  * 导出时写给系统分享面板的那份 CSV / JSON 副本（`export_sharer.dart`）。
+///
+/// **2026-10-03 起临时目录里不再有白噪音。** 助眠音效改成了打包在应用里的实景录音
+/// （`assets/noise/`），不再运行时合成、也就不再往临时目录写 WAV——那份录音是应用资源，
+/// 既删不掉也不该删。所以全新安装、还没导出过时**占用读数为 0 B 是如实的**，
+/// 不是没读出来。经过见 `docs/superpowers/specs/2026-10-03-noise-real-recordings-design.md`。
 ///
 /// **刻意不含三样东西**，每一样都有自己的去处：
 ///
@@ -96,9 +100,7 @@ class FileAppCache implements AppCache {
     try {
       await entity.delete(recursive: true);
     } on FileSystemException {
-      // 被占用或已经不在了。与 `noise_player.dart` 的 `clearCache` 同一口径：
-      // 这不是值得打断用户的错误——播放中的那个文件本来就删不掉，而它下次
-      // 被选中时会重新生成。
+      // 被占用或已经不在了。这不是值得打断用户的错误——下次要用时会重新写一份。
     }
   }
 }

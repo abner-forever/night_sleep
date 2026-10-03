@@ -21,7 +21,7 @@ import 'package:night_sleep/features/session/presentation/widgets/hold_to_finish
 import 'package:night_sleep/features/session/presentation/widgets/night_backdrop.dart';
 import 'package:night_sleep/features/session/presentation/widgets/night_scene_picker.dart';
 import 'package:night_sleep/features/sleep/data/noise_player.dart';
-import 'package:night_sleep/features/sleep/data/noise_synth.dart';
+import 'package:night_sleep/features/sleep/data/noise_asset.dart';
 import 'package:night_sleep/features/sleep/data/session_repository.dart';
 import 'package:night_sleep/features/sleep/data/sleep_repository.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_entry.dart';
@@ -532,7 +532,7 @@ void main() {
 
     await tester.tap(find.text('打开白噪音'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('雨声'));
+    await tester.tap(find.text('溪流'));
     // 选中即起 1 秒周期的倒计时，`pumpAndSettle` 会因它永不收敛而超时。
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));

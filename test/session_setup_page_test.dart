@@ -16,7 +16,7 @@ import 'package:night_sleep/features/session/presentation/sleep_session_page.dar
 import 'package:night_sleep/features/session/presentation/widgets/night_backdrop.dart';
 import 'package:night_sleep/features/session/presentation/widgets/sleep_moon_mark.dart';
 import 'package:night_sleep/features/sleep/data/noise_player.dart';
-import 'package:night_sleep/features/sleep/data/noise_synth.dart';
+import 'package:night_sleep/features/sleep/data/noise_asset.dart';
 import 'package:night_sleep/features/sleep/data/session_repository.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_session.dart';
 
@@ -187,9 +187,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(backdropScene(tester), NightScene.galaxy, reason: '点一下整屏就该换');
 
-      await tester.tap(find.text('雨声'));
+      await tester.tap(find.text('篝火'));
       await tester.pumpAndSettle();
-      expect(player.calls, contains('play:rain:0.50'), reason: 'setup 里点选即试听');
+      expect(player.calls, contains('play:fire:0.50'), reason: 'setup 里点选即试听');
       expect(
         await database.activeSession(),
         isNull,
@@ -201,7 +201,7 @@ void main() {
 
       final session = (await database.activeSession())!;
       expect(session.sceneId, 'galaxy');
-      expect(session.noiseId, 'rain');
+      expect(session.noiseId, 'fire');
       expect(session.noiseVolume, 0.50);
     });
 
@@ -209,7 +209,7 @@ void main() {
       final player = _FakeNoisePlayer();
       await pumpSetup(tester, player: player);
 
-      await tester.tap(find.text('雨声'));
+      await tester.tap(find.text('篝火'));
       await tester.pumpAndSettle();
 
       // 收起之后这一页就没了，容器引用要先抓住。
@@ -235,7 +235,7 @@ void main() {
       await pumpSetup(tester, player: player, size: const Size(900, 2000));
 
       await tester.tap(find.text('银河'));
-      await tester.tap(find.text('雨声'));
+      await tester.tap(find.text('篝火'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('收起'));
       await tester.pumpAndSettle();
@@ -351,15 +351,15 @@ void main() {
       await pumpSetup(tester, size: const Size(375, 2000));
 
       final tile = find.ancestor(
-        of: find.text('雨声'),
+        of: find.text('篝火'),
         matching: find.byWidgetPredicate((w) => w is AnimatedContainer),
       );
-      expect(tile, findsOneWidget, reason: '「雨声」那一格应当就是这一块');
+      expect(tile, findsOneWidget, reason: '「篝火」那一格应当就是这一块');
 
       final icon = find.descendant(of: tile, matching: find.byType(SvgPicture));
       expect(icon, findsOneWidget);
       expect(
-        tester.getCenter(find.text('雨声')).dy,
+        tester.getCenter(find.text('篝火')).dy,
         greaterThan(tester.getCenter(icon).dy + 6),
         reason: '竖排时标签在图标下方（并排时两者同一行，差不到 6）',
       );
@@ -369,18 +369,18 @@ void main() {
       await pumpSetup(tester);
 
       final tile = find.ancestor(
-        of: find.text('雨声'),
+        of: find.text('篝火'),
         matching: find.byWidgetPredicate((w) => w is AnimatedContainer),
       );
       final icon = find.descendant(of: tile, matching: find.byType(SvgPicture));
       expect(
-        (tester.getCenter(find.text('雨声')).dy - tester.getCenter(icon).dy)
+        (tester.getCenter(find.text('篝火')).dy - tester.getCenter(icon).dy)
             .abs(),
         lessThan(3),
         reason: '并排时两者居中对齐',
       );
       expect(
-        tester.getCenter(find.text('雨声')).dx,
+        tester.getCenter(find.text('篝火')).dx,
         greaterThan(tester.getCenter(icon).dx),
         reason: '并排时标签在图标右侧',
       );

@@ -7,8 +7,8 @@ import '../../../../core/platform/haptics.dart';
 import '../../../../core/theme/app_tokens.dart';
 import '../../../../core/widgets/app_icons.dart';
 import '../../../../core/widgets/app_sheet.dart';
+import '../../data/noise_asset.dart';
 import '../../data/noise_player.dart';
-import '../../data/noise_synth.dart';
 import '../widgets/noise_controls.dart';
 
 /// Opens the sleep-sounds sheet.
@@ -21,10 +21,8 @@ Future<void> showNoiseSheet(BuildContext context) {
 
 /// Sleep sounds: pick a sound, set level, set a sleep timer.
 ///
-/// The audio is **synthesised on device** — see [buildNoiseWav] — rather than
-/// shipped as recordings, which is also what the prototype does with the Web
-/// Audio API. Selecting a sound renders its loop once, off the main isolate, and
-/// then plays it on repeat.
+/// 素材是**打包在应用里的实景录音**（`assets/noise/`），选中即播、循环播放；
+/// 不再是运行时合成（那套已随 `noise_synth.dart` 一起删掉，经过见 [NoiseKind]）。
 ///
 /// Playback failure is surfaced in the sheet instead of being swallowed: a sound
 /// that cannot be produced must not leave the UI claiming it is playing.
@@ -218,11 +216,21 @@ class _NoiseSheetState extends State<NoiseSheet>
                           option: option,
                           active: option.id == _activeId,
                           onTap: () => _select(option),
-                          // 四格一行，格子宽度按**面板自身**的可用宽度算，不是屏幕
-                          // 宽度：宽屏下面板被 `_SheetHost` 限到 560px，拿屏幕宽度
-                          // 算会把每格撑到屏幕的四分之一（iPad 横屏下 271px），
-                          // `Wrap` 一行就只放得下一个，内容整体溢出被裁掉。
-                          width: math.max(0, (constraints.maxWidth - 70) / 4),
+                          // 全部条目排成一行，格子宽度按**面板自身**的可用宽度与
+                          // **条数**算，不是屏幕宽度、也不写死列数：宽屏下面板被
+                          // `_SheetHost` 限到 560px，拿屏幕宽度算会把每格撑爆
+                          // （iPad 横屏下一行只放得下一个，内容溢出被裁掉）；
+                          // 写死列数则会在条数变化时留下孤行。
+                          // 末尾减 2 是给 `Wrap` 留的取整余量：正好等分时累加出来的
+                          // 小数误差会让最后一格翻到下一行。
+                          // `spacing: 10` 见下面的 `Wrap`。
+                          width: math.max(
+                            0,
+                            (constraints.maxWidth -
+                                    10 * (kNoiseOptions.length - 1) -
+                                    2) /
+                                kNoiseOptions.length,
+                          ),
                         ),
                     ],
                   ),
@@ -294,8 +302,8 @@ class _NoiseSheetState extends State<NoiseSheet>
                           child: Text(
                             failure ??
                                 (active == null
-                                    ? '声音由应用实时合成，不占用存储、不需要下载。选一个开始播放。'
-                                    : '正在播放「${active.label}」，音频由应用实时合成，循环无缝。'),
+                                    ? '声音是打包在应用里的实景录音，不需要下载。选一个开始播放。'
+                                    : '正在播放「${active.label}」，实景录音循环播放，接缝已做淡化。'),
                             style: TextStyle(
                               fontSize: 12,
                               height: 1.45,

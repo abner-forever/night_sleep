@@ -348,7 +348,7 @@ class _ClearCacheRowState extends ConsumerState<_ClearCacheRow> {
     if (_failed) return '暂时读不到占用';
     final bytes = _bytes ?? 0;
     if (bytes == 0) return '暂无缓存';
-    return '白噪音音频等可再生成的临时文件 · ${formatCacheSize(bytes)}';
+    return '导出副本等可再生成的临时文件 · ${formatCacheSize(bytes)}';
   }
 
   @override

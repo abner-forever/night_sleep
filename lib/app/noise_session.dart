@@ -4,8 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/platform/haptics.dart';
+import '../features/sleep/data/noise_asset.dart';
 import '../features/sleep/data/noise_player.dart';
-import '../features/sleep/data/noise_synth.dart';
 import '../features/sleep/data/session_repository.dart';
 import '../features/sleep/presentation/widgets/noise_controls.dart';
 
@@ -118,8 +118,8 @@ class NoiseSessionController extends ChangeNotifier {
     if (kind == null) return;
 
     try {
-      // 先 await 再显示为播放中：第一次选一个音还要现场合成，先翻界面会留下一个
-      // 对着静音的停止按钮。
+      // 先 await 再显示为播放中：第一次选一个音还要从资源包读出来、交给解码器，
+      // 先翻界面会留下一个对着静音的停止按钮。
       await _player.play(kind, volume: _volume);
     } on NoisePlaybackFailure catch (failure) {
       _activeId = null;

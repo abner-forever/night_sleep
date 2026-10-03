@@ -23,29 +23,14 @@ class NoiseOption {
 
 typedef IconBuilder = Widget Function(double size, Color color);
 
-/// The eight sounds from the prototype, in its order.
+/// 五条助眠音效。**不再是一份等长的原型清单**：原型的八条里，白/棕/粉噪音与雨声、
+/// 风扇都没有对应的实景录音，硬套会让标签与内容不符（规格偏差 #3/#7/#33），所以只保留
+/// 素材真正覆盖的五类。次序沿用原型中仍然存在者的原有先后，新的两条追加在后。
+///
+/// 颜色全部取自原型既有调色板：`stream` 沿用原「雨声」的蓝、`wind` 沿用原「风扇」的灰蓝。
+///
+/// [id] 必须与 `NoiseKind` 一一对应——`test/noise_asset_test.dart` 钉着这条。
 final List<NoiseOption> kNoiseOptions = [
-  NoiseOption(
-    id: 'white',
-    label: '白噪音',
-    icon: (size, color) =>
-        AppIcons.wave(size: size, color: color, strokeWidth: 1.5),
-    color: const Color(0xFF007AFF),
-  ),
-  NoiseOption(
-    id: 'brown',
-    label: '棕噪音',
-    icon: (size, color) =>
-        AppIcons.sparkle(size: size, color: color, strokeWidth: 1.5),
-    color: const Color(0xFFB5A090),
-  ),
-  NoiseOption(
-    id: 'rain',
-    label: '雨声',
-    icon: (size, color) =>
-        AppIcons.rain(size: size, color: color, strokeWidth: 1.5),
-    color: const Color(0xFF5AC8FA),
-  ),
   NoiseOption(
     id: 'ocean',
     label: '海浪',
@@ -68,18 +53,18 @@ final List<NoiseOption> kNoiseOptions = [
     color: const Color(0xFF90B890),
   ),
   NoiseOption(
-    id: 'fan',
-    label: '风扇',
+    id: 'stream',
+    label: '溪流',
     icon: (size, color) =>
-        AppIcons.fan(size: size, color: color, strokeWidth: 1.5),
-    color: const Color(0xFFA0B8C4),
+        AppIcons.stream(size: size, color: color, strokeWidth: 1.5),
+    color: const Color(0xFF5AC8FA),
   ),
   NoiseOption(
-    id: 'pink',
-    label: '粉噪音',
+    id: 'wind',
+    label: '风',
     icon: (size, color) =>
-        AppIcons.sparkle(size: size, color: color, strokeWidth: 1.5),
-    color: const Color(0xFF5856D6),
+        AppIcons.wind(size: size, color: color, strokeWidth: 1.5),
+    color: const Color(0xFFA0B8C4),
   ),
 ];
 

@@ -139,7 +139,7 @@
 | 洞察服务的对外请求（原型无对应，v3.7） | 服务商能力表在 `lib/features/settings/data/model_catalog.dart`（`chatUri` / `balanceUri` / `supportsChat` / `supportsBalance`）；余额、连通性、生成三个请求在 `data/insight_service.dart`（`fetchProviderBalance` / `pingProvider` / `generateSummary`，都接受可注入的 `http.Client`）；提示词构造在 `lib/features/sleep/domain/insight_prompt.dart`（纯函数）；会话内密钥与测试用 client 在 `data/insight_credentials.dart` 的 `insightApiKeyProvider` 与 `insight_service.dart` 的 `insightHttpClientProvider`；落库走 `SleepRepository.saveInsight`（固定 id `'$recordId-insight'`，upsert） |
 | 开屏页（原型 `SplashScreen`） | `lib/features/onboarding/presentation/splash_screen.dart`；接线在 `lib/app/app.dart` 的 `AppScaffold`（`Stack` 最上层） |
 | 记录编辑路由 | `lib/features/log/presentation/log_edit_page.dart`（`/log/edit`），表单本身由 `LogPage(editing:)` 复用 |
-| 助眠音效（原型用 Web Audio 合成） | `lib/features/sleep/data/noise_synth.dart`（DSP 与 WAV 编码）、`noise_player.dart`（渲染缓存与播放） |
+| 助眠音效 | **2026-10-03 起是打包的实景录音**（`assets/noise/*.m4a`，由 `tool/generate_noise_assets.dart` 生成）：`lib/features/sleep/data/noise_asset.dart`（条目目录）、`noise_player.dart`（播放）。**原 DSP 合成器 `noise_synth.dart` 已删除** |
 | 导出页（原型无对应） | `lib/features/settings/presentation/export_page.dart`（`/settings/export`）；格式规则（CSV 两张表 / JSON 存档）在 `lib/features/settings/domain/sleep_export.dart`，交付在 `data/export_sharer.dart`（`share_plus`） |
 | 就寝/起床提醒（原型只有装饰性开关） | `lib/core/platform/reminders.dart`（权限、时区与调度，含 `nextOccurrence` 的夏令时口径）、`lib/app/reminder_sync.dart`（启动全量重排与「偏好 → 计划」映射） |
 | 会话起床闹钟（一次性，原型无对应） | `ReminderScheduler.wakeAlarmId`（9003）与 `scheduleOnce`（`lib/core/platform/reminders.dart`，**不传** `matchDateTimeComponents`）；「有无会话 → 排/取消」在 `lib/app/reminder_sync.dart` 的 `syncSessionAlarm`；投递强度文案常量 `wakeAlarmDeliveryNote` |
@@ -210,13 +210,16 @@
 1. 用户显式开始/结束夜间录音；默认不录音。
 2. 音频文件存于应用私有目录；记录路径、时长、关联记录。
 3. 无验证过的分类模型时，只提供真实片段的回放与手动标注，不自动生成鼾声、梦话转写或分析。
-4. 助眠音效：8 种噪音**已可在设备上合成并播放**，音量与定时已接通；失败会在面板内说明。
-   尚未做的是后台播放与锁屏控制。
+4. 助眠音效：**5 条实景录音已可播放**（打包资源），音量与定时已接通；失败会在面板内说明。
+   尚未做的是后台播放与锁屏控制，**以及素材的可商用授权**（见偏差 #5）。
    > **「并播放」这三个字到 2026-10-03 才为真。** 此前这条能且只能走通「合成」那半段：
    > 临时目录在 macOS 上要先建、`AudioPlayer.play()` 不能 await，两处叠加导致选中声音后
    > 要么报 `PathNotFoundException`、要么界面停在「没选中」。两处都不是当轮引入的，而是
    > 这条路径**从来没被走过**（widget 测试用假播放器，巡检只开弹窗不选声音）。根因、修法
    > 与真机回归见会话规格 §17.7 与 `integration_test/noise_playback_test.dart`。
+   > **同日晚些时候又改了一次**：素材从「设备内合成」换成「打包实景录音」，上面那条
+   > `PathNotFoundException` 路径随之消失；`integration_test/noise_playback_test.dart`
+   > 改钉「打包资源真能被解码并起播」。见偏差 #5。
 5. 录音保留期限与一键删除。
 
 ### M4：AI 洞察 —— 未开始
@@ -338,7 +341,7 @@
 | 2 | 每个声音片段硬编码同一条 38 柱波形（原型不播放真实音频） | 有音频时画等高的中立波形轨道，无音频时显示「这段录音未保留在本地」 | 绘制一段文件未必具有的节奏等于伪造数据；规格书禁止无真实音频时出现假波形。真实包络线待音频接入后从解码结果派生。 |
 | 3 | 三家服务商各带固定余额（`¥18.60` / `$12.48` / `$8.20`） | 原型那三个数仍然不采用；**DeepSeek 改为真实查询**（`GET /user/balance`，点「查询余额」现拉现显），OpenAI / Claude 维持「余额查询未接入」 | 原型余额是演示值。**v3.7 订正一条已被推翻的前提**：旧稿写「无服务商提供可调用的余额接口」——2026-10-03 用真实 key 实测 `https://api.deepseek.com/user/balance` 返回 200 与 `{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"…"}]}`，所以 DeepSeek 有接口可查；OpenAI / Claude 仍无公开可调用的余额接口，继续如实标注。读数**不持久化**、不画历史曲线；金额原样保留服务商给的**字符串**，不转 `double` 再格式化（否则可能显示出一个与返回值不同的数字）。回归方法：`test/insight_service_test.dart` 的 `fetchProviderBalance` 组、`test/model_catalog_test.dart` 的服务商能力组——给 Claude 填一个余额地址、或给 OpenAI 补一个没实测过的接口，都会变红。 |
 | 4 | 小米手环导入有一键「导入成功」 | 完整还原布局，但导入按钮禁用并说明缺什么 | 规格书要求拿到真实导出样本或官方接口文档后才实现，不得猜测字段或伪造成功。 |
-| 5 | 助眠音效用 Web Audio 实时合成 8 种噪音 | **同样在设备上合成**（`noise_synth.dart`），渲染为 20 秒无缝循环的 WAV 后循环播放；不打包任何第三方音频 | 这是与原型最接近的实现方式，而且没有素材授权与署名负担。「没有音频时不得显示播放中」的约束仍然成立：只有播放器接受了才会切到播放态，失败会在面板内如实报错。 |
+| 5 | 助眠音效用 Web Audio 实时合成 8 种噪音 | **（2026-10-03 推翻）** 原实现是设备内合成 8 种噪音（`noise_synth.dart`），渲染成 20 秒无缝循环的 WAV。**现改为打包 5 条实景录音**（`assets/noise/*.m4a`），合成器整个删除，音效列表重建为素材真正覆盖的五类（海浪 / 篝火 / 森林 / 溪流 / 风）。**授权是未了事项**：素材来自爱给网（aigei.com），可商用授权尚未落实，发布前必须确认或更换 | 使用方提供了实景录音素材并裁定替换，规格 §10 第 3 条据此部分落实。**不做「溪流顶雨声」这类替代**——标签与内容不符正是偏差 #3 / #7 / #33 那条「没有的东西就显示为没有」的红线要挡的事。「没有音频时不得显示播放中」的约束仍然成立：只有播放器接受了才会切到播放态，失败会在面板内如实报错。经过、取舍与实测数字见 [2026-10-03-noise-real-recordings-design.md](2026-10-03-noise-real-recordings-design.md) |
 | 6 | 无记录时首页仍展示完整演示数据 | 演示数据仅在 `DEMO_DATA` 开启时安装，且首页显示「正在显示演示数据」提示条 | 规格书要求演示数据与真实数据隔离且发布构建默认关闭。 |
 | 7 | 夜间录音开关看起来已生效 | **plan B 落地前仍然有效**：开关保存偏好，副标题写明「尚未接入录音，开关只保存偏好」。**plan B 落地后本条作废**，录音的真实状态改由偏差 #27 描述 | 开关的真实能力必须与系统权限状态一致。录音还没接入时不能删掉这句话——删了应用就开始撒谎，那正是本条当初存在的意义。 |
 | 8 | 设置里「洞察服务」的 API Key 存 `localStorage` | **v3.7 起存系统钥匙串**（`flutter_secure_storage`：iOS / macOS 钥匙串、Android Keystore），并配一个「清除密钥」入口；仍然**不进** SQLite / 日志 / 导出 | 规格书要求密钥使用平台安全存储。原型那个 `localStorage` 是明文的，还会被备份与导出带走，不能照抄。**v3.7 之前**这里写的是「仅存内存，尚未接入安全存储」——那是一个如实标注的缺口，本版补上。**macOS 上刻意关掉 data protection keychain**（`MacOsOptions(usesDataProtectionKeychain: false)`）：开着它就必须加 `keychain-access-groups` entitlement，而那个 entitlement 需要 provisioning profile，插件的 README 写明加了之后构建产物**只能在构建它的那台 Mac 上启动**；本项目没有 App Group、不跨应用共享，用不上这个能力。**代价如实记，且已在 macOS 上实测清楚**：旧版钥匙串的 ACL 绑定**应用代码签名**，而 `flutter build macos --debug` 产出的是**临时签名**（实测 `codesign -dv` 报 `Signature=adhoc`、`TeamIdentifier=not set`），其 designated requirement 就是 `cdhash`——**二进制的哈希**。于是每重新编译一次，哈希就变一次，下一次读钥匙串系统会弹一次「想要使用您存储在钥匙串的…中的机密信息」（可输密码，或点「始终允许」把新哈希加进该条目的 ACL）。**已验证**：用写入钥匙串的同一个二进制启动，不弹框；只在「写入之后又重新编译过」时才弹一次。正常使用（填一次、之后照常开关应用、不重编）不会遇到；开发期每次重建会遇到一次。要彻底免掉这条路，只能换成 data protection keychain + `keychain-access-groups`，代价见上。回归方法：`test/insight_credentials_test.dart`（内存与钥匙串同步、值没变不重复写、清空不留空串、写失败不影响本次运行）+ 平台侧钥匙串往返（**已在 macOS 上验证跨进程可读**，见 README「验证记录」）。 |
@@ -350,7 +353,7 @@
 | 14 | 原型 `data.ts` 里写死三家服务商的模型名与余额 | 不写死未经核实的模型名；DeepSeek 与 Anthropic 用**对照官方文档核实过**的 ID 并注明核实日期，OpenAI 文档不可访问故留空，改由「获取可用模型」调 `GET /models` 实时拉取 | 模型 ID 变动快于发版。一个看着合理但不存在的名字比空列表更糟：用户选中它、请求 404、还会以为是应用的问题。余额仍然不显示（偏差 #3）。 |
 | 15 | 原型的时间选择器有 `wheel-selection-rail`（选中行上下各一条 1px 强调色线） | 不绘制 | 按使用方要求去掉。原型的版本是 30% accent 混入 `--border-strong` 的灰蓝色，比先前实现的纯 accent 淡得多——若要恢复，改的是颜色而不是这个元素。 |
 | 16 | 原型没有应用图标文件 | 用设计原型 `index.html` 引用的 `app-icon.svg`（新月 + 两道声波），由脚本生成 iOS/macOS 全部尺寸。**v2.9 起两个平台不再共用同一份像素**：iOS 保持满幅直角 + 压掉 alpha；macOS 按 Apple 图标网格**烘焙**圆角与留白——实体 824×824 居中、四边留白 100、圆角半径 185.4——再加一层向下偏移的投影（1024 基准：偏移 `(0, 14)`、模糊 σ=10、颜色 `0x80000000`——由系统图标的 `alpha>8` 包络反推后扫参逼近，目标包络 `L84 T96 R84 B72`，本组得 `L85 T99 R85 B71`），**保留 alpha 通道** | 图标来自设计本身，不是自绘。**本版订正一条错了的前提**：旧稿写「生成时去掉原图的 `rx="236"`（iOS 和 macOS 都会自己套遮罩）」——**macOS 不会**。把系统 app 的 `.icns` 抠出来实测（Calculator、Notes 结果一致）：`alpha>128` 的实体恰为 206/256 = **0.8047**，即 Apple 网格的 824/1024，且四边留白全等——**圆角与留白是烘焙在图标文件里的**，macOS 只负责原样绘制。于是满幅直角图标在 Dock 里被撑成一个方块（用户报「为什么没有圆角」）。另需说明：「压掉 alpha」是针对 **iOS 提交**的规则（App Store 拒收带 alpha 的应用图标），macOS 的圆角图标**必须有** alpha——两条规则分平台，不冲突。**已知项**：Apple 在新系统上改了应用图标体系（改由系统套新遮罩），届时这里烘焙的圆角有被二次遮罩的可能；当前基线是 macOS 14，升级系统后需回头复核。回归方法：`test/app_icons_asset_test.dart` 的 5 条资产断言（跑在普通 `flutter test` 里，**不在生成器里**——生成器不参与 `flutter test`，放那儿只在手动重生成时才执行）——实体**自身**四角透明、中心不透明、`alpha>128` 的实体包围盒 = 824×824 且四边留白 100、实体下方有投影、圆角半径带宽、七个尺寸的文件名↔真实像素尺寸绑定与实体宽等比、iOS 图标仍满幅且无 alpha 通道；摘掉 `clipRRect`、半径改 60、删掉投影都会让断言变红（已变异验证）。 |
-| 17 | 原型的音效时长无限循环 | 每条循环 20 秒，接缝做了等功率交叉淡化 | 循环必须无缝，否则每次重播都会「咔」一声。生成器按种类固定种子，因此同一条循环每次渲染结果一致。 |
+| 17 | 原型的音效时长无限循环 | **（2026-10-03 订正）** 每条循环 44–75 秒；接缝的等功率交叉淡化（2 秒）在**生成素材时烘焙进文件**，不再运行时合成 | 循环必须无缝，否则每次重播都会「咔」一声。长度随素材可用时长而定（`wind` 只有 48.6 秒，故取 44 秒）。实测五条成品的循环点样本阶跃都落在**各自步进分布的 p99 以内**；并已用 `m4a` 的 edit list 裁掉 AAC 编码器 priming（解码长度精确等于标称时长），接缝处不会多出一小段静音。 |
 | 18 | 原型没有导出功能（纯前端演示，数据不落地） | 新增导出（`/settings/export`）：CSV 两张表（记录 + 阶段）+ JSON 完整存档，经系统分享面板交付 | 规格 M2 要求本地导出，而原型的记录只活在内存里、无导出可言。回归方法：确认设置页有「睡眠数据导出」区块（`lib/features/settings/presentation/settings_page.dart` 的 `SectionHeader('睡眠数据导出')`），且导出的 CSV 首字节是 BOM（`test/sleep_export_test.dart` 的 BOM 用例）。 |
 | 19 | 原型的提醒开关是纯装饰——开关状态不驱动任何调度 | 接真实本地通知：权限被拒时**不写入偏好**、开关回弹；权限为 `denied` 时给出「去系统设置」入口；启动时回收被撤销的授权（把偏好写回 `false`） | 一个写着「开」却不会响的开关，正是规格书说的「设置状态与实际能力不一致」。回归方法：拒绝通知权限后确认 `bedtimeReminderEnabled` 仍为 `false`（`test/reminder_settings_test.dart`）；把启动回收条件改回 `!= granted` 会让 `test/reminder_sync_test.dart` 的 `unsupported` 用例变红。 |
 | 20 | 原型的二次确认走 Material 默认外观（Android 观感） | 用 iOS **系统组件** `CupertinoAlertDialog`（`lib/core/widgets/confirm_dialog.dart` 的 `showConfirmDialog` 内部）；应用内三处危险操作统一走它。**能接回令牌的接回令牌，接不回的系统值如实记**（见「理由」） | 整个应用是 iOS/令牌体系，唯独确认弹窗走了 Material 默认外观。**v2.6 曾按令牌自绘**（`showGeneralDialog` + `DecoratedBox` 卡片 + 手画两条 0.5 发丝线 + 手写转场），理由是 `CupertinoAlertDialog` 自带系统色与圆角会绕过 `AppTokens`。**v3.6 起按用户明确要求换成系统组件**：布局、模糊表面、圆角、`0.3` 分隔线、文字排版与 `1.3 → 1.0` 弹簧转场全部交给 SDK。代价如实记——**弹窗底色（半透明 `0xCCF2F2F2`/`0xCC2D2D2D`）、分隔线色（`CupertinoColors.separator`）、圆角不再来自 `AppTokens`**。仍接回令牌的部分：**亮度**（取 `Theme.of(context).brightness` 而非 `MediaQuery.platformBrightness`，否则用户把外观设成深色时弹窗会是浅底）、`primaryColor → tokens.accent`、两个动作的 `textStyle.color → accent/danger`（`CupertinoDialogAction.textStyle` 在系统色解析**之后**才 merge，能盖掉写死的 `systemRed`，已核对 SDK `dialog.dart:2336-2341`）、蒙层色 `tokens.overlayScrim`。**保留行为**：`barrierDismissible: true`（系统默认 `false`），因为三处调用方依赖「点蒙层 = 取消 = 返回 `false`」。三处统一为：删除单条记录、删除全部本地数据、**清除演示数据**——第三处 v2.6 前**根本没有二次确认**（点一下就删）。回归方法：`test/confirm_dialog_test.dart`——主锚是 `find.byType(CupertinoAlertDialog)`；退回任一自绘实现，「系统组件」「破坏性取 `danger`」「深色亮度跟随应用」3 条立刻变红（已变异验证），而「取消/确认/蒙层返回 `false`/`true`」「取消在左确认在右」4 条与实现无关、保持绿。 |
@@ -376,7 +379,7 @@
 | 40 | 底部弹层宽屏时**浮起 24px**、四角 26px（`.sheet-panel` 的桌面规则） | **下沿一律贴屏幕底**，只圆上方两角；宽屏仍限宽 560px | 桌面规则照搬到 iPad 横屏上，面板与屏幕底之间会留出一条遮罩，面板像是悬空断在屏幕底之上——使用方实测后裁定（同一次实测还发现音效格按屏幕宽度算宽，宽屏下每格 271px 撑爆面板，见 `noise_sheet.dart`）。iPhone 本来就贴底，两平台现在一致。回归方法：`test/app_sheet_test.dart` 的「宽屏下面板限宽 560，但下沿仍贴屏幕底」——把浮起加回去必红（已变异验证：还原后 810 ≠ 834）。 |
 | 41 | 开屏页与引导页的 `z-index` **同为 200**，而引导页在 DOM 里更靠后——首次启动时引导页把开屏**整个盖住**，那屏开屏等于没播 | **先开屏、后引导**：开屏播完才渲染引导页 | 原型的层叠疏漏，显然的意图是先给品牌、再给引导。回归方法：`test/splash_screen_test.dart` 的「开屏排在引导页之前，播完才轮到引导页」——把开屏排到引导页前面必红 |
 | 42 | 开屏 3.2 秒，且整屏在开头 8% 从透明淡入 | **1.6 秒**；整屏从第一帧就不透明，只在最后 12% 淡出 | 原型那 3.2 秒是网页首屏加载的遮盖，而原生应用在它之前已有系统启动图，照抄等于每次冷启动白等 3 秒（使用方裁定）。淡入那一段是给「往已渲染好的网页上叠一层」用的，照抄会变成「先闪一下浅色界面再变深」，所以只保留收尾的淡出。回归方法：`test/splash_screen_test.dart` 逐条断言播完回调与收起时机 |
-| 43 | 设置根页只有五条（外观 / 睡眠设置 / 睡眠数据导入 / 睡眠洞察 / 关于） | 另保留五条：**睡眠数据导出**（偏差 #18）、**删除全部本地数据**（§7）、**演示数据**（调试构建）、**清除缓存**（v3.7）、**罗盘**（本实现既有），并为此新增「数据与隐私」分组 | 原型是纯前端演示、数据不落地，所以既没有导出、也没有可清的缓存；我们有真实库与真实的临时文件，这几条是硬要求。罗盘并入「常用」。**「清除缓存」的边界必须只有一个语义**：它只删 `getTemporaryDirectory()` 下**可再生成的临时文件**（白噪音的 8 个 WAV 循环、导出时写给分享面板的副本），**不碰**记录 / 录音 / 数据库（那是「删除全部本地数据」）与钥匙串里的 API Key（那是设置页的「清除密钥」）。所以它在界面上必须**显示真实占用**，读不到就说读不到，绝不显示一个编出来的 `0 B`。回归方法：`test/pages_widget_test.dart` 的「根页只剩三段导航行，控件都收进了二级页」逐条点名这五行，并断言外观 / 提醒 / 声音检测的控件**不在**根页；`test/app_cache_test.dart` 用真实文件系统钉删除与统计的语义 |
+| 43 | 设置根页只有五条（外观 / 睡眠设置 / 睡眠数据导入 / 睡眠洞察 / 关于） | 另保留五条：**睡眠数据导出**（偏差 #18）、**删除全部本地数据**（§7）、**演示数据**（调试构建）、**清除缓存**（v3.7）、**罗盘**（本实现既有），并为此新增「数据与隐私」分组 | 原型是纯前端演示、数据不落地，所以既没有导出、也没有可清的缓存；我们有真实库与真实的临时文件，这几条是硬要求。罗盘并入「常用」。**「清除缓存」的边界必须只有一个语义**：它只删 `getTemporaryDirectory()` 下**可再生成的临时文件**，**不碰**记录 / 录音 / 数据库（那是「删除全部本地数据」）与钥匙串里的 API Key（那是设置页的「清除密钥」）。所以它在界面上必须**显示真实占用**，读不到就说读不到，绝不显示一个编出来的 `0 B`。**2026-10-03 起临时目录的内容变了**：白噪音改成打包资源后不再往临时目录写 WAV，那里只剩「导出时写给分享面板的副本」。于是全新安装、还没导出过时**占用读数为 0 B 是如实的**，不是没读出来——「显示真实占用」这条约束本身不变。回归方法：`test/pages_widget_test.dart` 的「根页只剩三段导航行，控件都收进了二级页」逐条点名这五行，并断言外观 / 提醒 / 声音检测的控件**不在**根页；`test/app_cache_test.dart` 用真实文件系统钉删除与统计的语义 |
 | 44 | 新版原型里声音检测的副标题写「检测打鼾、梦话并生成洞察」 | 维持「**尚未接入录音，开关只保存偏好**」 | 与 #7 / #31 同源：录音**仍未接入**，照抄那句话等于让应用当场宣称一个它没有的能力。回归方法：`test/pages_widget_test.dart` 的「睡眠设置页把提醒与声音检测都收在一起，并保留两条红线」——把它换回原型文案必红（已变异验证） |
 | 45 | 原型没有连通性测试 | 新增「连通性测试」：用**当前服务商 + 当前模型**发一次 `max_tokens: 16` 的真实对话请求，判定是「200 且返回了补全结构」，**正文为空也算连通** | 「获取可用模型」只证明了 key 能列模型，证明不了所选模型真的能被调用。判定**不能**要求 `content` 非空：实测 `deepseek-flash` 是推理模型，16 token 预算下正文全落在 `reasoning_content`、`content` 是空串且 `finish_reason: length`——按「必须有正文」判定会把一把好钥匙报成坏钥匙。界面成功文案因此也写明这层含义。回归方法：`test/insight_service_test.dart` 的 `pingProvider` 组（含「推理模型正文为空仍算连通」一条）。变异验证：把判定改成要求非空正文，该条立刻变红。 |
 | 46 | 原型三家服务商一视同仁 | DeepSeek 与 OpenAI 共用同一条 OpenAI 兼容的请求路径；**Claude 不接连通性测试、也不接生成**——界面上根本没有那两个按钮 | Anthropic 的 Messages API 请求体与响应体形状都与 OpenAI 兼容协议不同，而手边没有可实测的 key。本项目对没跑过的外部契约一贯是不写（同 #4「不猜小米导入字段」）。做法是能力表里留 `chatUri` / `balanceUri` 为 `null`，由它统一决定按钮出不出——这是**有理由的缺省，不是漏做**。回归方法：`test/model_catalog_test.dart` 服务商能力组里 Claude 四条 `isFalse` / `isNull` 断言。 |
@@ -397,7 +400,8 @@
 | 单元测试 | **密钥存储（v3.7）**：启动时把钥匙串里的值读进来；输入后**内存立刻可用**且异步写进钥匙串；值没变不重复写；清空输入等于删条目（不留空串）；`clear()` 内存与钥匙串一起清；**写失败不影响本次运行**（下一次启动才需要重填） | ✅ `test/insight_credentials_test.dart` |
 | 单元测试 | **清除缓存（v3.7）**：真实文件系统上跑真实实现——统计递归进子目录；空目录算 0；清除连子目录一起删并**报出释放的字节数**；清两次第二次报 0（不报假数字）；目录不存在时读 0、清是空操作；**不认识的目录/文件也一并清掉**（临时目录里的一切本来就可以丢，按名字匹配的清单会漏）；`formatCacheSize` 的分档 | ✅ `test/app_cache_test.dart` |
 | Widget 测试 | **清除缓存那一行（v3.7）**：显示真实占用、点完变成「暂无缓存」；**读不到占用时显示「暂时读不到占用」而不是编一个 `0 B`** | ✅ `test/pages_widget_test.dart`（设置页组） |
-| 集成（真机/真平台） | 真实缓存目录的 `size()` / `clear()`：macOS 上实测 8 个白噪音 WAV（6.8 MB 磁盘占用）→ 读数 `6.7 MB`（二进制单位）→ 清完目录为空、再读为 0 | ✅ 临时 `integration_test` 脚本（跑完已删，结论记在 README「验证记录」） |
+| 集成（真机/真平台） | 真实缓存目录的 `size()` / `clear()`：macOS 上实测 8 个白噪音 WAV（6.8 MB 磁盘占用）→ 读数 `6.7 MB`（二进制单位）→ 清完目录为空、再读为 0。**2026-10-03 注**：白噪音改成打包资源后不再进临时目录，这条读数不再可复现；`size()` / `clear()` 的语义本身没变（见偏差 #43） | ✅ 临时 `integration_test` 脚本（跑完已删，结论记在 README「验证记录」） |
+| 集成（真机/真平台） | **打包素材真能被平台解码并起播**：`setAsset` → 资源包 → 解码器 → `ProcessingState.ready`，音量 0 不出声 | ✅ macOS 实测通过（`flutter drive -d macos`）；它同时证明素材确实进了应用包 |
 | 集成（真机/真平台） | 钥匙串往返：写、读、覆盖写、删；**另起一个进程仍读得到**（这正是「重启后仍在」的证据）。macOS 上已实测；未在 iOS 真机跑 | ✅ 临时 `integration_test` 脚本（跑完已删，结论记在 README「验证记录」） |
 | Widget 测试 | 弹层蒙层独立淡入、点击把手/蒙层关闭、下拉阈值与回弹、打开计数、不可关闭时忽略手势、宽屏下限宽 560 但下沿仍贴屏幕底（浮起 24px 已按偏差 #40 作废） | ✅ `test/app_sheet_test.dart`（含变异验证：把浮起加回去变红） |
 | Widget 测试 | 推入路由的材质祖先与错误下划线、无阶段记录的主卡片、演示数据二级页 | ✅ `test/pages_widget_test.dart` |
@@ -417,8 +421,8 @@
 | Widget 测试 | 分段控件胶囊与分段同宽、位移成整数倍 | ✅ `test/segmented_control_test.dart` |
 | Widget 测试 | 编辑/删除：入口有无、演示数据不可编辑、表单预填、写回同一 id、不改 `createdAt`、不清空阶段、删除二次确认 | ✅ `test/record_edit_delete_test.dart` |
 | 集成 | 记录卡 → 详情 → 编辑 → 保存 → 回到外壳，走真实 go_router 与 `extra` 传递 | ✅ 同上（数据经 provider 覆盖而非 drift 流） |
-| 单元测试 | 合成波形：确定性、互异性、不削波、无直流、接缝连续、频谱走向、瞬态、包络、森林含鸟鸣、WAV 头与钳制 | ✅ `test/noise_synth_test.dart` |
-| Widget 测试 | 助眠音效面板：播放交接、停止、切换、失败如实报错、音量写回、关闭释放；**宽屏（iPad 横屏）下八格仍是四列两行且不溢出**——格子宽度按面板自身宽度算，不是屏幕宽度（含变异验证：换回屏幕宽度必红） | ✅ `test/noise_sheet_test.dart` |
+| 单元测试 | **素材资产**（2026-10-03 起）：`NoiseKind` 与 `kNoiseOptions` 一一对应、每条素材真实存在且非空壳、文件是合法 MPEG-4 容器、总占用落在 3.0–3.8 MB。**2026-10-03 之前**钉的是合成波形（确定性、互异性、不削波、接缝连续、频谱走向……），那套随合成器一起删除 | ✅ `test/noise_asset_test.dart`（原 `test/noise_synth_test.dart` 已删） |
+| Widget 测试 | 助眠音效面板：播放交接、停止、切换、失败如实报错、音量写回、关闭释放；**宽屏（iPad 横屏）下五格仍是一行且不溢出**——格子宽度按**面板自身宽度与条数**算，不是屏幕宽度、也不写死列数（含变异验证：换回屏幕宽度必红） | ✅ `test/noise_sheet_test.dart` |
 | 单元测试 | 导出内容：BOM 与 CRLF、RFC 4180 转义可无损还原、记录/阶段两张表、按入睡时刻升序、演示记录排除并计数、JSON 用 schema 字段名且不写 `localUri` / `AppSettings` | ✅ `test/sleep_export_test.dart` |
 | Widget 测试 | 导出页：条数只数真实记录、无记录时禁用并说明、CSV/JSON 两个动作、失败如实报错、取消分享不报错 | ✅ `test/export_page_test.dart` |
 | 单元/Widget 测试 | 提醒：幂等全量重排契约与固定 id、`nextOccurrence` 的夏令时口径、权限被拒时不写偏好且开关回弹、`denied` 时的「去系统设置」入口、启动回收被撤销授权、`unsupported` 时不动偏好 | ✅ `test/reminder_scheduler_test.dart`、`test/reminder_settings_test.dart`、`test/reminder_sync_test.dart` |
@@ -472,6 +476,10 @@
 1. iOS Bundle ID、Android application ID、签名与发布账号（开发阶段使用占位配置）。
 2. 小米睡眠数据的真实导出文件样本或官方授权接口文档。
 3. 助眠音效的可商用素材及授权信息（或确认采用程序合成）。
+   **部分落实（2026-10-03）**：使用方已提供 7 个实景录音素材，其中 5 条已收进应用
+   （见偏差 #5、[2026-10-03-noise-real-recordings-design.md](2026-10-03-noise-real-recordings-design.md)）。
+   **但授权这一半仍未落实**——素材来自爱给网（aigei.com），使用方裁定为「尚未确认、仅供个人
+   试用」。发布前必须回到使用方确认可商用授权，或换素材，或退回合成。**本条不关闭。**
 4. 若启用 AI：服务商、模型、API 文档、计费方式，以及允许发送的数据范围。
 5. 若启用自动鼾声/梦话识别：可用模型或服务、准确率目标、数据处理与隐私要求。
 6. 麦克风权限的用途说明文案（需与真实用途一致，用于 `Info.plist` / manifest）。

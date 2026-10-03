@@ -64,6 +64,11 @@ class AppIcons {
       '<path d="M20 17.58A5 5 0 0 0 18 8h-1.26A8 8 0 1 0 4 16.25"/><line x1="8" y1="19" x2="8" y2="21"/><line x1="8" y1="13" x2="8" y2="15"/><line x1="16" y1="19" x2="16" y2="21"/><line x1="16" y1="13" x2="16" y2="15"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="12" y1="15" x2="12" y2="17"/>';
   static const _fan =
       '<path d="M12 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M12 6V2"/><path d="M16.24 7.76l2.83-2.83"/><path d="M18 12h4"/><path d="M16.24 16.24l2.83 2.83"/><path d="M12 18v4"/><path d="M7.76 16.24l-2.83 2.83"/><path d="M6 12H2"/><path d="M7.76 7.76 4.93 4.93"/>';
+  // 溪流：水滴。海浪已用三线波纹，这里用滴形做区分，不重复同一组几何。
+  static const _stream = '<path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/>';
+  // 风：三道风线（长短不一），取自 feather 的 wind。
+  static const _wind =
+      '<path d="M9.59 4.59A2 2 0 1 1 11 8H2"/><path d="M12.59 19.41A2 2 0 1 0 14 16H2"/><path d="M17.73 7.73A2.5 2.5 0 1 1 19.5 12H2"/>';
 
   // 垃圾桶：桶盖（M4 7h16）、盖上的提手、上宽下窄的桶身、桶内两道竖纹。
   //
@@ -268,6 +273,14 @@ class AppIcons {
   static Widget fan(
           {double size = 24, Color? color, double strokeWidth = 1.6}) =>
       glyph(_fan, size: size, color: color, strokeWidth: strokeWidth);
+
+  static Widget stream(
+          {double size = 24, Color? color, double strokeWidth = 1.6}) =>
+      glyph(_stream, size: size, color: color, strokeWidth: strokeWidth);
+
+  static Widget wind(
+          {double size = 24, Color? color, double strokeWidth = 1.6}) =>
+      glyph(_wind, size: size, color: color, strokeWidth: strokeWidth);
 
   static Widget trash(
           {double size = 24, Color? color, double strokeWidth = 1.6}) =>

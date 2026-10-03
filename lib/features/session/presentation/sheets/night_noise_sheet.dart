@@ -142,7 +142,7 @@ class _NightNoiseSheet extends ConsumerWidget {
                   ),
                   const SizedBox(height: 10),
 
-                  // ── 九宫格：关闭 + 八种声音 ────────────────────────────
+                  // ── 三列网格：关闭 + 五种声音（正好两行） ────────────────
                   GridView(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),

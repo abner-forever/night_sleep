@@ -16,7 +16,7 @@ import 'package:night_sleep/core/widgets/wheel_picker.dart';
 import 'package:night_sleep/features/settings/presentation/settings_page.dart';
 import 'package:night_sleep/features/settings/presentation/sleep_settings_page.dart';
 import 'package:night_sleep/features/sleep/data/noise_player.dart';
-import 'package:night_sleep/features/sleep/data/noise_synth.dart';
+import 'package:night_sleep/features/sleep/data/noise_asset.dart';
 import 'package:night_sleep/features/sleep/data/sleep_repository.dart';
 
 /// 只记「有没有被要求停掉」的假播放器。

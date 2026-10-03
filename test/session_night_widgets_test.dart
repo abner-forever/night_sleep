@@ -9,7 +9,7 @@ import 'package:night_sleep/features/session/presentation/night_scene.dart';
 import 'package:night_sleep/features/session/presentation/sheets/night_noise_sheet.dart';
 import 'package:night_sleep/features/session/presentation/widgets/night_scene_picker.dart';
 import 'package:night_sleep/features/sleep/data/noise_player.dart';
-import 'package:night_sleep/features/sleep/data/noise_synth.dart';
+import 'package:night_sleep/features/sleep/data/noise_asset.dart';
 import 'package:night_sleep/features/sleep/data/session_repository.dart';
 import 'package:night_sleep/features/sleep/presentation/widgets/noise_controls.dart';
 
@@ -235,11 +235,14 @@ void main() {
     expect(idle.transform!.storage[13], 0);
   });
 
-  testWidgets('弹窗里有九宫格、音量、四个时长档，没有「整晚」', (tester) async {
+  // 标题里的「六格」是**关闭 + 五种声音**，正好排满三列网格的两行。条数不再是原型的
+  // 八种：没有实景录音的那几类随合成器一起删掉了，见 `kNoiseOptions` 的注释。
+  testWidgets('弹窗里有六格（关闭 + 五种声音）、音量、四个时长档，没有「整晚」', (tester) async {
     await pumpNoiseSheet(tester);
 
     expect(find.text('白噪音设置'), findsOneWidget);
     expect(find.text('关闭'), findsOneWidget);
+    expect(kNoiseOptions, hasLength(5));
     for (final option in kNoiseOptions) {
       expect(find.text(option.label), findsOneWidget);
     }
@@ -257,9 +260,9 @@ void main() {
     final player = _SheetFakeNoisePlayer();
     await pumpNoiseSheet(tester, player: player);
 
-    await tester.tap(find.text('雨声'));
+    await tester.tap(find.text('溪流'));
     await tester.pumpAndSettle();
-    expect(player.calls, contains('play:rain:0.50'));
+    expect(player.calls, contains('play:stream:0.50'));
 
     await tester.tap(find.text('完成'));
     await tester.pumpAndSettle();
@@ -275,21 +278,21 @@ void main() {
     final player = _SheetFakeNoisePlayer();
     await pumpNoiseSheet(tester, player: player);
 
-    // 选中之后事件卡那一行也会出现「雨声」，按宫格定位那一格才稳。
-    final rainTile = find.descendant(
+    // 选中之后事件卡那一行也会出现「溪流」，按宫格定位那一格才稳。
+    final streamTile = find.descendant(
       of: find.byType(GridView),
-      matching: find.text('雨声'),
+      matching: find.text('溪流'),
     );
 
-    await tester.tap(rainTile);
+    await tester.tap(streamTile);
     // 选中即起 1 秒周期的倒计时，`pumpAndSettle` 会因它永不收敛而超时，
     // 所以这里显式 pump（与 `test/noise_sheet_test.dart` 同一手法）。
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
 
-    expect(player.calls.first, 'play:rain:0.50', reason: '应把雨声与当前音量交给播放器');
+    expect(player.calls.first, 'play:stream:0.50', reason: '应把溪流与当前音量交给播放器');
 
-    await tester.tap(rainTile);
+    await tester.tap(streamTile);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
 
@@ -300,11 +303,11 @@ void main() {
     final player = _SheetFakeNoisePlayer();
     final database = await pumpNoiseSheet(tester, player: player);
 
-    await tester.tap(find.text('雨声'));
+    await tester.tap(find.text('溪流'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
 
-    expect((await database.activeSession())?.noiseId, 'rain',
+    expect((await database.activeSession())?.noiseId, 'stream',
         reason: '这一列的定义是「选中并正在播放」');
 
     // 默认定时 30 分钟；把假时钟推过它就是「到点」。

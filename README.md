@@ -168,10 +168,11 @@ test/                  领域计算与页面测试
     夜间声音录制开关（副标题仍是「尚未接入录音，开关只保存偏好」）。
   提醒的读写与调度行为**与搬家前完全一致**。导出的仍是 CSV / JSON 两个动作，见「数据导出」。
 - **清除缓存**（v3.7，设置根页「关于」上方）：清掉 `getTemporaryDirectory()` 下**可再生成的
-  临时文件**——白噪音的 8 个 WAV 循环（各约 860 KB，首次播放时合成）与导出时写给系统分享
-  面板的 CSV / JSON 副本。副标题显示**真实占用**，读不到就说「暂时读不到占用」，
-  清完显示「暂无缓存」。**不碰**睡眠记录、录音与数据库（那是「删除全部本地数据」），
-  也**不碰**钥匙串里的 API Key（那是「清除密钥」）——三条清理路径各自只干一件事。
+  临时文件**。**2026-10-03 起那里只剩一样东西**：导出时写给系统分享面板的 CSV / JSON 副本
+  ——白噪音改成打包资源后不再往临时目录写 WAV，所以全新安装、还没导出过时读数为 `0 B`
+  是**如实的**。副标题显示**真实占用**，读不到就说「暂时读不到占用」，清完显示「暂无缓存」。
+  **不碰**睡眠记录、录音与数据库（那是「删除全部本地数据」），也**不碰**钥匙串里的 API Key
+  （那是「清除密钥」）——三条清理路径各自只干一件事。
 - **睡眠洞察**（`/settings/insight`，v3.7 起真的能发请求）：选服务商与模型之外，
   **DeepSeek 可查余额**（`GET /user/balance`，读数现拉现显在按钮上）、**可做连通性测试**
   （用当前模型发一次最小对话请求；**推理模型只返回推理过程、正文为空也算连通**，
@@ -186,11 +187,16 @@ test/                  领域计算与页面测试
   iOS 的系统启动图与 web manifest 底色一并改成同一个深色（`#07102D`），避免冷启动白闪。
 - **AI 模型列表**：按服务商从官方 `GET /models` 实时获取，用会话内的 API Key 认证；未获取前
   显示**已注明核实日期**的内置列表。DeepSeek 为默认服务商。
-- **助眠音效**：8 种声音在设备上**实时合成**（`noise_synth.dart`：白/棕/粉噪、雨、海浪、
-  篝火、森林、风扇），渲染成 20 秒无缝循环的 WAV 后交给播放器循环播放；音量、定时、
-  切换与失败提示均已接通。不打包任何第三方音频。**这条路径上有两个踩过就会静默出错的坑**
-  （临时目录要先建、`AudioPlayer.play()` 不能 await），见会话规格 §17.7；
-  回归在 `integration_test/noise_playback_test.dart`。
+- **助眠音效**：**5 条实景录音**（海浪 / 篝火 / 森林 / 溪流 / 风），打包在 `assets/noise/`
+  （单声道 22.05 kHz 80 kbps、44–75 秒无缝循环、合 3.40 MB），由
+  `tool/generate_noise_assets.dart` 从源素材生成；音量、定时、切换与失败提示均已接通。
+  **2026-10-03 之前**这里是设备内**实时合成**的 8 种噪音（`noise_synth.dart`），该合成器
+  与它那套 DSP 测试已一并删除。改动经过、取舍与实测数字见
+  [specs/2026-10-03-noise-real-recordings-design.md](docs/superpowers/specs/2026-10-03-noise-real-recordings-design.md)。
+  ⚠️ **素材授权尚未落实**：录音来自爱给网（aigei.com），使用方裁定为「尚未确认、仅供个人
+  试用」。**发布前必须确认可商用授权、换素材或退回合成**，规格 §10 第 3 条据此**不关闭**。
+  （历史：这条路径曾有两个踩过就静默出错的坑——临时目录要先建、`AudioPlayer.play()` 不能
+  await，见会话规格 §17.7；改打包资源后第一条已随之消失。）
 - **数据导出**：设置页「睡眠数据导出」→ 二级页 `/settings/export`。CSV 两张表
   （记录 16 列 + 阶段 6 列，UTF-8 BOM、CRLF、RFC 4180 转义、按入睡时刻升序）、
   JSON 完整嵌套存档，经系统分享面板交付。只导出**真实**记录（演示记录排除并计数说明）；
@@ -212,6 +218,11 @@ test/                  领域计算与页面测试
   强度不如系统闹钟」——这句标注只出现在「起床闹钟」那一行，**全页仅此一处**
   （`ReminderScheduler.wakeAlarmDeliveryNote`）。权限闸口 `ensureNotificationPermission`
   与设置页共用。**真机到点投递未验证**（见「验证记录」）。
+- **助眠音效素材**：由 `tool/generate_noise_assets.dart` 从源录音生成，产出
+  `assets/noise/` 下 5 条 `.m4a`。ffmpeg 滤镜链（单声道化 → 响度归一 → 折回式无缝接缝 →
+  AAC 编码）里有**三处写错会静默失效**的细节——`asplit` 不能省、接缝要折回而不是淡入、
+  归一天花板要给交叉淡化留 2 dB——都写在脚本头注释与规格 §5.2 里。
+  跑法：`dart run tool/generate_noise_assets.dart [源素材目录]`（默认 `~/Downloads/白噪音素材`）。
 - **应用图标**：由 `assets/branding/app-icon.svg` 生成，`tool/generate_app_icons.dart` 一次
   产出 iOS 15 张 + macOS 7 张。**v2.9 起是两条渲染路径**：iOS 满幅直角、无 alpha 通道（色型 2，
   由系统套遮罩）；macOS 按 Apple 图标网格烘焙圆角与留白（实体 824×824、四边留白 100、半径 185.4）
@@ -241,6 +252,7 @@ Android 尚无平台目录，因此未接入传感器。方向精度与权限行
 | --- | --- |
 | 夜间录音 / 鼾声梦话检测 | **未接入（plan B 才做）**。设置页与会话页那个开关**只保存偏好**，**录音本身仍未实现**，界面已如实注明「尚未接入录音，开关只保存偏好」。**不测量任何东西** |
 | 白噪音的后台播放 / 锁屏控制 | 未接入。会话白噪音在**收起页面后仍继续响**（播放器提到 app 级），但退到后台或锁屏后声音会停，界面已如实标注 |
+| 助眠音效素材的可商用授权 | **未落实（发布阻塞项）**。5 条录音来自爱给网（aigei.com），使用方 2026-10-03 裁定为「尚未确认、仅供个人试用」。代码、`pubspec.yaml`、README 与规格均已如实标注，规格 §10 第 3 条**不关闭**。发布前必须确认授权、换素材或退回合成 |
 | 小米手环数据导入 | 未接入。需真实导出样本或官方接口文档，导入按钮禁用并说明原因 |
 | AI 洞察服务 | **部分接入（v3.7）**。已能查余额（**仅 DeepSeek**）、做连通性测试、在睡眠详情里重新生成一晚的模型总结并落库；API Key 存**系统钥匙串**（v3.7 起，重启后仍在，设置页有「清除密钥」）。**仍未做**：Claude 的对话与余额（Messages API 形状不同且无 key 可实测）、余额的持久化与历史曲线、**发送前「将要发送哪些数据」的逐项确认界面**（规格 M4 第 3 条的后半句）。OpenAI 的对话路径与 DeepSeek 同一份代码，但**没有 key 实测过**（见「验证记录」） |
 | Android 平台 | 平台目录未生成（`.metadata` 只有 ios / macos / web）。接入时需补 `RECEIVE_BOOT_COMPLETED` 权限与 `ScheduledNotificationReceiver` / `ScheduledNotificationBootReceiver` 两个 receiver（否则设备重启后提醒不再重排），以及录音的 `RECORD_AUDIO` 权限与 `FOREGROUND_SERVICE_MICROPHONE` 前台服务（后台录音，plan B） |
@@ -305,9 +317,11 @@ flutter drive --driver=test_driver/integration_test.dart \
   --target=integration_test/noise_playback_test.dart -d macos
 ```
 
-它会真的合成一段音、写进临时目录、交给播放器起播（音量 0，不出声），并断言落盘与状态。
-**为什么非要有它**：那条路径整条都在平台侧，widget 测试里的假播放器一步都走不到，
-巡检脚本在本轮之前也只开弹窗、从不选声音——两个缺陷就是从这个缝里漏出去的（会话规格 §17.7）。
+它会把一条**打包素材**交给平台解码并起播（音量 0，不出声），断言播放器进到可播状态。
+**为什么非要有它**：那条路径整条都在平台侧（`setAsset` → 资源包 → 解码器 → 播放器），
+widget 测试里的假播放器一步都走不到，巡检脚本又只开弹窗、从不选声音——两个缺陷就是从这个
+缝里漏出去的（会话规格 §17.7）。素材换成本地打包录音后，这条用例改钉「资源真的能被解码」，
+原先那条「合成的 WAV 有没有落盘」随之作废。
 （手动补录页**不在**巡检脚本内。v3.0 把脚本里的「记录」改成了「回顾」，但**那一轮没有重跑
 `flutter drive`**——见「验证记录」的未验证项。）
 
@@ -374,6 +388,36 @@ Bundle ID、Android application ID 与发布账号保持 Flutter 默认占位配
 
 本机环境：macOS 14.8.9（23J631，Intel），Flutter 3.47.5 stable。
 
+**v3.8（2026-10-03：助眠音效换成打包实景录音）最近一次复跑：**
+
+- `dart format .` → 无额外改动；`flutter analyze` → **No issues found**
+- `flutter test` → **469/469 通过**（上一版 479；净减 10：删掉合成器的 `noise_synth_test.dart`，
+  新增 `noise_asset_test.dart` 5 条，其余为既有用例的 import 与名称跟改）
+- **变异验证**：把音效格宽度从「面板宽度 ÷ 条数」换回「屏幕宽度 ÷ 条数」，
+  `test/noise_sheet_test.dart` 的「宽屏下面板限宽，五格仍是一行且不溢出」**立刻变红**；
+  还原后复绿
+- **素材生成管线逐条量过**（ffmpeg 9.0，`ebur128=peak=true`）：
+
+  | 文件 | 时长 | 响度 | 真峰 | 循环点样本阶跃 / 该文件步进 p99 | 字节 |
+  | --- | --- | --- | --- | --- | --- |
+  | `forest.m4a` | 75.000 s | −22.1 LUFS | −3.0 dBFS | 2470 / 4031 | 745 KB |
+  | `fire.m4a` | 71.000 s | −23.0 LUFS | −1.9 dBFS | 1632 / 5828 | 800 KB |
+  | `ocean.m4a` | 75.000 s | −22.2 LUFS | −2.8 dBFS | 789 / 4208 | 742 KB |
+  | `stream.m4a` | 75.000 s | −22.1 LUFS | −3.0 dBFS | 1532 / 4190 | 761 KB |
+  | `wind.m4a` | 44.000 s | −22.3 LUFS | −5.2 dBFS | 122 / 1071 | 435 KB |
+
+  合计 **3.40 MB**；**响度跨度 0.9 LU**（源素材是 14 LU）；真峰全部 ≤ −1.9 dBFS，无削波；
+  接缝阶跃全部落在各自步进分布的 p99 以内，即听不出接缝。解码长度精确等于标称时长，
+  说明 `m4a` 的 edit list 已裁掉 AAC priming，接缝处不会多出静音。
+- **打包资源真能被解码并起播**（macOS，真平台）：
+  `flutter drive --driver=test_driver/integration_test.dart \
+  --target=integration_test/noise_playback_test.dart -d macos` → **All tests passed**。
+  这条覆盖的是 widget 测试一步都走不到的路径：`setAsset` → 资源包 → 平台解码器 →
+  `ProcessingState.ready`（音量 0，不出声）。它同时证明了**素材确实打进了应用包**
+  （pubspec 的 `assets/noise/` 写错的话，这里会以加载失败收场）。
+- **尚未做**：**听感未核对**（五条的主观可用性、切换时 0.9 LU 的响度差、循环接缝是否可闻）；
+  **素材授权未落实**（见「未实现」表）；5 格新布局**无截图核对**（只有几何断言）。
+
 **v3.7（2026-10-03：DeepSeek 余额查询 / 连通性测试 / 详情页重新生成）最近一次复跑：**
 
 - `dart format .` → 无额外改动；`flutter analyze` → **No issues found**
@@ -384,6 +428,8 @@ Bundle ID、Android application ID 与发布账号保持 Flutter 默认占位配
   另把配置页那条「标注未接入项」改写为「给出实测支持的动作」）
 - **清除缓存在真实目录上验证过**（macOS，临时 `integration_test` 脚本，跑完已删）：
   `size()` 读出 8 个白噪音 WAV 共 **6.7 MB**（`du` 报 6.8 MB 磁盘占用，差值来自块对齐），
+  > 2026-10-03 注：白噪音改成打包资源后不再进临时目录，这份读数的**内容**不再可复现
+  > （`size()` / `clear()` 的语义本身没变）。留下的只有导出副本，未导出时读数为 0 B。
   `clear()` 之后目录里 **0 个文件**、再读为 `0 B`。同一次还顺手确认了 `getTemporaryDirectory()`
   在 macOS 上就是 `~/Library/Caches/<bundle id>`（与 `noise_player.dart` 的注释一致）。
 - **钥匙串在真实平台上验证过**（macOS，临时 `integration_test` 脚本，跑完已删）：
@@ -480,7 +526,8 @@ Bundle ID、Android application ID 与发布账号保持 Flutter 默认占位配
 - `flutter test` → **413/413 通过**（未增删用例：两处修复都在平台侧，widget 测试用的是假
   播放器，本来也盖不到——这正是它们能漏出去的原因）
 - `flutter drive --target=integration_test/noise_playback_test.dart -d macos` → **All tests
-  passed**（真合成 → 真落盘 → 真起播，音量 0 不出声）。**并做了正反对照**：先清掉缓存目录
+  passed**（真合成 → 真落盘 → 真起播，音量 0 不出声；**2026-10-03 当日的记录**，素材换成打包
+  录音后这条链路已消失）。**并做了正反对照**：先清掉缓存目录
   （实测 `getTemporaryDirectory()` 返回时 `exists=false`，就是报错里那个路径），去掉
   `directory.create(recursive: true)` 那一行再跑，同一条用例报的正是截图里那句
   `无法生成音频：PathNotFoundException … errno = 2`；恢复后冷跑通过，缓存目录里落下
@@ -714,8 +761,10 @@ Bundle ID、Android application ID 与发布账号保持 Flutter 默认占位配
     （宽屏侧边栏布局只在 macOS 桌面构建里跑过，未逐屏核对）
   - Android / Web 构建：**尚未执行**（Android 平台目录也不存在，见「未实现」表）
   - 外部服务、小米数据、夜间录音：未接入，不能视为已完成。
-    助眠音效已实现（合成）。**起播这条链路**（合成 → 落盘 → 交给播放器）已在 macOS 上由
-    `integration_test/noise_playback_test.dart` 跑通；但**实际发声效果仍没有听过**——
-    那条用例是音量 0，需要人工试听才知道像不像雨声、循环接缝听不听得出来
+    助眠音效已实现（**2026-10-03 起是打包的实景录音**，此前为设备内合成）。
+    **起播这条链路**已在 macOS 上由 `integration_test/noise_playback_test.dart` 跑通
+    （旧版钉「合成 → 落盘 → 起播」，新版钉「打包资源 → 解码 → 起播」）；
+    但**实际发声效果仍没有听过**——那条用例是音量 0，需要人工试听才知道像不像、
+    五条之间的响度差与循环接缝听不听得出来
 - **AI 模型列表**：DeepSeek 与 Anthropic 的模型 ID 已对照官方文档核实（2026-09-27），
   OpenAI 文档无法访问故未内置任何模型名，需用「获取可用模型」实时拉取

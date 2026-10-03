@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sleep/core/theme/app_theme.dart';
 import 'package:night_sleep/core/widgets/app_sheet.dart';
 import 'package:night_sleep/features/sleep/data/noise_player.dart';
-import 'package:night_sleep/features/sleep/data/noise_synth.dart';
+import 'package:night_sleep/features/sleep/data/noise_asset.dart';
 import 'package:night_sleep/features/sleep/presentation/sheets/noise_sheet.dart';
 import 'package:night_sleep/features/sleep/presentation/widgets/noise_controls.dart';
 
@@ -74,20 +74,20 @@ void main() {
     final player = _FakePlayer();
     await pumpSheet(tester, player);
 
-    await tester.tap(find.text('雨声'));
+    await tester.tap(find.text('溪流'));
     await settle(tester);
 
-    expect(player.calls.first, 'play:rain:0.50', reason: '应把雨声和当前音量交给播放器');
-    expect(find.textContaining('正在播放「雨声」'), findsOneWidget);
+    expect(player.calls.first, 'play:stream:0.50', reason: '应把溪流和当前音量交给播放器');
+    expect(find.textContaining('正在播放「溪流」'), findsOneWidget);
   });
 
   testWidgets('再次点击同一个声音会停止播放', (tester) async {
     final player = _FakePlayer();
     await pumpSheet(tester, player);
 
-    await tester.tap(find.text('雨声'));
+    await tester.tap(find.text('溪流'));
     await settle(tester);
-    await tester.tap(find.text('雨声'));
+    await tester.tap(find.text('溪流'));
     await settle(tester);
 
     expect(player.calls, contains('stop'));
@@ -98,7 +98,7 @@ void main() {
     final player = _FakePlayer();
     await pumpSheet(tester, player);
 
-    await tester.tap(find.text('雨声'));
+    await tester.tap(find.text('溪流'));
     await settle(tester);
     await tester.tap(find.text('篝火'));
     await settle(tester);
@@ -111,7 +111,7 @@ void main() {
     final player = _FakePlayer(failWith: '无法生成音频');
     await pumpSheet(tester, player);
 
-    await tester.tap(find.text('雨声'));
+    await tester.tap(find.text('溪流'));
     await settle(tester);
 
     expect(find.text('无法生成音频'), findsOneWidget);
@@ -120,14 +120,14 @@ void main() {
       findsNothing,
       reason: '平台拒绝了就不能显示成正在播放',
     );
-    expect(find.textContaining('正在播放「雨声」'), findsNothing);
+    expect(find.textContaining('正在播放「溪流」'), findsNothing);
   });
 
   testWidgets('拖动音量条会写回播放器', (tester) async {
     final player = _FakePlayer();
     await pumpSheet(tester, player);
 
-    await tester.tap(find.text('雨声'));
+    await tester.tap(find.text('溪流'));
     await settle(tester);
     player.calls.clear();
 
@@ -159,7 +159,7 @@ void main() {
     );
   });
 
-  testWidgets('宽屏下面板限宽，八格仍是四列两行且不溢出', (tester) async {
+  testWidgets('宽屏下面板限宽，五格仍是一行且不溢出', (tester) async {
     // iPad 横屏。格子宽度曾经按**屏幕**宽度算，而面板在 ≥640px 时被
     // `_SheetHost` 限到 560px：每格被算成 271px，`Wrap` 一行只放得下一个，
     // 内容整体溢出 217px 并被裁掉（音量条与定时 chips 从此够不着）。
@@ -192,7 +192,7 @@ void main() {
 
     final panel = tester.getRect(find.byType(AppSheet));
     final tiles = find.byType(NoiseTile);
-    expect(tiles, findsNWidgets(8));
+    expect(tiles, findsNWidgets(kNoiseOptions.length));
 
     final rects = tester
         .widgetList<NoiseTile>(tiles)
@@ -200,13 +200,13 @@ void main() {
         .toList();
     expect(
       rects.map((rect) => rect.left).toSet().length,
-      4,
-      reason: '八个音效格应排成四列',
+      kNoiseOptions.length,
+      reason: '五格应各占一列、排成一行',
     );
     expect(
       rects.map((rect) => rect.top).toSet().length,
-      2,
-      reason: '八个音效格应排成两行',
+      1,
+      reason: '五格应排成一行，不该翻行',
     );
     for (final rect in rects) {
       expect(rect.left, greaterThanOrEqualTo(panel.left));
@@ -219,7 +219,7 @@ void main() {
     final player = _FakePlayer();
     await pumpSheet(tester, player);
 
-    await tester.tap(find.text('雨声'));
+    await tester.tap(find.text('溪流'));
     await settle(tester);
 
     await tester.pumpWidget(const MaterialApp(home: SizedBox()));
