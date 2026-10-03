@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sleep/core/theme/app_theme.dart';
+import 'package:night_sleep/core/widgets/app_sheet.dart';
 import 'package:night_sleep/features/sleep/data/noise_player.dart';
 import 'package:night_sleep/features/sleep/data/noise_synth.dart';
 import 'package:night_sleep/features/sleep/presentation/sheets/noise_sheet.dart';
+import 'package:night_sleep/features/sleep/presentation/widgets/noise_controls.dart';
 
 /// The sleep-sounds sheet's control over playback.
 ///
@@ -155,6 +157,62 @@ void main() {
       lessThan(0.5),
       reason: '向左拖动应降低音量',
     );
+  });
+
+  testWidgets('宽屏下面板限宽，八格仍是四列两行且不溢出', (tester) async {
+    // iPad 横屏。格子宽度曾经按**屏幕**宽度算，而面板在 ≥640px 时被
+    // `_SheetHost` 限到 560px：每格被算成 271px，`Wrap` 一行只放得下一个，
+    // 内容整体溢出 217px 并被裁掉（音量条与定时 chips 从此够不着）。
+    // 这个尺寸下 `NoiseSheet` 不能直接摆进 `Scaffold`——那样没有限宽，
+    // 复现不出这条。必须走真实的 `showNoiseSheet`。
+    tester.view.physicalSize = const Size(1194, 834);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: TextButton(
+                onPressed: () => showNoiseSheet(context),
+                child: const Text('打开'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.text('打开'));
+    // 弹窗里挂着永不停止的波形动画，`pumpAndSettle` 收敛不了。
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    final panel = tester.getRect(find.byType(AppSheet));
+    final tiles = find.byType(NoiseTile);
+    expect(tiles, findsNWidgets(8));
+
+    final rects = tester
+        .widgetList<NoiseTile>(tiles)
+        .map((tile) => tester.getRect(find.byWidget(tile)))
+        .toList();
+    expect(
+      rects.map((rect) => rect.left).toSet().length,
+      4,
+      reason: '八个音效格应排成四列',
+    );
+    expect(
+      rects.map((rect) => rect.top).toSet().length,
+      2,
+      reason: '八个音效格应排成两行',
+    );
+    for (final rect in rects) {
+      expect(rect.left, greaterThanOrEqualTo(panel.left));
+      expect(rect.right, lessThanOrEqualTo(panel.right));
+      expect(rect.bottom, lessThanOrEqualTo(panel.bottom));
+    }
   });
 
   testWidgets('关闭面板会释放播放器', (tester) async {

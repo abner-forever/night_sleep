@@ -49,7 +49,7 @@
 
 - **玻璃卡片**：`backdrop-filter: blur(24px)`；填充 `--ios-material`；1px `--glass-border` 描边；内阴影 `inset 0 1px 0 var(--ios-specular)`；外阴影 `0 10px 28px rgba(32,47,86,.10)`（深色 `0 12px 30px rgba(0,0,0,.30)`）；另有 115° 斜向高光扫过。
 - **圆角**：玻璃卡 `24px`；内嵌面板 `16px`；列表组 `16px`；弹层顶部 `26px`；标签条 `34px`。
-- **底部弹层**：遮罩 `rgba(0,0,0,.30)` + `blur(14px)`；面板 `--sheet-bg` + `blur(38px)`；宽屏浮起 24px、宽 `min(560px, 100vw-48px)`、四角 26px。
+- **底部弹层**：遮罩 `rgba(0,0,0,.30)` + `blur(14px)`；面板 `--sheet-bg` + `blur(38px)`；宽屏限宽 `min(560px, 100vw-48px)`、**下沿一律贴屏幕底**、只圆上方两角 26px（原型那条「宽屏浮起 24px、四角 26px」是桌面浏览器的规则，不采用，见第 8 章 #40）。
 - **悬浮标签条**：左右下各 12px 外边距（或安全区）；圆角 34px；`blur(28px) saturate(160%)`；滑动胶囊 `accent 14%`，420ms `cubic-bezier(.22,1,.36,1)`。底部浮起量比原型的 `max(12px, env(safe-area-inset-bottom))` 低 14px，见第 8 章偏差 #21。
 - **主按钮**：高 58px、圆角 16px、`linear-gradient(135deg,#0A84FF,#5856D6)`。
 - **动效曲线**：标准 `cubic-bezier(.22,1,.36,1)`；回弹 `cubic-bezier(.34,1.56,.64,1)`；按压缩放 `.972`。
@@ -352,6 +352,7 @@
 | 38 | 入睡前态的播放时长有「整晚」 | 仍只有 15 / 30 / 45 / 60 | 既有裁定（会话规格 §四 / §六）：整晚的噪音会一直占着录音通道，plan B 之后更是硬冲突 |
 | 39 | 首页主按钮「**开始入睡**」点下去就进入睡眠模式，进页面还没开始记（要点页内的「开始睡眠」） | **照原型**：主按钮只推入页面、**不写库**，`startAtUtc` 是页内「开始睡眠」被按下的时刻 | 这是本轮的核心改动，不是偏离原型而是**回到原型**——v3.0 把它简化成「点首页即开始」，等于把「按错了」「进来看一眼」都记成了一晚睡眠。副标题一处例外：原型写「开启睡眠记录、**鼾声检测**与白噪音」，我们写「开启睡眠记录、白噪音与夜景氛围」——plan A 没接录音（#7），不能把「鼾声检测」写进这句承诺 |
 | 34 | 原型激活态的 `.sleep-events` 有 `backdrop-filter: blur(18px)` | 「当前睡眠事件」卡**不叠 `backdrop-filter`**，用半透明深色底 + 描边 | 这一页底下是每帧重绘的整屏动画背景，卡片上再叠一层 `backdrop-filter` 会让该区域**每帧重新模糊**；而这一页要整夜挂着，代价不划算。这是带着理由的取舍，不是漏做。观感未在真机核对（见 README「验证记录」） |
+| 40 | 底部弹层宽屏时**浮起 24px**、四角 26px（`.sheet-panel` 的桌面规则） | **下沿一律贴屏幕底**，只圆上方两角；宽屏仍限宽 560px | 桌面规则照搬到 iPad 横屏上，面板与屏幕底之间会留出一条遮罩，面板像是悬空断在屏幕底之上——使用方实测后裁定（同一次实测还发现音效格按屏幕宽度算宽，宽屏下每格 271px 撑爆面板，见 `noise_sheet.dart`）。iPhone 本来就贴底，两平台现在一致。回归方法：`test/app_sheet_test.dart` 的「宽屏下面板限宽 560，但下沿仍贴屏幕底」——把浮起加回去必红（已变异验证：还原后 810 ≠ 834）。 |
 
 ## 9. 测试与验收矩阵
 
@@ -361,7 +362,7 @@
 | --- | --- | --- |
 | 单元测试 | 跨午夜/夏令时时长、统计分母 | ✅ `test/sleep_math_test.dart` |
 | 单元测试 | 模型列表解析、错误映射、密钥不外泄、无密钥不发请求、中文解码 | ✅ `test/model_catalog_test.dart` |
-| Widget 测试 | 弹层蒙层独立淡入、点击把手/蒙层关闭、下拉阈值与回弹、打开计数、不可关闭时忽略手势 | ✅ `test/app_sheet_test.dart` |
+| Widget 测试 | 弹层蒙层独立淡入、点击把手/蒙层关闭、下拉阈值与回弹、打开计数、不可关闭时忽略手势、宽屏下限宽 560 但下沿仍贴屏幕底（浮起 24px 已按偏差 #40 作废） | ✅ `test/app_sheet_test.dart`（含变异验证：把浮起加回去变红） |
 | Widget 测试 | 推入路由的材质祖先与错误下划线、无阶段记录的主卡片、演示数据二级页 | ✅ `test/pages_widget_test.dart` |
 | 单元测试 | `estimateScore` 边界（4/5/6/7/9/10/12 小时）、事件与质量权重、分档阈值 | ✅ `test/sleep_score_test.dart` |
 | 单元测试 | `buildSleepWindow` 跨午夜与同日、时钟/日期格式化往返 | ✅ `test/sleep_window_test.dart` |
@@ -375,7 +376,7 @@
 | Widget 测试 | 编辑/删除：入口有无、演示数据不可编辑、表单预填、写回同一 id、不改 `createdAt`、不清空阶段、删除二次确认 | ✅ `test/record_edit_delete_test.dart` |
 | 集成 | 记录卡 → 详情 → 编辑 → 保存 → 回到外壳，走真实 go_router 与 `extra` 传递 | ✅ 同上（数据经 provider 覆盖而非 drift 流） |
 | 单元测试 | 合成波形：确定性、互异性、不削波、无直流、接缝连续、频谱走向、瞬态、包络、森林含鸟鸣、WAV 头与钳制 | ✅ `test/noise_synth_test.dart` |
-| Widget 测试 | 助眠音效面板：播放交接、停止、切换、失败如实报错、音量写回、关闭释放 | ✅ `test/noise_sheet_test.dart` |
+| Widget 测试 | 助眠音效面板：播放交接、停止、切换、失败如实报错、音量写回、关闭释放；**宽屏（iPad 横屏）下八格仍是四列两行且不溢出**——格子宽度按面板自身宽度算，不是屏幕宽度（含变异验证：换回屏幕宽度必红） | ✅ `test/noise_sheet_test.dart` |
 | 单元测试 | 导出内容：BOM 与 CRLF、RFC 4180 转义可无损还原、记录/阶段两张表、按入睡时刻升序、演示记录排除并计数、JSON 用 schema 字段名且不写 `localUri` / `AppSettings` | ✅ `test/sleep_export_test.dart` |
 | Widget 测试 | 导出页：条数只数真实记录、无记录时禁用并说明、CSV/JSON 两个动作、失败如实报错、取消分享不报错 | ✅ `test/export_page_test.dart` |
 | 单元/Widget 测试 | 提醒：幂等全量重排契约与固定 id、`nextOccurrence` 的夏令时口径、权限被拒时不写偏好且开关回弹、`denied` 时的「去系统设置」入口、启动回收被撤销授权、`unsupported` 时不动偏好 | ✅ `test/reminder_scheduler_test.dart`、`test/reminder_settings_test.dart`、`test/reminder_sync_test.dart` |

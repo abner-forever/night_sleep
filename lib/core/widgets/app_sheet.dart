@@ -185,21 +185,20 @@ class _SheetHostState extends State<_SheetHost> {
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   _panelHeight = constraints.maxHeight;
-                  return Padding(
-                    // Wide layouts float the sheet 24px off the bottom edge and
-                    // cap it at 560px, matching the prototype's desktop rule.
-                    padding: EdgeInsets.only(bottom: isWide ? 24 : 0),
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxWidth: isWide ? 560 : double.infinity,
-                        maxHeight: media.size.height * 0.92,
-                      ),
-                      child: _SheetDragScope(
-                        onDragUpdate: _onDragUpdate,
-                        onDragEnd: _onDragEnd,
-                        onHandleTap: _dismiss,
-                        child: widget.child,
-                      ),
+                  return ConstrainedBox(
+                    // 宽屏限宽，但**下沿一律贴屏幕底**。原型那条「宽屏浮起
+                    // 24px」是桌面浏览器的规则：这里照搬会在面板下缘留出
+                    // 一条遮罩，面板像是悬空断在屏幕底之上（使用方在 iPad
+                    // 横屏上实测后裁定，见规格第 8 章）。
+                    constraints: BoxConstraints(
+                      maxWidth: isWide ? 560 : double.infinity,
+                      maxHeight: media.size.height * 0.92,
+                    ),
+                    child: _SheetDragScope(
+                      onDragUpdate: _onDragUpdate,
+                      onDragEnd: _onDragEnd,
+                      onHandleTap: _dismiss,
+                      child: widget.child,
                     ),
                   );
                 },

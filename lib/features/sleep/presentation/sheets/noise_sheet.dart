@@ -183,6 +183,10 @@ class _NoiseSheetState extends State<NoiseSheet>
     final failure = _failure;
 
     return AppSheet(
+      // 内容比视口高时（iPhone 横屏、iPad 分屏）允许滚动：面板高度上限是屏高的
+      // 92%，装不下的部分会被 `ClipRRect` 裁掉，音量条与定时 chips 就再也够不着。
+      // 安全区下边距交给这里的滚动视图留（下面的 `Padding` 不再重复计一遍）。
+      scrollable: true,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -196,114 +200,116 @@ class _NoiseSheetState extends State<NoiseSheet>
             onClose: () => Navigator.of(context).pop(),
           ),
           Padding(
-            padding: EdgeInsets.fromLTRB(
-              20,
-              16,
-              20,
-              MediaQuery.of(context).padding.bottom + 24,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (active != null) ...[
-                  _WaveformIndicator(animation: _pulse, color: active.color),
-                  const SizedBox(height: 20),
-                ],
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    for (final option in kNoiseOptions)
-                      NoiseTile(
-                        option: option,
-                        active: option.id == _activeId,
-                        onTap: () => _select(option),
-                        // Four per row: (width - 3 gaps) / 4.
-                        width: (MediaQuery.sizeOf(context).width - 110) / 4,
-                      ),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            child: LayoutBuilder(
+              builder: (context, constraints) => Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (active != null) ...[
+                    _WaveformIndicator(animation: _pulse, color: active.color),
+                    const SizedBox(height: 20),
                   ],
-                ),
-                const SizedBox(height: 20),
-                VolumeSlider(
-                  value: _volume,
-                  color: active?.color ?? tokens.accent,
-                  onChanged: _changeVolume,
-                ),
-                const SizedBox(height: 20),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Row(
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
                     children: [
-                      AppIcons.timer(
-                          size: 14, color: tokens.textMuted, strokeWidth: 1.8),
-                      const SizedBox(width: 6),
-                      Text(
-                        '定时关闭',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.96,
-                          color: tokens.textMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final minutes in _timerChoices)
-                        TimerChip(
-                          label: minutes == null ? '不限' : '${minutes}m',
-                          selected: _timerMinutes == minutes,
-                          onTap: () => _selectTimer(minutes),
+                      for (final option in kNoiseOptions)
+                        NoiseTile(
+                          option: option,
+                          active: option.id == _activeId,
+                          onTap: () => _select(option),
+                          // 四格一行，格子宽度按**面板自身**的可用宽度算，不是屏幕
+                          // 宽度：宽屏下面板被 `_SheetHost` 限到 560px，拿屏幕宽度
+                          // 算会把每格撑到屏幕的四分之一（iPad 横屏下 271px），
+                          // `Wrap` 一行就只放得下一个，内容整体溢出被裁掉。
+                          width: math.max(0, (constraints.maxWidth - 70) / 4),
                         ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 20),
-                // Honest status. When a sound is playing, say where it comes
-                // from; when the platform refused, say that instead of leaving
-                // a stop button over silence.
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: tokens.bgMuted,
-                    borderRadius: BorderRadius.circular(12),
+                  const SizedBox(height: 20),
+                  VolumeSlider(
+                    value: _volume,
+                    color: active?.color ?? tokens.accent,
+                    onChanged: _changeVolume,
                   ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      AppIcons.volume(
-                        size: 15,
-                        color: tokens.textMuted,
-                        strokeWidth: 1.6,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          failure ??
-                              (active == null
-                                  ? '声音由应用实时合成，不占用存储、不需要下载。选一个开始播放。'
-                                  : '正在播放「${active.label}」，音频由应用实时合成，循环无缝。'),
+                  const SizedBox(height: 20),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Row(
+                      children: [
+                        AppIcons.timer(
+                            size: 14,
+                            color: tokens.textMuted,
+                            strokeWidth: 1.8),
+                        const SizedBox(width: 6),
+                        Text(
+                          '定时关闭',
                           style: TextStyle(
                             fontSize: 12,
-                            height: 1.45,
-                            color: failure != null
-                                ? tokens.danger
-                                : tokens.textMuted,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.96,
+                            color: tokens.textMuted,
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final minutes in _timerChoices)
+                          TimerChip(
+                            label: minutes == null ? '不限' : '${minutes}m',
+                            selected: _timerMinutes == minutes,
+                            onTap: () => _selectTimer(minutes),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  // Honest status. When a sound is playing, say where it comes
+                  // from; when the platform refused, say that instead of leaving
+                  // a stop button over silence.
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: tokens.bgMuted,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        AppIcons.volume(
+                          size: 15,
+                          color: tokens.textMuted,
+                          strokeWidth: 1.6,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            failure ??
+                                (active == null
+                                    ? '声音由应用实时合成，不占用存储、不需要下载。选一个开始播放。'
+                                    : '正在播放「${active.label}」，音频由应用实时合成，循环无缝。'),
+                            style: TextStyle(
+                              fontSize: 12,
+                              height: 1.45,
+                              color: failure != null
+                                  ? tokens.danger
+                                  : tokens.textMuted,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],

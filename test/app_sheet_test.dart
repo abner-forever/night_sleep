@@ -218,6 +218,22 @@ void main() {
     expect(find.byType(AppSheet), findsOneWidget, reason: '不可关闭时拖拽无效');
   });
 
+  testWidgets('宽屏下面板限宽 560，但下沿仍贴屏幕底', (tester) async {
+    // 原型那条「宽屏浮起 24px」是桌面浏览器里的规则。照搬到 iPad 横屏上，
+    // 面板与屏幕底之间会留出一条遮罩——面板看起来悬空断在屏幕底之上
+    // （使用方实测后裁定一律贴底）。限宽留着：面板不跟着屏幕拉满。
+    tester.view.physicalSize = const Size(1194, 834);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await openSheet(tester);
+
+    final rect = tester.getRect(find.byType(AppSheet));
+    expect(rect.width, 560, reason: '宽屏下面板应限宽 560');
+    expect(rect.center.dx, 597, reason: '限宽后面板仍居中');
+    expect(rect.bottom, 834, reason: '面板下沿必须贴屏幕底，不许浮起');
+  });
+
   testWidgets('AppSheet 在多主题下都能取到设计令牌', (tester) async {
     for (final theme in [AppTheme.light(), AppTheme.dark()]) {
       await tester.pumpWidget(
