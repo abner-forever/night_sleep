@@ -3,6 +3,230 @@
 本文件记录「夜深」项目规格的版本变更。规格正文见
 [docs/superpowers/specs/2026-09-28-night-sleep-design.md](docs/superpowers/specs/2026-09-28-night-sleep-design.md)。
 
+## 3.12（2026-10-13）
+
+**把罗盘接上 Android：新增一条手写的 Kotlin `EventChannel`，逐项复刻 iOS 那套算法；
+`compass_page.dart` 一行未改。同时修掉 v3.11 遗留的 `.metadata` 平台列表被覆盖的问题。**
+
+### Android 罗盘（`night_sleep/compass`）
+
+- 新增 `android/app/src/main/kotlin/com/example/night_sleep/CompassStreamHandler.kt`：
+  `TYPE_MAGNETIC_FIELD` + `TYPE_GRAVITY` + `TYPE_GYROSCOPE`，由**陀螺仪**驱动发射、
+  限流 30 Hz（对齐 iOS 的 `1/30`），事件字段与 iOS 逐项对齐。
+- `MainActivity.kt` 改为覆写 `configureFlutterEngine` 注册通道。**`super` 那一行是必须的**：
+  embedding v2 下插件注册就在它的实现里，漏了会让通知、录音、安全存储**全体静默失效**，
+  编译期与运行期都不报。另有 `onDestroy` 里的兜底反注销。
+- `lib/core/platform/compass.dart`：判定放行 `TargetPlatform.android`；`CompassUnavailable`
+  的文案由「请使用支持罗盘的 **iPhone** 打开此页面」改为「当前平台暂不支持罗盘」。
+  **`kIsWeb` 必须留在平台判断之前**——Web 上 `defaultTargetPlatform` 报的是宿主机系统。
+- **页面零改动**：`compass_page.dart` 早就分好了两支，Android 只要照 iOS 发
+  `error(code: "unavailable")`，「此设备没有可用的罗盘传感器」那句就是白拿的。
+- **不加清单条目**：读传感器不需要任何权限；`<uses-feature>` 只影响商店筛选、对运行时零作用。
+
+### 与 iOS 唯一的符号差异（这一条若不改，罗盘永远是坏的）
+
+Android 的 `TYPE_GRAVITY` 在平放屏幕朝上时报 Z = **+9.81**，CoreMotion 报 −1.0，两者**反号**。
+所以 `up = +normalize(gravity)`（iOS 取负），而 `tilt` 与 `rotationRate = -(gyro·up)` 两式不变。
+照抄 iOS 那个负号的后果很具体：平放时 `upZ = −1` → `tilt = 180°` → `tilt < 60` 永不成立 →
+**`heading` 永远是 null**，页面永远停在「请将手机屏幕朝上，保持水平」，而手机明明就平放着。
+
+`accuracy` 也必须换算：Android 是 `UNRELIABLE 0 / LOW 1 / MEDIUM 2 / HIGH 3`，iOS 是
+`−1 / 0 / 1 / 2`，即 `ios = android − 1`。**`else` 那一支不能省**——Android 还有
+`SENSOR_STATUS_NO_CONTACT = −1`，朴素的 `−1` 换算会得到 −2，而 Dart 的门槛是
+`accuracy != uncalibrated`（≠ −1），−2 不等于 −1，于是**一个「磁力计没接触」的读数会被
+当成有效方位发布出去**。
+
+### 真机验证（Xiaomi MI 9 / Android 11 / MIUI 12.5.6，`e0e60672`）
+
+**已验证**：
+
+- 通道以约 30 Hz 稳定出数（`adb logcat -s Compass:D`）。
+- 页面从「请使用支持罗盘的 iPhone…」变成实时读数：`51°` / `东北 · 艮山` / `当前方向 东北` /
+  `手机倾斜 5°`，表盘随方位旋转。二十四山取档（51° → 艮，45–60）人工核对无误。
+- **`tilt` 在平放时约 5°**——这一条正面验证了上面那个符号修正。
+- `accuracy` 换算被实测走到（原始 `1` → 映射 `0`）。
+- **磁场被污染时会正确地拒绝发布方位**：手机挨着笔记本时实测 259 µT（地磁只有 25–65 µT），
+  页面显示校准提示而不给方向；挪开后降到 62–64 µT，方位随即出现。
+
+**未解决，不得当成已验证**：
+
+- 手机**证明过静止**（我们自己前后两次读数 12 秒内相差 0.2°、陀螺仪速率 0.000），
+  我们读到 `48.3°`，而系统自带 `com.miui.compass` 读 `5°`——**差 43°**。
+  两条相关但都不足以定案的观察：MIUI 自己在一分钟内从 `18°` 漂到 `5°`；
+  **两个应用都独立地要求校准**。**假设**（是假设，不是结论）：磁力计的硬铁校准未建立，
+  读数仍带着手机自身的磁偏置——实测竖直分量约为该纬度物理值的两倍
+  （纬度约 22.6°、磁倾角约 31°：总场应 ≈45 µT、水平 ≈39、竖直 ≈23；实测水平 41.5、竖直 49）。
+  **判据尚未跑**：把手机转过一个已知角度，看方位角是否同步变化——这能把「算法结构性错误」
+  与「绝对校准偏差」分开。
+- **横屏的 90°/270° 两个分支未验证**：这台机器的自动旋转是关的
+  （`accelerometer_rotation=0`），`getRotation()` 恒为 `ROTATION_0`，物理转手机也不会进那个分支，
+  只能靠改 `user_rotation` 来试。代码注释里已就地标明该不确定性。
+- **完全没测**：macOS（按决定不做）、Web、以及没有磁力计的设备（模拟器应显示
+  「此设备没有可用的罗盘传感器」）。
+
+Kotlin 侧**没有任何单元测试**——本仓库没有 Kotlin 测试设施。Dart 侧新增 4 个用例，
+**只钉得住键名、类型、null 与否和错误 code，钉不住任何数值**。
+
+### 修掉 v3.11 的一处缺陷：`.metadata` 的平台列表被覆盖
+
+`flutter create --platforms=android .` **不是「加一个平台」，而是把 `migration.platforms`
+整体重写成只给的那些**——v3.11 那轮因此把 `ios` / `macos` / `web` 三条**删掉了**。
+不影响构建，但记账错了、信息丢了。本轮用 `git checkout` 还原 HEAD 原值后**加回** `android`，
+diff 只剩新增的三行。
+
+**同源的暴露（未处理，待定）**：`unmanaged_files` 里只列了
+`ios/Runner.xcodeproj/project.pbxproj`，而我们手改过的
+`android/.../MainActivity.kt` 与 `AndroidManifest.xml` **没有这层保护**——
+将来跑 `flutter migrate` 可能把手写的通道注册与清单改动冲掉。
+
+### 构建 release 包：三个新踩到的坑
+
+1. **直接调 `gradlew assembleRelease` 会失败**，报
+   `GeneratedPluginRegistrant.java: 找不到符号 dev.flutter.plugins.integration_test`。
+   那个注册文件是 **Flutter CLI 生成、且按构建模式过滤**的（release 排除 `dev_dependency`），
+   绕过 CLI 就复用了上次 debug 留下的旧文件。**先跑一次 `flutter build apk --release`
+   让它把注册文件重新生成对**，之后再回到 `gradlew`。
+2. `flutter build apk` **传不了 `-Pkotlin.incremental=false`**，会撞上
+   `Could not close incremental caches … .tab`（疑杀软占句柄）。
+3. `flutter build apk` 需要 `FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn`——
+   引擎的 ABI jar 来自 `storage.googleapis.com/download.flutter.io`，**不在 `cn-mirrors.gradle`
+   改写的三个域名里**。缺了它 `:app:compileDebugKotlin` 会**挂住十几分钟且一句错都不报**。
+   诊断杀手锏是加 `--offline`：它把「挂住」立刻变成「明确说你缺哪个包」。
+
+### 本轮仍未做（**不得视为已完成**）
+
+- 上面那条 43° 的差异**未定案**；横屏轴映射未验证。
+- `CompassStreamHandler.kt` 里 `DEBUG_LOG = true` **仍然开着**（30 Hz 打原始磁场与重力矢量）。
+  它只影响罗盘页，但**正式发布前必须关掉或删掉**。
+- release 包**用 debug 证书签名**，能侧载，**不能上架**。
+- 后台 / 锁屏录音、`android:allowBackup` 两笔仍是 v3.11 的状态，见下。
+
+## 3.11（2026-10-12）
+
+**接入 Android 平台：生成 `android/` 目录，补齐通知重启与夜间录音所需的清单配置，打开 core
+library desugaring。Dart 代码一行未改，`flutter test` 条数与上一版完全一致。**
+
+### 平台目录与构建配置
+
+- `android/` 用 `flutter create --platforms=android .` 生成（Flutter **3.47.5**，与
+  `.metadata` 里记的 `create_revision` 同源），**不手写**——模板里的 AGP / Gradle / Kotlin
+  版本跟着 SDK 走，手写的下一次升 SDK 就脱节。
+- `.metadata` 的 `migration.platforms` 多一条 `android`；`analysis_options.yaml` 的
+  analyzer 排除列表多一条 `android/**`（与既有的 `ios/` / `macos/` / `web/` 一致）。
+  这两处是 `flutter create` 自己改的，不是手加的。
+- **删掉了模板顺手塞进来的 `test/widget_test.dart`**：它引用不存在的 `MyApp`，
+  留着会让 `flutter test` 直接失败。它不属于本工程。
+- 构建参数**一个数字都没写死**：`compileSdk` / `minSdk` / `targetSdk` / `ndkVersion`
+  继续取 `flutter.*`，因为**逐个核过全部插件的真实下界**——最高的是
+  `flutter_local_notifications` 22.3.1 与 `record_android` 2.2.0，都要求
+  compileSdk 36 / minSdk 24，而 Flutter 3.47.5 的模板默认正是 36 / 24，**恰好相等**。
+- **core library desugaring 是这一轮唯一的 gradle 改动**，且必须开：
+  `flutter_local_notifications` 10+ 的 README 明说「即使用不到排定通知也必须开」。
+  开关（`isCoreLibraryDesugaringEnabled = true`）与依赖
+  （`coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")`）**成对**，
+  缺一个都编译不过。
+
+### 清单：每一条都核过插件源码，不是照抄文档
+
+`android/app/src/main/AndroidManifest.xml` 加了这几样、**故意不加**三样：
+
+| 加 | `RECEIVE_BOOT_COMPLETED`、`ScheduledNotificationReceiver`、
+`ScheduledNotificationBootReceiver`（四个 action）、`FOREGROUND_SERVICE`、
+`FOREGROUND_SERVICE_MICROPHONE`、**`INTERNET`**；`android:label` 由 `night_sleep` 改为
+**「夜深」**（与 iOS / macOS / Web 三端一致） |
+| --- | --- |
+| **不加** | `POST_NOTIFICATIONS`、`VIBRATE`（**核实**：确在 `flutter_local_notifications`
+22.3.1 自己的 manifest 里，构建时合并）；`RECORD_AUDIO`（**核实**：确在 `record_android`
+2.2.0 的 manifest 里）；`<service>`（**没有实现，声明一个指向不存在类的服务会直接编译失败**） |
+
+**`INTERNET` 是差点漏掉的一条，值得单独说**：Flutter 模板只在 `src/debug/` 与
+`src/profile/` 两个**变体清单**里带它（给 hot reload 用），**main 里没有**，
+所以「拿模板逐行比对」根本发现不了；而本应用确实联网（洞察服务的模型列表 / 余额 /
+连通性测试 / 生成洞察），且没有任何插件会把它合并进来。**漏了的后果只在 release 包发作**：
+debug 一切正常，release 里所有洞察请求以 `SocketException` 失败，开发期看不出来。
+这条由本轮末尾的独立审查提出，已核实并落地。
+
+**订正了两处此前文档里没核过的推断**：上游规格与 README 都写着「接入 Android 时要补
+`RECORD_AUDIO` 权限」——实测它由插件自带并合并，应用侧不声明。另外总规格 §10 第 6 条写着
+「Android 的 `RECORD_AUDIO` 用途串随平台目录生成时一并补」——**「用途串」是 `Info.plist` 的
+机制，Android 没有对应物**，这一条在 Android 上无从落地，也不需要。
+
+### Android 启动图标（同日追加）
+
+原计划把图标留作后续，使用方要求一并做掉。`tool/generate_app_icons.dart` 从「两个平台」扩到
+「三个平台」，且 Android 一个平台就要**两套**：
+
+- `mipmap-*/ic_launcher.png`（48/72/96/144/192）：满幅直角、无 alpha，给 **API < 26**。
+  与 iOS 同一条渲染路径，也**不倒角**——API < 26 的启动器不套遮罩，倒了就是「方角套圆角」。
+- `mipmap-anydpi-v26/ic_launcher.xml` + 两层位图：**自适应图标**，给 API ≥ 26。底铺满
+  **108dp** 画布（纯渐变）、前景缩进中央 **72dp**（月亮与声波，四周透明），系统自己套遮罩。
+  两套共用资源名 `ic_launcher`，所以清单里的 `android:icon` 一个字没改。
+
+**做这块时踩到两个只有装到手机上才看得见的坑，都没放过**：
+
+1. **主体按固定比例缩会被圆形遮罩切掉。** 源图墨迹几乎铺满 1024 画布，按「1024 → 72dp」
+   缩进来，墨迹外接圆 691.5 > 可见区 682.7（超出 1.3%）——第二道声波的尾端会被切。
+   改成**按墨迹外接圆定标**（让外接圆正好收进可见区），产物比 iOS 构图只小 1.3%。
+   这条是被自己写的兜底断言顶出来的，不是一开始就想到的。
+2. **主体本身就不在画布中心。** 源图墨迹中心在 (642,584)，比画布中心偏右下 130/72——
+   那是给满幅方图（iOS / macOS）构的图。自适应前景必须**量出墨迹包围盒再重新居中**，
+   否则在圆形遮罩里明显偏。
+
+另外切图分成两份（底 / 主体），因为底里若混进主体，叠上前景会看到一大一小两个月亮。
+切不出源图那句满幅 `<rect>` 时**当场失败**，不产出错图标。
+
+**回归**：`test/app_icons_asset_test.dart` 加 4 条（共 9 条），钉住「墨迹全在中央 72dp 圆内
+且居中」「背景层近白像素数为 0」等。**已做变异验证**：摘掉重新居中，断言立刻报
+「最远 45.1 > 半径 36.0」。**iOS 与 macOS 的图标文件重跑后一个字节都没变**——
+证明重构 `_writeAll`（抽出 `_writeOne`）没有碰坏原有两条渲染路径。
+**仍未经目视**：产物只经像素级断言核对，**没有装到手机上真的看一眼**。
+
+### 在安卓模拟器上实跑（同日追加）
+
+用 Pixel 6 Pro / API 34（Android 14）的 AVD 实跑了一遍，**这是本轮唯一一次真机级验证**：
+
+- `adb install` → `am start` 成功，**首页完整渲染**（讲解卡、圆环、最近记录、玻璃胶囊标签条、
+  中文正常），**logcat 里该应用无任何 error / exception / fatal**。
+- **图标在真实启动器里目视核对**：Pixel 桌面用**圆形遮罩**，我们的图标被正确套成圆形、
+  **月牙与两声波完整可见、没被切、构图居中**——「墨迹落在中央 72dp 圆内」那条断言，
+  现在有了模拟器层面的证据。同屏相册 / YouTube 显示的是旧式处理（缩小放白盘），
+  **只有我们的图标铺满遮罩**，说明自适应图标这条路真的生效。
+- `aapt2 dump badging` 复核：**`application-icon-<每个密度>` 都解析到
+  `mipmap-anydpi-v26/ic_launcher.xml`**，系统在全部密度上取的都是自适应图标。
+- **一处未解释的观感**：我们的图标最外圈约 1/4 半径处有一圈淡浅蓝亮环，同屏 Chrome 没有。
+  已核实**不是产物的错**——用两层位图自己做合成 + 圆形遮罩，扫描线上没有亮环。
+  成因未定（疑与启动器对**位图背景层**的处理或模拟器 GPU 渲染有关），**留作待查**：
+  下一步可把背景层换成纯色 `@color` 看亮环是否消失。**没有把它写成「有意为之」。**
+- **仍未验证**：真机（非模拟器）、通知真的到点投递、重启后重排、前台录音、后台录音。
+
+### 刻意没做（**不得视为已完成**）
+
+- **后台 / 锁屏录音仍然不能用**：权限声明了、**前台服务没有实现**。
+  「声明了不等于能用」，这句话写进了清单注释与 README。
+- **「去系统设置」在 Android 上点了没反应**：`app_settings.dart` 对非 iOS/macOS 退回
+  `app-settings:`，Android 没有等价 scheme。这不因本轮改动**产生**，但**从本轮起 Android
+  是「已支持平台」**，它就从「未生成平台的代码路径」升级成了一条真实的界面缺陷。
+- ~~**罗盘未接 Android 传感器**~~ ——**v3.12（2026-10-13）已做**，见上。原文留档：
+  当时判断「要接罗盘等于把 iOS 那套算法在 Kotlin 里重做一遍并真机校准，不是『接线』，
+  是『新做一遍罗盘』」——**这个判断是对的**，v3.12 确实是新做了一遍。
+- **`android:allowBackup` 保持 Android 默认（= 允许备份）**：`flutter_secure_storage` 的
+  README 建议设成 `false`。本轮**没改**——它会静默改变产品语义（换机后没有数据可恢复），
+  且 Dart 侧 `read()` 已用 `on Object { return null; }` 兜住「恢复后读不出密钥」这个异常，
+  不构成缺陷。**但有一条要说清**：备份开着意味着**数据库与录音片段可能被上传到用户自己的
+  Google Drive**，而应用对用户的承诺是「录音片段仅保存在本机，**不会上传**」。
+  **这句话在 Android 上因此并不严格成立。** 三个可选处置写在规格 §5.4，**待使用方裁定**，
+  本轮一个都没执行。
+- **一律没有真机 / 模拟器验证**：构建通过、清单合并正确，**不等于通知会响、录音录得下来**。
+
+详见 [安卓平台接入设计](docs/superpowers/specs/2026-10-12-android-platform-design.md)。
+
+### 本机环境（不入库，但下一个在此工作区动手的人需要知道）
+
+本机 PATH 上的 Flutter 是 **3.16.7 / Dart 3.2.4**，**解析不了本工程**
+（`Because night_sleep requires SDK version >=3.3.0 <4.0.0, version solving failed`）。
+本轮装了 **Flutter 3.47.5**（Dart 3.13.4）到 `C:\src\flutter-3.47.5`，**与旧 SDK 并存、
+不改 PATH**。另：README 此前写「本工作区尚未安装 Android SDK」——**已订正，SDK 早就装了**。
+
 ## 3.10（2026-10-03）
 
 **四处显示与交互修正：主按钮的顶边高光在圆角处溢出成白刺；会话页的状态栏在亮色主题下是黑的；

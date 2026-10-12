@@ -1,0 +1,91 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 联网。**这一条是 v3.11 接入时差点漏掉的**，必须写在 main 里：
+         Flutter 模板只在 `src/debug/` 与 `src/profile/` 两个**变体清单**里带 INTERNET
+         （注释写着是给 hot reload 用的），**main 里没有**——模板比对法发现不了。
+         而「夜深」真的联网：设置 →「洞察服务」的获取可用模型 / 连通性测试 / 查询余额 /
+         生成洞察（`lib/features/settings/data/insight_service.dart`、
+         `model_catalog.dart` 里的 `package:http`）。也没有任何插件会把它合并进来
+         （逐个看过本工程全部带 Android 实现的插件的 manifest，无一含 INTERNET）。
+         漏了的后果是**只在 release 包里发作**：debug 因为变体清单里有这条而一切正常，
+         release 里所有洞察请求都以 SocketException 失败——开发时完全看不出来。 -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- 设备重启后重排就寝 / 起床提醒。
+         **应用必须自己声明这一条**：flutter_local_notifications 22.3.1 的 manifest 里没有它
+         （`POST_NOTIFICATIONS` 与 `VIBRATE` 有，那两条靠合并进来，下面不重复声明）。
+         缺了它，ScheduledNotificationBootReceiver 收不到 BOOT_COMPLETED，
+         「重启后提醒仍在」当场失效——开关看着是开的，实际再也不会响。 -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+
+    <!-- 夜间录音「后台 / 锁屏后继续」的预备。
+         **声明了不等于能用**：本轮（2026-10-12）没有实现前台服务，退到后台或锁屏后录音仍然停止。
+         这两条不是运行时权限、不向用户弹任何框，所以不违反规格 §7「未接入的能力不得申请权限」
+         ——那条红线针对的是**向用户索要**的东西（麦克风、通知、定位）。
+         **发布前**若仍无对应服务，应把这两条删掉：Google Play 对
+         FOREGROUND_SERVICE_MICROPHONE 有单独的用途申报与审核要求，留着一个通不过审核的声明
+         只是自找麻烦。
+         注意 `RECORD_AUDIO` **不在这里**声明：record_android 2.2.0 的 manifest 已自带并会在
+         构建时合并进来（已核对插件源码，上游文档那句「要补 RECORD_AUDIO」是平台目录还不存在时
+         写的，没核过插件）。 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
+
+    <application
+        android:label="夜深"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <!-- Specifies an Android theme to apply to this Activity as soon as
+                 the Android process has started. This theme is visible to the user
+                 while the Flutter UI initializes. After that, this theme continues
+                 to determine the Window background behind the Flutter UI. -->
+            <meta-data
+              android:name="io.flutter.embedding.android.NormalTheme"
+              android:resource="@style/NormalTheme"
+              />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+
+        <!-- 排定通知的投递与「重启后重排」。
+             **两个 receiver 插件都不自带**（已核对其 manifest），必须由应用声明。
+             类名与那四个 action 照抄 flutter_local_notifications 22.3.1 的 README——
+             最后一个是 HTC 的 QUICKBOOT_POWERON，凭记忆写必漏。 -->
+        <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
+        <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
+            </intent-filter>
+        </receiver>
+
+        <!-- Don't delete the meta-data below.
+             This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+    </application>
+    <!-- Required to query activities that can process text, see:
+         https://developer.android.com/training/package-visibility and
+         https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.
+
+         In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT"/>
+            <data android:mimeType="text/plain"/>
+        </intent>
+    </queries>
+</manifest>

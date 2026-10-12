@@ -14,10 +14,25 @@ Figma Make 原型**最终生效层**实现：iOS 玻璃材质、悬浮胶囊标�
 - macOS / iOS 目标需要 Xcode；**macOS 与 iOS 构建当前不需要 CocoaPods**——Flutter 3.47 用
   Swift Package Manager 解析插件依赖（构建日志中可见 `Xcode is fetching Swift Package
   Manager dependencies`）
-- Android 目标需要 Android Studio、SDK 和 JDK（本工作区尚未安装 Android SDK）。另外
-  **仓库里没有 `android/` 目录**——`.metadata` 只登记了 ios / macos / web 三个平台。
-  接入 Android 时先 `flutter create --platforms=android .` 生成平台目录，
-  并补齐通知重启相关的权限与 receiver（见「未实现」表）
+- Android 目标需要 Android SDK 与 **JDK 17**（`flutter_local_notifications` 22.3.1 要求
+  Java 17）。本工作区实测：SDK 在 `%LOCALAPPDATA%\Android\Sdk`（platforms 31/33/34、
+  build-tools 34/35、cmdline-tools、platform-tools、emulator、`licenses/`），JDK 为
+  Temurin **17.0.15**。**Android Studio 不是必需的**——有 SDK + JDK 就能
+  `flutter build apk`。
+  > **2026-10-12 订正**：本节此前写「本工作区尚未安装 Android SDK」且「仓库里没有
+  > `android/` 目录」。两句现在都不成立：SDK 早就装了（没查过），`android/` 也已按
+  > `flutter create --platforms=android .` 生成（SDK 版本 `3.47.5`，与
+  > `.metadata` 里记的 `create_revision` 同源）。接入细节见
+  > [安卓平台接入设计](docs/superpowers/specs/2026-10-12-android-platform-design.md)。
+- **注意本机可能同时存在多个 Flutter SDK**。本项目基线是 `3.47.5`（Dart `3.13.4`）；
+  `pubspec.lock` 要求 `dart >=3.13.0`、`flutter >=3.44.0`。若 `flutter --version` 报的是
+  更低的版本，`flutter pub get` 会直接以
+  `Because night_sleep requires SDK version >=3.3.0 <4.0.0, version solving failed` 失败——
+  那个报错说的是 `pubspec.yaml` 的 `environment.sdk` 下界，**不是**版本号比较出了问题。
+  用绝对路径调用正确的那个：`C:\src\flutter-3.47.5\bin\flutter.bat`。
+- **`dart run build_runner build` 是跑 `flutter analyze` / `flutter test` 的前置**：
+  `lib/core/database/app_database.g.dart` 已 gitignore，新检出里没有它，
+  不生成会得到几百条 `Undefined name 'ActiveSessionsCompanion'` 之类的报错。
 
 ## 运行与生成
 
@@ -244,10 +259,20 @@ test/                  领域计算与页面测试
   归一天花板要给交叉淡化留 2 dB——都写在脚本头注释与规格 §5.2 里。
   跑法：`dart run tool/generate_noise_assets.dart [源素材目录]`（默认 `~/Downloads/白噪音素材`）。
 - **应用图标**：由 `assets/branding/app-icon.svg` 生成，`tool/generate_app_icons.dart` 一次
-  产出 iOS 15 张 + macOS 7 张。**v2.9 起是两条渲染路径**：iOS 满幅直角、无 alpha 通道（色型 2，
-  由系统套遮罩）；macOS 按 Apple 图标网格烘焙圆角与留白（实体 824×824、四边留白 100、半径 185.4）
-  并加投影，**保留 alpha**（色型 6）——因为 macOS **不套遮罩**，圆角得写在文件里。回归断言见
+  产出 iOS 15 张 + macOS 7 张 + **Android 15 张与 1 个自适应声明文件**。**三条渲染路径**：
+  iOS 满幅直角、无 alpha 通道（色型 2，由系统套遮罩）；macOS 按 Apple 图标网格烘焙圆角与留白
+  （实体 824×824、四边留白 100、半径 185.4）并加投影，**保留 alpha**（色型 6）——因为 macOS
+  **不套遮罩**，圆角得写在文件里；Android 分两套（见下）。回归断言见
   `test/app_icons_asset_test.dart`，偏差见规格 #16。
+- **Android 启动图标（v3.11）是两套并存**：`mipmap-*/ic_launcher.png`（48/72/96/144/192，
+  满幅直角、不透明，给 **API < 26**）与 `mipmap-anydpi-v26/ic_launcher.xml`（**自适应图标**，
+  给 API ≥ 26）。自适应图标是两层：**底**铺满 108dp 画布（纯渐变，`ic_launcher_background.png`）、
+  **前景**缩进中央 72dp（月亮与声波，`ic_launcher_foreground.png`，四周透明），系统自己套遮罩
+  （圆形 / 方圆形 / 圆角方形由启动器决定）。两处容易做错、且**只有装到手机上才发现**的地方：
+  主体被遮罩切掉、主体混进底层——都由 `test/app_icons_asset_test.dart` 的 4 条断言钉住
+  （**含变异验证**：摘掉生成器里的「重新居中」，断言立刻报出最远墨迹 45.1 > 半径 36.0）。
+  前景不是按固定比例缩的，而是**按墨迹外接圆定标**——源图的墨迹几乎铺满 1024 画布，
+  按「1024 → 72dp」那个比例缩进来外接圆会超出可见区 1.3%，圆形遮罩会切掉第二道声波的尾端。
 - **数据**：SQLite（Drift）schema **v6**，含阶段、声音片段、洞察、会话（`ActiveSessions`
   单行表）四张新表与 v1→v2→v3→v4→v5→v6 迁移；外键级联删除；仓库用 3 条批量查询组装聚合。
   v3 给 `Insights.recordId` 补上 `ON DELETE CASCADE` 外键（此前没有，`deleteDemoData` 会留下
@@ -265,7 +290,25 @@ test/                  领域计算与页面测试
 设置 → 工具 → 罗盘（`/settings/compass`），包含二十四山、后天八卦、天池磁针、实时角度、方向锁定、手机倾斜与校准提示。
 iOS 使用 Core Motion 的磁北参考系，融合陀螺仪、重力与校准磁场；读数表示**手机顶部相对磁北的方位**，不计算磁偏角或真北，也不申请定位权限。
 页面关闭和应用进入后台时停止采样，回到前台重新连接。模拟器、macOS、Web 和无硬件设备显示不可用或等待状态，不生成假方向。
-Android 尚无平台目录，因此未接入传感器。方向精度与权限行为仍需 iPhone 真机验证。
+Android **已接入（v3.12，2026-10-13）**：`android/app/src/main/kotlin/com/example/night_sleep/CompassStreamHandler.kt`
+是一条手写的 Kotlin `EventChannel`（通道名同为 `night_sleep/compass`），**逐项复刻 iOS 那套算法**——
+`TYPE_MAGNETIC_FIELD` + `TYPE_GRAVITY` + `TYPE_GYROSCOPE`，由**陀螺仪**驱动发射、限流 30 Hz。
+与 iOS **唯一的符号差异**是重力矢量：Android 平放屏幕朝上时报 Z = **+9.81**（CoreMotion 报 −1.0），
+所以取 `up = +normalize(gravity)` 而**不**取负；照抄 iOS 那个负号会让 `tilt = 180°`、
+`tilt < 60` 永不成立、**方位角永远是空**，页面永远停在「请将手机屏幕朝上」。
+`accuracy` 也要换算（Android `0..3` → iOS `−1..2`），且 `0..3` 之外要夹到 `−1`——
+Android 另有一个 `SENSOR_STATUS_NO_CONTACT = −1`，朴素的减法会得到 −2，
+而 Dart 的门槛是 `!= −1`，**−2 不等于 −1，会把「磁力计没接触」的读数当成有效方位发出去**。
+`compass_page.dart` **一行未改**：本页早就把「平台未实现」（→「当前平台暂不支持罗盘」）与
+「设备没有传感器」（→「此设备没有可用的罗盘传感器」）分成了两支，Android 照 iOS 发
+`error(code: "unavailable")` 即可落到后者。读传感器**不需要任何权限**，清单因此未加条目。
+**未解决，不得当成已验证**：真机上我们的读数与系统自带 `com.miui.compass` 差 **43°**
+（手机**证明过静止**：前后两次读数 12 秒内差 0.2°、陀螺仪速率 0.000）。
+怀疑是磁力计的硬铁校准未建立（实测竖直分量约为该纬度物理值的两倍），**这是假设不是结论**，
+判定用的「转过已知角度」试验**尚未跑**。**横屏的 90°/270° 折算也未验证**——
+这台机器自动旋转是关的（`accelerometer_rotation=0`），`getRotation()` 恒为 `ROTATION_0`。
+Kotlin 侧**没有任何单元测试**（本仓库没有 Kotlin 测试设施）；Dart 侧新增的 4 个用例
+**只钉得住键名、类型、null 与否与错误 code，钉不住任何数值**。
 罗盘独立开发验证：43 项相关单元/组件测试通过，Dart 静态分析无问题，iOS 模拟器构建成功；模拟器原生通道已确认返回不可用而非假方位。
 合入最新 master 后复验（2026-10-02）：完整测试集 347/347 通过，Dart 静态分析无问题；罗盘入口测试已适配共享路由和睡眠会话状态。
 
@@ -278,7 +321,9 @@ Android 尚无平台目录，因此未接入传感器。方向精度与权限行
 | 助眠音效素材的可商用授权 | **未落实（发布阻塞项）**。5 条录音来自爱给网（aigei.com），使用方 2026-10-03 裁定为「尚未确认、仅供个人试用」。代码、`pubspec.yaml`、README 与规格均已如实标注，规格 §10 第 3 条**不关闭**。发布前必须确认授权、换素材或退回合成 |
 | 小米手环数据导入 | 未接入。需真实导出样本或官方接口文档，导入按钮禁用并说明原因 |
 | AI 洞察服务 | **部分接入（v3.7）**。已能查余额（**仅 DeepSeek**）、做连通性测试、在睡眠详情里重新生成一晚的模型总结并落库；API Key 存**系统钥匙串**（v3.7 起，重启后仍在，设置页有「清除密钥」）。**仍未做**：Claude 的对话与余额（Messages API 形状不同且无 key 可实测）、余额的持久化与历史曲线、**发送前「将要发送哪些数据」的逐项确认界面**（规格 M4 第 3 条的后半句）。OpenAI 的对话路径与 DeepSeek 同一份代码，但**没有 key 实测过**（见「验证记录」） |
-| Android 平台 | 平台目录未生成（`.metadata` 只有 ios / macos / web）。接入时需补 `RECEIVE_BOOT_COMPLETED` 权限与 `ScheduledNotificationReceiver` / `ScheduledNotificationBootReceiver` 两个 receiver（否则设备重启后提醒不再重排），以及夜间录音所需的 `RECORD_AUDIO` 权限、`FOREGROUND_SERVICE_MICROPHONE` 权限与前台服务（后台录音，v3.9；iOS / macOS 侧已在 `Info.plist` 与 entitlements 配好） |
+| **Android 平台** | **平台目录已生成（v3.11，2026-10-12）**：`android/` 由 `flutter create --platforms=android .`（Flutter 3.47.5）产出，清单里补了 `RECEIVE_BOOT_COMPLETED` 与 `ScheduledNotificationReceiver` / `ScheduledNotificationBootReceiver` 两个 receiver，gradle 开了 core library desugaring。**「提醒不会因为重启而失效」这条现在成立**（此前是「开关看着有效、实际不响」）。**仍未做**：真机 / 模拟器安装启动、通知真的投递、前台录音在 Android 上录得下来——**一律未验证**。见下方「Android 上的已知缺口」 |
+| Android 上的已知缺口（v3.11 起逐条列出，**不得视为已完成**） | ① **后台 / 锁屏录音**：清单里声明了 `FOREGROUND_SERVICE` 与 `FOREGROUND_SERVICE_MICROPHONE`，但**没有前台服务实现**——退到后台或锁屏后录音仍然停止。**声明了不等于能用**。② **「去系统设置」在 Android 上是死按钮**：`app_settings.dart` 对非 iOS/macOS 退回 `app-settings:`，Android 没有等价 scheme，点了没反应（麦克风权限被拒时那一行）。③ **`android:allowBackup` 未改**：备份开着意味着数据库与录音片段可能被上传到用户自己的 Google Drive，而应用承诺「不会上传」。三个处置方案见规格 §5.4，**待使用方裁定**。④ **发布阻塞**：applicationId 仍是占位 `com.example.night_sleep`；release 构建用 debug 签名（模板默认）；`FOREGROUND_SERVICE_MICROPHONE` 在没有对应服务前不应带着上架（Google Play 有单独用途申报） |
+| ~~启动图标是 Flutter 默认 logo~~ | **v3.11 已修**：`tool/generate_app_icons.dart` 现在同时产出 Android 的传统位图（API < 26）与自适应图标（API ≥ 26，两层 + 声明文件）。见上方「Android 启动图标」。 |
 
 ## 真机安装
 
@@ -398,10 +443,112 @@ flutter build ios --no-codesign                                 # 真机包；�
 
 真机签名已配好（团队 `UK9L3XHV39`，见「真机安装」）；若要跳过签名仍可加 `--no-codesign`。
 
+## 构建 Android 的网络前提
+
+Android 构建要拉三样东西，各有各的坑（2026-10-12 实测）：
+
+1. **Gradle 发行包**（`android/gradle/wrapper/gradle-wrapper.properties` 里的
+   `distributionUrl`）。走 `services.gradle.org`，实测只有 **177 KB/s 且会中途断**，
+   `.part` 文件停在 4 MB 就不动了。**不要改仓库里的 `distributionUrl`**（那是模板文件，
+   改成国内镜像会污染仓库）——手工下好放进 wrapper 的缓存目录即可：
+
+   ```bash
+   D="$HOME/.gradle/wrapper/dists/gradle-9.3.1-all/9ot9r568e8zfvvd4mn8rbu1j0"
+   curl -L -o "$D/gradle-9.3.1-all.zip" \
+     https://mirrors.cloud.tencent.com/gradle/gradle-9.3.1-all.zip
+   ```
+
+   （目录名 `9ot9r568e8zfvvd4mn8rbu1j0` 是 Gradle 按 `distributionUrl` 算出来的哈希，
+   换版本时以实际目录名为准。）腾讯镜像实测 **4 MB/s**；阿里云的 `/gradle/` 路径是 404。
+
+2. **Maven 依赖**（AGP、Kotlin、各插件的 AAR）。走 `dl.google.com` 与
+   `repo.maven.apache.org`，**实测会长时间停滞**：Gradle daemon 挂着一批 established
+   连接却收不到数据，10 分钟内 Maven 缓存零写入、构建停在 `assembleDebug` 不动。
+   诊断信号就是这个——
+
+   ```bash
+   find ~/.gradle/caches/modules-2/files-2.1 -type f -newermt "-5 minutes" | wc -l
+   ```
+
+   持续为 0 就是卡住了。解法是**临时**把仓库地址改写到阿里云镜像，用 `-I` 内联传进去，
+   **不写 `~/.gradle/init.d/`**（那是常驻配置，会改到本机所有 Gradle 工程）：
+
+   ```bash
+   # 脚本内容见本仓库 docs/superpowers/plans/2026-10-12-android-platform.md Task 5
+   ./android/gradlew.bat -p android -I "$TEMP/cn-mirrors.gradle" assembleDebug
+   ```
+
+3. **Flutter 引擎产物**：`export FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn`。
+   **这条不是可选项，漏了的症状最阴**：引擎的 ABI jar（`io.flutter:*_debug`）来自
+   `storage.googleapis.com/download.flutter.io`，**不在上面那个 `cn-mirrors.gradle` 改写的
+   三个域名里**。缺了它，`:app:compileDebugKotlin` 会**挂住十几分钟、日志零输出、一句错都不报**
+   （daemon 只烧几秒 CPU，日志停在配置阶段之后），极易误判成「机器慢」。
+   **诊断杀手锏是加 `--offline`**：它会把「挂住」立刻变成「明确告诉你缺哪个包」——
+
+   ```
+   Could not download arm64_v8a_debug-….jar (io.flutter:arm64_v8a_debug:…):
+     No cached version available for offline mode
+   ```
+
+   另外两条同批踩到的：**绕过 Flutter CLI 直接 `gradlew assembleRelease` 会失败**，
+   报 `GeneratedPluginRegistrant.java: 找不到符号 …integration_test`——那个注册文件由 CLI 生成
+   且**按构建模式过滤**（release 排除 dev 依赖），绕过 CLI 就复用了上次 debug 留下的旧文件；
+   解法是先跑一次 `flutter build apk --release` 让它把注册文件生成对。
+   而 `flutter build apk` **又传不了 `-Pkotlin.incremental=false`**，会撞上
+   `Could not close incremental caches … .tab`（疑杀软占句柄）。**两条路互为补充，缺一不可**。
+
+4. **NDK 是硬需求，且它自己也走 `dl.google.com`**。本工程间接依赖 `jni`
+   （经 `path_provider_android`），那个包带 CMake 原生构建，所以模板里的
+   `ndkVersion = flutter.ndkVersion`（= `28.2.13676358`）**不是摆设**。
+   实测 AGP 会自己去装它，而 `dl.google.com` 只有 264 KB/s，748 MB 会卡在
+   `Preparing "Install NDK (Side by side) ..."` 不动（`$SDK/ndk/28.2.13676358/`
+   下只有一个空的 `.installer`）。手工装：
+
+   ```bash
+   curl -L -o ndk.zip https://mirrors.cloud.tencent.com/AndroidSDK/android-ndk-r28b-windows.zip
+   # 解开后把 android-ndk-r28b/ 的内容放进
+   #   %LOCALAPPDATA%\Android\Sdk\ndk\28.2.13676358\
+   # （先删掉那个空的 .installer），其中 source.properties 的 Pkg.Revision
+   #   正是 28.2.13676358，目录名必须与它逐字一致
+   ```
+
+   腾讯镜像实测 **4 MB/s**。
+
+5. **`platforms;android-35` 与 `platforms;android-36` 都不是预装的**（本机原本只有
+   31/33/34），而本工程**两个都要**：`compileSdk = flutter.compileSdkVersion` = 36，
+   而 `audio_session`/`just_audio`/`sqlite3_flutter_libs`/`flutter_timezone`/`jni` 等模块
+   各自写死 `compileSdk 35`，AGP 会为它们分别去装。**这一步的失败长相很误导**：
+
+   ```
+   java.util.zip.ZipException: Archive is not a ZIP archive
+   ...
+   Failed to install the following SDK components: platforms;android-36
+   ```
+
+   别被 `ZipException` 带偏去查解压工具：真实原因是下载**被截断**
+   （实测 `.temp/` 下那个包只有 500 KB，而完整包是 62 MB）。手工装：
+
+   ```bash
+   curl -L -o p36.zip https://mirrors.cloud.tencent.com/AndroidSDK/platform-36_r02.zip
+   curl -L -o p35.zip https://mirrors.cloud.tencent.com/AndroidSDK/platform-35_r02.zip
+   # 都解开到 %LOCALAPPDATA%\Android\Sdk\platforms\ 下（包内就是 android-36/、android-35/）
+   ```
+
+   判断「已装好」的可靠依据是 `platforms/android-3X/android.jar`（27 MB 上下）在不在——
+   **失败的安装会留下一个只有 `.installer` 的空目录**，看上去像装了其实没有。
+
+> 编辑器的 Gradle 同步会**静默吃掉**这些下载失败——它只在右下角转圈，不报错。
+> 所以「Android Studio 里点一下就好了」在这里不成立，要看上面的缓存计数。
+> 顺带：这一整套 `dl.google.com` 的下载（CI 里也会遇到）**只有本机这个网络才需要绕过**，
+> 干净的 CI 环境直连即可——所以解法都写在文档里、**一行都没有进仓库**。
+
 ## 平台配置
 
-Bundle ID、Android application ID 与发布账号保持 Flutter 默认占位配置
-（`com.example.nightSleep`），待项目方提供后配置；真机签名团队已配置（见「真机安装」）。**通知权限仅在用户打开提醒开关时申请**
+Bundle ID、Android application ID 与发布账号保持 Flutter 默认占位配置，
+**但三端并不同名**——iOS / macOS 是 `com.example.nightSleep`（Flutter 的 iOS 模板把
+`night_sleep` 转成了 camelCase），Android 是 `com.example.night_sleep`（Android 模板保留
+snake_case）。两者是两个独立的商店身份，不要求一致；待项目方提供后一并替换
+（总规格 §10 第 1 条）。真机签名团队已配置（见「真机安装」）。**通知权限仅在用户打开提醒开关时申请**
 （未在首次启动时弹窗）；**麦克风权限仅在你打开夜间录音开关时申请（v3.9 起）**。**v3.7 起应用会联网**：共 4 处对外请求
 （获取可用模型、连通性测试、查询余额、生成洞察），**全部由用户点击触发**，全部只发结构化
 睡眠字段（**不含用户备注**），密钥只进请求头、不落日志不落盘；导出仍是把文件交给系统分享
@@ -410,6 +557,122 @@ Bundle ID、Android application ID 与发布账号保持 Flutter 默认占位配
 ## 验证记录
 
 本机环境：macOS 14.8.9（23J631，Intel），Flutter 3.47.5 stable。
+
+**v3.12（2026-10-13：Android 罗盘 + `.metadata` 修复）——Windows 11 / Flutter 3.47.5 / Android SDK 36：**
+
+真机：Xiaomi MI 9（`cepheus`，adb serial `e0e60672`），**Android 11（API 30）/ MIUI 12.5.6 / arm64-v8a**。
+
+- `flutter analyze` 无问题；`flutter test` **592/592 通过**（v3.11 是 588，本轮新增 **4** 例，
+  全在 `test/compass_test.dart`——其中一例走 `TargetPlatformVariant`）。
+- **跑过的（真机）**：`gradlew assembleDebug` 与 `assembleRelease` 均 BUILD SUCCESSFUL；
+  release 包 `app-release.apk` 71 MB，aapt2 核过 `application-label:'夜深'`、targetSdk 36、
+  `native-code: arm64-v8a`（含 armeabi-v7a / x86_64），签名是 **Android Debug 证书**（能侧载、不能上架）。
+- **罗盘的真机行为**：通道 ~30 Hz 出数；页面从「请使用支持罗盘的 iPhone…」变为实时读数
+  （`51°` / `东北 · 艮山` / `手机倾斜 5°`）；平放时 `tilt ≈ 5°`，**正面验证了重力矢量的符号修正**；
+  磁场被污染时（实测 259 µT，地磁只有 25–65 µT）**正确地拒绝发布方位**并显示校准提示，
+  挪开后降到 62–64 µT、方位随即出现。与系统自带 `com.miui.compass` 的对照**只做到一半**。
+- **没跑过的**：上面那条 **43° 的差异未定案**（手机证明过静止）；**横屏 90°/270° 折算未验证**
+  （本机自动旋转是关的）；**macOS / Web / 无磁力计设备一律没测**；**Kotlin 侧零单测**。
+- **本机的构建坑（三条，都已写进「构建 Android 的网络前提」与记忆）**：绕过 Flutter CLI 直接
+  `gradlew assembleRelease` 会因 `integration_test` 是 dev 依赖而报「找不到符号」；
+  `flutter build apk` 传不了 `-Pkotlin.incremental=false`，会撞 Kotlin 增量缓存故障；
+  **引擎的 ABI jar 来自 `storage.googleapis.com/download.flutter.io`，不在镜像改写范围内**，
+  缺 `FLUTTER_STORAGE_BASE_URL` 时 `:app:compileDebugKotlin` 会**挂十几分钟且不报错**——
+  诊断靠 `--offline`，它会把「挂住」变成「明确说你缺哪个包」。
+
+**v3.11（2026-10-12：Android 平台接入 + Android 启动图标）——在另一台机器上做的：**
+
+> 本轮是在一台 **Windows 11** 机器上做的（不是上面那台 macOS）。那边的 Flutter 基线一开始
+> 根本跑不起来——PATH 上的是 3.16.7 / Dart 3.2.4，解析不了本工程
+> （`Because night_sleep requires SDK version >=3.3.0 <4.0.0, version solving failed`）。
+> 装了 **3.47.5 / Dart 3.13.4** 到 `C:\src\flutter-3.47.5`，**与旧 SDK 并存、未改 PATH**。
+> 因此本节所有命令都是用**绝对路径**调那个 3.47.5 跑的。
+
+- `flutter pub get --enforce-lockfile` → 成功，且 **`pubspec.lock` 零改动**。
+  （第一次不加 `--enforce-lockfile` 时 pub 顺手把 `analyzer` 14.4→14.5、`build_runner`
+  2.16.1→2.16.2 等一串 dev/传递依赖升了级——与本次改动无关的 diff，已还原并用
+  `--enforce-lockfile` 顶住。）**没有设 `PUB_HOSTED_URL`**，锁文件里 129 条
+  `url: "https://pub.dev"` 一条没动。
+- `dart run build_runner build` → 生成 299 个产物。**这一步是前置**：`app_database.g.dart`
+  已 gitignore，新检出里没有它，不生成会得到几百条 `Undefined name 'ActiveSessionsCompanion'`。
+- `dart format .` → **无额外改动**；`flutter analyze` → **No issues found**。
+- `flutter test` → **588/588 通过**（v3.10 的 584 + 本轮新增 4 条 Android 图标断言）。
+  **条数只增不减，且新增的全在图标那一个文件里**——Dart 侧一行未改，这一点由
+  `git diff --stat` 里没有 `lib/` 交叉验证。
+- `flutter test tool/generate_app_icons.dart` → 通过，**iOS 与 macOS 的图标产物一个字节都没变**
+  （`git status` 里没有 `ios/` `macos/` 下的图标文件）——证明重构 `_writeAll` 时没有碰坏
+  原有两条渲染路径。
+- **Android 图标目视核对（部分）**：`mipmap-xxxhdpi/ic_launcher.png`（满幅渐变 + 月牙 + 声波）
+  与 `ic_launcher_foreground.png`（主体居中、四周透明）都**逐张看过**。
+  **没有在真机或模拟器的启动器里看过**——那需要设备。
+- **Android 图标像素级独立核对**：用 **Python + Pillow**（**不是** Dart 那套代码）重读了产物——
+  五个密度下前景 `alpha>8` 的像素**没有一个**落在中央 72dp 圆之外（`pixelsOut=0`）、
+  背景与传统位图都是色型 2 且四角不透明、背景层近白像素数为 0、角像素正是渐变起点 `#75D8FF`。
+  用另一套工具量同一件事，比让生成器和测试互相印证更有说服力。
+- **Android 构建**：`gradlew assembleDebug`（带下面的镜像 `-I`）**成功**（3m19s，452 个任务）。
+  产物 `build/app/outputs/flutter-apk/app-debug.apk`（170 MB，debug 含全部 ABI）。
+  ⚠️ **但文档里那条 `flutter build apk --debug` 在本机跑不通**——它**不接受 `-I`**，
+  拿不到镜像脚本，于是直连 `dl.google.com`，报错却是：
+
+  ```
+  > 'kotlin-android' plugin requires one of the Android Gradle plugins.
+    Please apply one of the following plugins to ':just_audio' project: …
+  [!] Gradle threw an error while downloading artifacts from the network.
+  ```
+
+  **别被那句「kotlin-android 插件需要 Android 插件」带偏去查 gradle 配置**——真实原因是 AGP
+  压根没拉下来（同一个网络问题）。在这台机器上要让**这条命令**可用，只有两条路：
+  ① 配一个**机器级**的 Gradle 镜像（`~/.gradle/init.d/cn-mirrors.gradle`，会影响本机所有
+  Gradle 工程）；② 把网络修好（让 `dl.google.com` / `repo.maven.apache.org` 可靠可达）。
+  需要时用 ① 的内容见计划文档 Task 5。**本轮走的是「命令行内联」这条路，没有动机器级配置。**
+- **合并清单核对（本轮最要紧的一条）**：读的是
+  `build/app/intermediates/merged_manifests/debug/processDebugManifest/AndroidManifest.xml`
+  ——**不是源码**，只有它同时能证明「我们加对了」与「插件确实合并进来了」：
+
+  | 权限 | 来源 |
+  | --- | --- |
+  | `RECEIVE_BOOT_COMPLETED`、`FOREGROUND_SERVICE`、`FOREGROUND_SERVICE_MICROPHONE`、`INTERNET` | **应用自己声明**（其中 `INTERNET` 是差点漏掉的那条） |
+  | `POST_NOTIFICATIONS`、`VIBRATE` | **`flutter_local_notifications` 22.3.1 合并进来**——证明「不重复声明」的决定成立 |
+  | `RECORD_AUDIO` | **`record_android` 2.2.0 合并进来**——订正了上游文档那句「要补 RECORD_AUDIO」 |
+  | `ACCESS_NETWORK_STATE`、`DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` | 插件 / AGP 生成 |
+
+  **确实没有** `SCHEDULE_EXACT_ALARM` / `USE_EXACT_ALARM`（刻意的非精确闹钟）；
+  `<service>` **零个**（没有声明空壳前台服务）；两个 FLN receiver 的**四个 action** 齐全；
+  `label=夜深`、`icon=@mipmap/ic_launcher`。
+- **APK 侧复核**（`aapt2 dump badging`）：`minSdkVersion 24` / `targetSdkVersion 36` /
+  `compileSdkVersion 36`、`application-label:'夜深'`，且 **`application-icon-<每个密度>`
+  都解析到 `res/mipmap-anydpi-v26/ic_launcher.xml`**——系统在全部密度上取的都是**自适应图标**
+  而不是传统位图，这正是想要的。
+- **模拟器实跑（Pixel 6 Pro / API 34 / Android 14，`emulator-5554`）**：`adb install` 成功 →
+  `am start` 成功（焦点 `com.example.night_sleep/.MainActivity`）→ **首页完整渲染**
+  （讲解卡、圆环、最近记录、玻璃胶囊标签条、中文全部正常），**logcat 里该应用无任何
+  error / exception / fatal**。证据图：`screenshots/v3.11-android-app.png`（应用内）、
+  `v3.11-android-launcher.png`（桌面）、`v3.11-android-icon-zoom.png`（图标放大）、
+  `v3.11-android-icons-compare.png`（与同屏其它图标并排）。
+- **Android 图标在真实启动器里的目视核对**：Pixel 桌面用**圆形遮罩**，我们的图标被正确套成
+  圆形、**月牙与两道声波完整可见、没有被切、构图居中**——这正是「墨迹必须落在中央 72dp 圆内」
+  那条断言要保证的效果，现在有了真机（模拟器）层面的证据。同一屏上相册 / YouTube 显示的是
+  **旧式处理（缩小放在白色圆盘上）**，只有我们的图标铺满整个遮罩，说明自适应图标这条路真的生效了。
+  **一处未解释的观感**：我们的图标在最外圈约 1/4 半径处有一圈**淡淡的浅蓝亮环**，
+  而同屏 Chrome 的图标没有。已核实**这不是我们产物的问题**——用两层位图自己做合成 + 圆形遮罩，
+  扫描线上没有亮环（`screenshots/v3.11-android-icon-composite.png`）。成因未定，
+  怀疑与启动器对**位图背景层**的处理或模拟器 GPU 渲染有关，**留作待查**，
+  下一步可试「把背景层换成纯色 `@color` 看亮环是否消失」。
+
+**Android 构建踩到的四个环境坑，都不报错，比报错难查**（判定与解法都记在
+「构建 Android 的网络前提」一节）：
+
+| 坑 | 现象 | 判据 |
+| --- | --- | --- |
+| Gradle 发行包 | `.part` 停在 4 MB 不动 | `$SDK` 下 `gradle-9.3.1-all/*.part` 不再增长 |
+| Maven 依赖 | 挂在 `assembleDebug`，daemon 十几条 established 连接收不到数据 | `find ~/.gradle/caches/modules-2/files-2.1 -type f -newermt "-5 minutes" \| wc -l` **持续为 0** |
+| NDK / Platform 35、36 | 卡在 `Preparing "Install ..."`；或解压报 `ZipException: Archive is not a ZIP archive`（包被**截断**：`.temp` 下只有 500 KB，完整包 62 MB） | 目标目录下只有一个空 `.installer` |
+| **Kotlin 增量编译缓存** | `:flutter_timezone` 与 `:audio_session` 的 `compileDebugKotlin` 报 `Could not close incremental caches … .tab`，连报两次 | 本轮用 `-Pkotlin.incremental=false` **命令行属性**绕过（**没有改仓库里任何文件**；写进 `gradle.properties` 就等于要求所有开发者关掉增量编译）。**疑为杀软实时扫描占住刚写完的 `.tab`**，根治要给项目 `build/` 与 `~/.gradle` 加排除项 |
+
+另外两个只影响诊断、不影响结论的发现：**被停掉的构建留下的 Gradle daemon 仍会攥着工程锁**，
+表现为新构建「1 busy Daemon could not be reused」后干等（要单独停那个旧 daemon）；
+`Get-Process java | Stop-Process` **不能用来停 Gradle**——本机 `java` 是 Android Studio 自带的
+JBR，那样会连 IDE 一起杀掉，必须按 PID 精确停。
 
 **v3.10（2026-10-03：主按钮高光裁进圆角 + 会话页状态栏 + 入睡前页一屏放下 + 清除缓存二次确认）
 最近一次复跑：**
@@ -839,7 +1102,9 @@ Bundle ID、Android application ID 与发布账号保持 Flutter 默认占位配
     画出别的东西。**需人工确认后**才能把 v2.9 这条划掉
   - 真机交互、窄屏宽屏溢出检查：**尚未执行**
     （宽屏侧边栏布局只在 macOS 桌面构建里跑过，未逐屏核对）
-  - Android / Web 构建：**尚未执行**（Android 平台目录也不存在，见「未实现」表）
+  - **Android 构建：v3.11 已跑通**（2026-10-12，`assembleDebug`），平台目录已生成；
+    但**装到设备上会怎样一律未验证**——见「验证记录」的 v3.11 一节。
+    **Web 构建：尚未执行**。
   - 外部服务、小米数据：未接入，不能视为已完成。**夜间录音已接入（v3.9）**，但真机整夜后台
     存活、切片阈值调参与界面目视**均未验证**（见 v3.9 那一节），不能当成已完成。
     助眠音效已实现（**2026-10-03 起是打包的实景录音**，此前为设备内合成）。

@@ -1,0 +1,17 @@
+gradle-wrapper.jar
+/.gradle
+/captures/
+/gradlew
+/gradlew.bat
+/local.properties
+GeneratedPluginRegistrant.java
+.cxx/
+# Kotlin 编译器的工作目录。构建出错时它会往 .kotlin/errors/ 里写 err*.log，
+# Flutter 的模板 .gitignore 没覆盖到，不忽略就会把一堆构建日志提进仓库。
+/.kotlin/
+
+# Remember to never publicly share your keystore.
+# See https://flutter.dev/to/reference-keystore
+key.properties
+**/*.keystore
+**/*.jks

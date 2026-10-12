@@ -36,7 +36,17 @@ class UrlAppSettingsLauncher implements AppSettingsLauncher {
           '?Privacy_Microphone',
         );
       default:
-        // Android 平台目录尚未生成（README「未实现」），这里给不出一个验证过的地址；
+        // **Android 上这一行是死按钮，且换个 URI 也修不好**（规格偏差 §5.4）。
+        //
+        // v3.11 起 Android 平台目录已生成（见 README「平台配置」），但这里仍然给不出
+        // 一个能用的地址，原因有两条，缺一条都不够：
+        //   1. `app-settings:` 是 iOS 的私有 scheme，Android 没有对应的 intent filter，
+        //      `launchUrl` 会拿到 ActivityNotFoundException（本方法吞掉，界面无反馈）；
+        //   2. API 30 起强制**包可见性**，就算换成 Android 真正认的
+        //      `package:`，没有在清单里用 `<queries>` 声明过，系统同样不会把它交给任何人。
+        //
+        // 所以要真的能用，得走真正的 Intent（`ACTION_APPLICATION_DETAILS_SETTINGS`，
+        // 通常是一个平台通道），或者补上 `<queries>` 声明——不是把下面这行改个字符串的事。
         // 退回 iOS 的写法只是不崩，不代表在别处能用。
         return Uri.parse('app-settings:');
     }

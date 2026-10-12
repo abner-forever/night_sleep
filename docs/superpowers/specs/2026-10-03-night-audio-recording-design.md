@@ -157,7 +157,7 @@ List<AmplitudeSample> ──segmentClips(ClipParams)──▶ List<ClipRange>
 | --- | --- |
 | iOS | `Info.plist`：`NSMicrophoneUsageDescription` + `UIBackgroundModes: [audio]` |
 | macOS | `Info.plist`：`NSMicrophoneUsageDescription`；`DebugProfile.entitlements` 与 `Release.entitlements` 都加 `com.apple.security.device.audio-input` |
-| Android | 平台目录尚未生成，**本轮不落地**，只记进 README：`RECORD_AUDIO` + `FOREGROUND_SERVICE_MICROPHONE` + 前台服务 |
+| Android | **部分落地（v3.11，2026-10-12）**：平台目录已生成，manifest 声明了 `FOREGROUND_SERVICE` 与 `FOREGROUND_SERVICE_MICROPHONE`。**但前台服务本身仍未实现**——退到后台或锁屏后录音仍然停止，「声明了不等于能用」。`RECORD_AUDIO` **应用侧不声明**：实测 `record_android` 2.2.0 的 manifest 已自带并会在构建时合并（当初这一行写的「要补 RECORD_AUDIO」是没核过插件的推断，已订正）。详见 [安卓平台接入设计](2026-10-12-android-platform-design.md) §5.1 |
 
 用途文案（本次由使用方确认）：
 
