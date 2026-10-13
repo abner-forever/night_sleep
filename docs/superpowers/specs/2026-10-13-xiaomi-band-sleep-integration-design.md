@@ -98,8 +98,11 @@ GATT 协议通道**，另外写了一个一次性探针 APK（`aapt2` + `javac` 
 **DUAL**，与 §三 第 3 条一致。
 
 **结论：GATT 枚举没做成。** 手环 BLE 侧是否开放 miwear 协议通道，**仍然未知**（见 §九）。
-要把这个问题问到底，得先把手机与手环**解绑**（不可逆，会破坏小米运动健康的绑定），
-或者换一台没有 MIUI 扫描限制的设备——**两条代价都超过了这个问题本身的价值**。
+要把这个问题问到底，得让手环脱离连接态（解绑）**并且**绕过 MIUI 的扫描屏蔽——
+而「解绑之后手环是否就会在 BLE 侧广播」**本身也没验证过**，所以这一步连能不能成功都不确定。
+（解绑不是不可逆的：它会让当前那把密钥作废、需要重新配对取新的，**手环本身不会锁死**，
+本段先前写成「不可逆」是错的，2026-10-13 订正。）
+**这些代价叠加起来超过了这个问题本身的价值。**
 
 ## 四、四条候选路径
 
@@ -209,8 +212,19 @@ Gadgetbridge 已经把这套经典蓝牙 + miwear 协议栈 + 睡眠解码全做
 它从小米运动健康的日志里取（§三 第 1 条的路径），或者由小米账号云端下发。
 
 **2026-10-13 使用方裁定：暂不提取。** 本轮只做零风险的传输层实测。
-理由是这把密钥等于手环数据链的钥匙，且有一处不可逆后果：**一旦把手环绑给 Gadgetbridge，
-就解绑不回来，密钥也随之失效**。这跟「扫一下广播包」不是一个量级的动作。
+这把密钥等于手环数据链的钥匙，这跟「扫一下广播包」不是一个量级的动作。
+
+**代价到底在哪（本节 2026-10-13 订正过，原先写的「不可逆」是错的）**：
+
+- **不是「不可逆」。** 解绑手环会让**当前那把密钥作废**、需要重新配对拿新的；
+  恢复出厂还会换掉蓝牙 MAC。**手环本身不会锁死，随时可以重新绑回小米运动健康。**
+  Gadgetbridge 官方流程的关键恰恰是「**配对取到密钥后不要解绑**，直接卸载/停用官方 App」
+  ——踩的坑是「先解绑再卸载」，那样密钥就白取了。
+- **真正的代价是共存性**：Gadgetbridge 与小米运动健康**不能在同一台手机上共存**（抢连接）。
+  走 Gadgetbridge 就等于放弃小米运动健康这条日常通路。
+- **另有一个已知缺陷**：解绑或恢复出厂后，Mi Fitness 有时**不把新密钥写进日志**
+  （中文社区报告的 App 缺陷，非官方），需删日志或重装 App 再连一次才能重新取到。
+  这才是「重新来一遍」真正烦人的地方。
 
 （本轮曾尝试扫描该字段是否存在于日志中，被权限分类器拦下两次，理由正是「使用方批准的是
 nRF Connect 侦察，不是从厂商 App 私有数据里提取凭据」。**拦截是对的，记录在此**，
@@ -274,7 +288,10 @@ nRF Connect 侦察，不是从厂商 App 私有数据里提取凭据」。**拦�
 - [Gadgetbridge issue #3930 — Xiaomi Smart Band 9（RE 主线，含 GATT 是否关闭的未决问题）](https://codeberg.org/Freeyourgadget/Gadgetbridge/issues/3930)
 - [Gadgetbridge — Xiaomi protobuf 支持状态（Sleep stages 列为 Missing）](https://gadgetbridge.org/basics/topics/xiaomi-protobuf/)
 - [Gadgetbridge issue #6101 — Export sleep stages and HRV to Health Connect（未实现）](https://codeberg.org/Freeyourgadget/Gadgetbridge/issues/6101)
-- [Gadgetbridge — Huami/Xiaomi 服务端配对（密钥获取，注意包名写的是国际版）](https://gadgetbridge.org/basics/pairing/huami-xiaomi-server/)
+- [Gadgetbridge — Huami/Xiaomi 服务端配对](https://gadgetbridge.org/basics/pairing/huami-xiaomi-server/)。
+  **同时也是 §七 那处订正的出处**：官方流程写的是「配对取到密钥后**不要解绑**，直接卸载/停用
+  官方 App」，以及「每次解绑都会使密钥失效」。另注意该页写的包名是国际版 `com.xiaomi.wearable`，
+  国行机器上是 `com.mi.health`（见 §3.1）。
 - [AstroBox-NG-Module-Pb — 公开的 miwear `.proto` 定义](https://github.com/AstralSightStudios/AstroBox-NG-Module-Pb)
 - [shkyyy18/mi_fitness_data_bridge — 修正过的阶段映射](https://github.com/shkyyy18/mi_fitness_data_bridge)
 - [flyice-juin/mi_fitness_cn](https://github.com/flyice-juin/mi_fitness_cn) 与 [binglua/mi-fitness-mcp-cn](https://github.com/binglua/mi-fitness-mcp-cn)（**两个映射写反的例子**）
