@@ -319,7 +319,7 @@ Kotlin 侧**没有任何单元测试**（本仓库没有 Kotlin 测试设施）�
 | 夜间录音 / 鼾声梦话检测 | **录音已接入（v3.9，plan B），但真机整夜后台存活未验证；鼾声/梦话检测仍没有**。会话期间按振幅切片、一条片段一个 WAV 落进 `SoundClips`；详情页声音卡可回放、可**手动**标注为打鼾 / 梦话 / 杂音。**没有任何自动识别 / 转写 / 结论**——这是刻意的（M3 第 3 条），不是待办；是鼾声还是梦话由用户自己听、自己标。**未验证**：真机整夜后台存活（锁屏后 Dart isolate 是否持续收到 PCM、片段是否持续落盘——**这是整条路的前提**）、七个切片阈值在真实样本上的表现、界面目视核对。另：**白噪音播放期间不录音**（那段是真的覆盖缺口） |
 | 白噪音的后台播放 / 锁屏控制 | 未接入。会话白噪音在**收起页面后仍继续响**（播放器提到 app 级），但退到后台或锁屏后声音会停，界面已如实标注 |
 | 助眠音效素材的可商用授权 | **未落实（发布阻塞项）**。5 条录音来自爱给网（aigei.com），使用方 2026-10-03 裁定为「尚未确认、仅供个人试用」。代码、`pubspec.yaml`、README 与规格均已如实标注，规格 §10 第 3 条**不关闭**。发布前必须确认授权、换素材或退回合成 |
-| 小米手环数据导入 | 未接入。需真实导出样本或官方接口文档，导入按钮禁用并说明原因 |
+| 小米手环数据导入 | **未接入，导入按钮仍禁用**。**可行性判定已出（v3.15，2026-10-13）**：小米手环 9 走**经典蓝牙 SPP**（真机实测，见「验证记录」v3.15），Flutter 的 BLE 插件碰不到它，自写 Dart 协议栈判定为不值得。推荐路径是经 Gadgetbridge 转发（不碰小米账号），其次是申请小米官方开放平台权限。见[小米手环接入可行性设计](docs/superpowers/specs/2026-10-13-xiaomi-band-sleep-integration-design.md)。**仍未做**：GATT 枚举（试了三轮没做成，见规格 §3.2）、Gadgetbridge 实际解码验证、官方平台权限申请——**没有任何一条路径被真机跑通过** |
 | AI 洞察服务 | **部分接入（v3.7）**。已能查余额（**仅 DeepSeek**）、做连通性测试、在睡眠详情里重新生成一晚的模型总结并落库；API Key 存**系统钥匙串**（v3.7 起，重启后仍在，设置页有「清除密钥」）。**仍未做**：Claude 的对话与余额（Messages API 形状不同且无 key 可实测）、余额的持久化与历史曲线、**发送前「将要发送哪些数据」的逐项确认界面**（规格 M4 第 3 条的后半句）。OpenAI 的对话路径与 DeepSeek 同一份代码，但**没有 key 实测过**（见[验证记录](docs/verification-log.md)） |
 | **Android 平台** | **平台目录已生成（v3.11，2026-10-12）**：`android/` 由 `flutter create --platforms=android .`（Flutter 3.47.5）产出，清单里补了 `RECEIVE_BOOT_COMPLETED` 与 `ScheduledNotificationReceiver` / `ScheduledNotificationBootReceiver` 两个 receiver，gradle 开了 core library desugaring。**「提醒不会因为重启而失效」这条现在成立**（此前是「开关看着有效、实际不响」）。**真机安装启动已在 v3.12 跑通**（MI 9 / API 30），**界面层的系统栏与安全区已在 v3.13 适配**（两条系统栏透明、页面背景铺到物理边缘，见「验证记录」v3.13）。**仍未做**：通知真的投递、前台录音在 Android 上录得下来——**一律未验证**。见下方「Android 上的已知缺口」 |
 | Android 上的已知缺口（v3.11 起逐条列出，**不得视为已完成**） | ① **后台 / 锁屏录音**：清单里声明了 `FOREGROUND_SERVICE` 与 `FOREGROUND_SERVICE_MICROPHONE`，但**没有前台服务实现**——退到后台或锁屏后录音仍然停止。**声明了不等于能用**。② **「去系统设置」在 Android 上是死按钮**：`app_settings.dart` 对非 iOS/macOS 退回 `app-settings:`，Android 没有等价 scheme，点了没反应（麦克风权限被拒时那一行）。③ **`android:allowBackup` 未改**：备份开着意味着数据库与录音片段可能被上传到用户自己的 Google Drive，而应用承诺「不会上传」。三个处置方案见规格 §5.4，**待使用方裁定**。④ **发布阻塞**：applicationId 仍是占位 `com.example.night_sleep`；release 构建用 debug 签名（模板默认）；`FOREGROUND_SERVICE_MICROPHONE` 在没有对应服务前不应带着上架（Google Play 有单独用途申报） |
@@ -560,29 +560,43 @@ snake_case）。两者是两个独立的商店身份，不要求一致；待项�
 [`docs/verification-log.md`](docs/verification-log.md)（按时间倒序，最新在最上面）——
 README 是「怎么跑、能干什么」，那份文档才是「验到了哪一步、还有什么没验」。
 
-**v3.13（2026-10-13：Android 系统栏与安全区）——Windows 11 / Flutter 3.47.5 / Android SDK 36：**
+**v3.15（2026-10-13：小米手环睡眠数据接入可行性判定）——Windows 11 / Flutter 3.47.5 / Android SDK 36：**
 
 真机同上：Xiaomi MI 9（`cepheus`，adb serial `e0e60672`），**Android 11（API 30）/ MIUI 12.5.6 / arm64-v8a**。
+设备：小米手环 9 NFC（本轮首次与这台手机配对）。
 
-- `flutter analyze` 无问题；`flutter test` **609/609 通过**（v3.12 是 592，净增 17）。
-- **跑过的（真机，改前 / 改后是同一台机器、同一个页面）**：
-  - 顶部：`x=30` 一列逐像素采样，`y<75` 由 `(181,181,186)` 变成 `(241,241,248)` 一类的
-    页面背景——**灰带整条消失**；浅色主题下状态栏图标仍是深色。
-  - 底部：黑带消失，页面背景铺到 `y=2339`；胶囊底边 `y=2296`、手势条上沿 `y=2310`。
-  - 推入页（`外观`，走 `Subpage` 的 `SafeArea`）同样两条栏透明。
-  - **浅色应用主题下进常暗的会话页**：状态栏图标如期变白、背景铺到导航栏后面。
-  - **应用内切深色而系统仍是浅色**：状态栏与手势条图标双双变白。
-- **没跑过的**：**API 29 以下的设备**（引擎 `SDK_INT >= 29` 的门槛让 `edgeToEdge` 成为
-  空操作，应维持旧样子）；**API 35 及以上**（本轮用的几个字段在那条线以上是 deprecated
-  no-op，系统自己强制 edge-to-edge，预期一样但那是另一套行为）；**iOS / macOS**
-  （**状态栏样式的来源被改了**——从跟随系统外观改成跟随应用主题，是本意但没跑过）；
-  **三键导航**（安全区约 48dp，胶囊会整个让开——推断，未实测）；**横屏**。
-  判据与逐条截图对照见[安卓平台接入设计](docs/superpowers/specs/2026-10-12-android-platform-design.md) §6.4–6.5。
-- **本机构建**：`flutter build apk` 撞上 Kotlin 增量缓存时，异常里那句
-  `Could not close incremental caches … different roots` 就是根因——**pub 缓存在 `C:`、
-  工程在 `D:`**，增量缓存存的是绝对路径，跨盘建不起来（此前记的「疑为杀软占住 `.tab`」
-  只是同一现象的另一种猜测）。**绕开 CLI、`cd android` 后直接跑 `gradlew assembleDebug`**，
-  带 `-Pkotlin.incremental=false` 与 `-Pkotlin.compiler.execution.strategy=in-process`，
-  48 秒完成。**`gradlew` 的 `APP_HOME` 取的是当前目录**（不是脚本所在目录），
-  从仓库根跑 `./android/gradlew` 会报 `ClassNotFoundException: GradleWrapperMain`——
-  而 wrapper jar 其实好好地在 `android/gradle/wrapper/`。详见「构建 Android 的网络前提」。
+**本轮是调研 + 真机实测，Dart 代码一行未改**，因此**没有复跑** `flutter analyze` / `flutter test`
+（上一次是 v3.13 的 609/609）。判据全部是 `adb shell` 的原始输出。
+
+- **跑过的（真机）**：
+  - **国行版小米运动健康的包名是 `com.mi.health`（v3.59.1），不是 `com.xiaomi.wearable`。**
+    后者是国际版；Gadgetbridge 官方文档与中文社区所有取密钥教程都写它，**在国行机器上照抄必失败**。
+    本机该目录下确有 `XiaomiFit.device.log` / `XiaomiFit.main.log` / `Transfer.device.log`。
+  - **设备广播名是 `Xiaomi Smart Band 9 9EEF`，不带 "NFC"**——据此**推翻了本轮调研阶段
+    自己的一个推测**（原以为 NFC 版匹配不上 Gadgetbridge 的 `^Xiaomi Smart Band 9 [0-9A-F]{4}$`）。
+  - **手环是双模（`[ DUAL ]`），SDP 暴露 `00001101`（Serial Port Profile）、`00001124`（HID）
+    与小米自定义 `cc353442-be58-4ea2-876e-11d8d6976366`。**
+  - **小米运动健康在 Android 上走经典蓝牙传数据**：`Connection Events` 里只有一条
+    `21:57:12 CLASSICAL-CONNECTED … status = Success`，**没有任何 `LE-CONNECTED`**；
+    `GATT Client Map` 的 `Entries for mApps: 0`。BLE 侧只用于**扫描发现**
+    （9 次 LE 扫描 / 7244 条结果）。**这条把「用 Flutter 的 BLE 插件直连手环」判定为不通。**
+  - 配对过程不顺：21:54 连挂两次（`BONDING → NONE`），21:57:10 第三次才 `BONDED`。
+  - **BLE 侧探测跑了三轮，都没成功**（自写一次性探针 APK，手搓 `aapt2`+`javac`+`d8`+`apksigner`，不走 gradle、不进仓库）：
+    手环在**与手机保持经典连接时不在 BLE 侧广播**——同一抓取窗口里协议栈收到 3 台其他 BLE
+    设备的广播（`54:48:e6:ec:60:03` / `7c:c2:94:17:79:db` / `ac:8c:46:26:a3:00`），
+    而手环地址 `08:16:d5:73:9e:ef` 出现 **0 次**；按 MAC 直连（协议栈确实受理：
+    `clientConnect … isDirect=true, phy=1`）20 秒超时、`onConnectionStateChange` 完全没触发。
+    另外 **MIUI 会把 BLE 扫描结果对第三方 App 屏蔽**（协议栈统计 `Total number of results: 0`，
+    而同一时间它在处理别人的广播包；`install -g` / `pm grant` / `cmd appops set --uid` 都解不开，
+    `COARSE_LOCATION` 的 Uid mode 始终是 `ignore`）。
+- **没跑过的**：
+  - **GATT 枚举没做成**——上面三轮都失败了，所以手环 BLE 侧**是否开放 miwear 协议通道仍然未知**；
+    要把这问题问到底得先解绑手环（不可逆）或换设备，**代价超过问题本身的价值，建议搁置**；
+  - **没有提取手环配对密钥**（本轮使用方裁定暂不提取，理由与拦截记录见规格 §七），
+    因此**没有任何一条路径被真机跑通过**；
+  - **Gadgetbridge 未安装、未试连**；**小米云 API 未实测**；**官方开放平台未申请**；
+  - **手环数据与手机录音的时钟对齐没碰**。
+  - 完整清单见[可行性设计](docs/superpowers/specs/2026-10-13-xiaomi-band-sleep-integration-design.md) §九。
+- **判定结论**：自写 Dart 协议栈**不值得**（传输层要先写 platform channel，iOS 直接封死，
+  Dart 生态零先例）；推荐 **Gadgetbridge 转发**，其次申请**官方开放平台**，
+  私有云 API **仅个人自用、不得随应用分发**。见规格 §四–§六。

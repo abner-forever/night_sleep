@@ -3,6 +3,58 @@
 本文件记录「夜深」项目规格的版本变更。规格正文见
 [docs/superpowers/specs/2026-09-28-night-sleep-design.md](docs/superpowers/specs/2026-09-28-night-sleep-design.md)。
 
+## 3.15（2026-10-13）
+
+**新开[小米手环睡眠数据接入可行性设计](docs/superpowers/specs/2026-10-13-xiaomi-band-sleep-integration-design.md)，
+把真机实测写进 README「验证记录」。纯文档改动，Dart 与测试代码一行未动，导入按钮仍然禁用。**
+
+### 为什么要做这一轮
+
+总规格 §10 第 2 条从立项起就写着「小米睡眠数据的真实导出文件样本或官方授权接口文档」，
+`sleep_import_page.dart` 因此一直禁用、README「未实现」表里那一行一直是「未接入」。
+这一轮把「那个真值从哪条管道进来」查清了：四条候选路径各自能拿到什么、代价是什么、哪条判死。
+
+### 结论
+
+- **自写 Dart 协议栈直连：判死。** 真机实测确认小米手环 9 走**经典蓝牙 SPP（RFCOMM）**——
+  SDP 里有 `00001101`，Connection Events 只有一条 `CLASSICAL-CONNECTED`、**没有任何
+  `LE-CONNECTED`**，`GATT Client Map` 的 `Entries for mApps: 0`。Flutter 的 BLE 插件
+  （`flutter_blue_plus` / `flutter_reactive_ble` / `universal_ble`）全是 BLE-only；
+  iOS 侧第三方 App 根本没有 RFCOMM。
+- **推荐 Gadgetbridge 转发**（它已做好经典蓝牙 + miwear 协议栈 + 睡眠解码，且不碰小米账号），
+  其次**申请官方开放平台**（`com.xiaomi.sleep.health` 有正式字段文档，但客户端 SDK 要
+  HyperOS 4.0+，本机 MIUI 12.5.6 跑不了）。私有云 API **仅个人自用、不得随应用分发**。
+- **两处对公开资料的订正**：国行版小米运动健康包名是 **`com.mi.health`** 而非
+  `com.xiaomi.wearable`（Gadgetbridge 官方文档与中文社区教程一律写错，照抄必失败）；
+  **NFC 版设备名不带 "NFC"**（广播名 `Xiaomi Smart Band 9 9EEF`），Gadgetbridge 的设备
+  正则能匹配——这一条**推翻了本轮调研阶段自己的推测**。
+
+### 红线状态
+
+**§10 第 2 条不关闭**——样本与官方文档仍未拿到，只按第 3 条的写法记一笔「部分进展」。
+**§8 偏差 #4「不猜小米导入字段」一字未改**，导入按钮仍然禁用。本轮反而给这条红线加了新依据：
+公开实现里**多个流行项目的阶段映射是错的**（`mi_fitness_cn` 深浅睡写反、
+`mi-fitness-mcp-cn` REM 与清醒写反），证明「有字段可读」和「字段含义可信」是两件事。
+
+### BLE 侧探测：跑了三轮，没做成，但失败原因本身是结论
+
+另写了一个一次性探针 APK（手搓 `aapt2`+`javac`+`d8`+`apksigner`，不走 gradle、不进仓库）
+去问「手环 BLE 侧到底开不开 GATT」。三轮全败，原因两条，**都是本机环境事实而非代码问题**：
+
+- **手环与手机保持经典连接时，BLE 侧不广播**——同一抓取窗口里协议栈收到 3 台其他 BLE 设备的
+  广播，手环地址出现 **0 次**；按 MAC 直连也 20 秒超时。
+- **MIUI 会把 BLE 扫描结果对第三方 App 屏蔽**（协议栈统计 `0 results`，
+  `install -g` / `pm grant` / `cmd appops set --uid` 都解不开）。**这条对将来任何蓝牙相关
+  工作都成立**，已写进规格 §3.2 的环境事实。
+
+因此 **GATT 那条悬案仍未结**，只是现在知道它被什么挡着；继续追要先解绑手环（不可逆），
+代价超过问题本身的价值，**建议搁置**。
+
+### 「未验证」照旧不省
+
+GATT 枚举（三轮未成）、配对密钥提取（本轮使用方裁定暂不提取）、Gadgetbridge 试连、
+云 API 实测、官方平台申请——全部留在规格 §九与 README「验证记录」v3.15 的未验证清单里。
+
 ## 3.14（2026-10-13）
 
 **把 `README.md` 的「验证记录」拆成 [`docs/verification-log.md`](docs/verification-log.md)，

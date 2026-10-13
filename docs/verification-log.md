@@ -21,6 +21,33 @@
 
 本机环境：macOS 14.8.9（23J631，Intel），Flutter 3.47.5 stable。
 
+**v3.13（2026-10-13：Android 系统栏与安全区）——Windows 11 / Flutter 3.47.5 / Android SDK 36：**
+
+真机同上：Xiaomi MI 9（`cepheus`，adb serial `e0e60672`），**Android 11（API 30）/ MIUI 12.5.6 / arm64-v8a**。
+
+- `flutter analyze` 无问题；`flutter test` **609/609 通过**（v3.12 是 592，净增 17）。
+- **跑过的（真机，改前 / 改后是同一台机器、同一个页面）**：
+  - 顶部：`x=30` 一列逐像素采样，`y<75` 由 `(181,181,186)` 变成 `(241,241,248)` 一类的
+    页面背景——**灰带整条消失**；浅色主题下状态栏图标仍是深色。
+  - 底部：黑带消失，页面背景铺到 `y=2339`；胶囊底边 `y=2296`、手势条上沿 `y=2310`。
+  - 推入页（`外观`，走 `Subpage` 的 `SafeArea`）同样两条栏透明。
+  - **浅色应用主题下进常暗的会话页**：状态栏图标如期变白、背景铺到导航栏后面。
+  - **应用内切深色而系统仍是浅色**：状态栏与手势条图标双双变白。
+- **没跑过的**：**API 29 以下的设备**（引擎 `SDK_INT >= 29` 的门槛让 `edgeToEdge` 成为
+  空操作，应维持旧样子）；**API 35 及以上**（本轮用的几个字段在那条线以上是 deprecated
+  no-op，系统自己强制 edge-to-edge，预期一样但那是另一套行为）；**iOS / macOS**
+  （**状态栏样式的来源被改了**——从跟随系统外观改成跟随应用主题，是本意但没跑过）；
+  **三键导航**（安全区约 48dp，胶囊会整个让开——推断，未实测）；**横屏**。
+  判据与逐条截图对照见[安卓平台接入设计](superpowers/specs/2026-10-12-android-platform-design.md) §6.4–6.5。
+- **本机构建**：`flutter build apk` 撞上 Kotlin 增量缓存时，异常里那句
+  `Could not close incremental caches … different roots` 就是根因——**pub 缓存在 `C:`、
+  工程在 `D:`**，增量缓存存的是绝对路径，跨盘建不起来（此前记的「疑为杀软占住 `.tab`」
+  只是同一现象的另一种猜测）。**绕开 CLI、`cd android` 后直接跑 `gradlew assembleDebug`**，
+  带 `-Pkotlin.incremental=false` 与 `-Pkotlin.compiler.execution.strategy=in-process`，
+  48 秒完成。**`gradlew` 的 `APP_HOME` 取的是当前目录**（不是脚本所在目录），
+  从仓库根跑 `./android/gradlew` 会报 `ClassNotFoundException: GradleWrapperMain`——
+  而 wrapper jar 其实好好地在 `android/gradle/wrapper/`。详见「构建 Android 的网络前提」。
+
 **v3.12（2026-10-13：Android 罗盘 + `.metadata` 修复）——Windows 11 / Flutter 3.47.5 / Android SDK 36：**
 
 真机：Xiaomi MI 9（`cepheus`，adb serial `e0e60672`），**Android 11（API 30）/ MIUI 12.5.6 / arm64-v8a**。
