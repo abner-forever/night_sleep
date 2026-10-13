@@ -4,14 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 这是什么
 
-「夜深」——中文、本地优先的睡眠记录 Flutter 应用（iOS / macOS 已构建；Web 有骨架、
-**Android 平台目录未生成**，两者均未构建，见 README「未实现」表）。
+「夜深」——中文、本地优先的睡眠记录 Flutter 应用（iOS / macOS 已构建；**Android 平台目录已
+生成、真机跑通**——v3.11 生成工程、v3.12 装到 MI 9 上跑通、v3.13 适配系统栏，但后台录音与
+通知投递仍未实现；**Web 只有骨架、从未构建**。逐条现状见 README「未实现」表）。
 界面按 Figma Make 原型的**最终生效层**实现。
 
 **动手前先读 `docs/superpowers/specs/2026-09-28-night-sleep-design.md` 第 8 章「与原型的有意偏差」。**
-里面 22 条都是刻意为之的，
-每条附了理由和回归方法。其中「不伪造睡眠阶段 / 不画没有真实音频的波形 / 不显示读不到的余额 /
-不猜小米导入字段」这几条是产品红线，不是待办：原型里这些是演示数据，规格书明令不得当真实能力实现。
+那张表现有 52 条（`#1`–`#51` 外加一条 `#16b`；`#7` / `#31` / `#35` / `#44` 标着「作废」，是历史
+不是待办；`#34` 排在 `#39` 之后，别按位置找）。每条都写了理由，**却不保证都写了回归方法**。
+
+表里反复引用的那句是**「没有的东西就显示为没有」**（#3 / #7 / #26 / #33 一族）。落到具体能力上：
+不伪造睡眠阶段（#10）、没有真实音频就不画波形（#2 / #13 / #27，措辞是「没有测量就不画」）、
+不显示读不到的余额（#3）、不猜小米导入字段（#4；公开实现的阶段映射已被实测证明是错的，见
+[`2026-10-13-xiaomi-band-sleep-integration-design.md`](docs/superpowers/specs/2026-10-13-xiaomi-band-sleep-integration-design.md) §五）。
+这些是产品红线，不是待办——原型里它们是演示数据，规格书明令不得当真实能力实现。
 `README.md` 的「未实现」表同样不要当成已完成。
 
 新增或修改能力后，同步更新该规格（偏差表 / 测试矩阵）与 `README.md`（实现范围），
@@ -19,6 +25,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **验收记录只有一处**：本轮实跑结果与**未验证项**一律写进
 [`docs/verification-log.md`](docs/verification-log.md)（按时间倒序，最新在最上面）。
+**每条的抬头自带它当时那台机器与环境**——文件开头那句「本机环境：macOS」只管 v3.11 之前的条目，
+v3.11 起都是在 Windows 上做的。
 **`README.md` 里不再保留任何一版**——连指针式的一段都不留（v3.17 起；v3.14 曾拆成
 「README 留最近一版 + 更早的进 docs」两处，2026-10-13 使用方要求**全部搬走**）。
 **「未验证」那一半不许省**——它是规格书「不得把没做过的事写成已完成」那条红线的凭据。
@@ -38,7 +46,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 plan 的厚度跟着改动量走——不要为了格式齐整，把单点修改写成几百行。
 
-编排强度同样跟档位走：`subagent-driven-development` 那套「每个任务派实现者 + 审查者」只用于
+编排强度同样跟档位走：「每个任务派一个实现者 + 一个审查者」那套只用于
 **spec + plan** 档。`只开 plan` 档在当前会话里直接做，审查**集中在阶段末尾做一次**，不要逐任务派
 subagent——每个 subagent 都要从头重读 CLAUDE.md / 规格 / 源码，对小改动是纯开销。
 
@@ -46,20 +54,26 @@ subagent——每个 subagent 都要从头重读 CLAUDE.md / 规格 / 源码，�
 
 ```bash
 flutter pub get
-dart run build_runner build     # 生成 lib/core/database/app_database.g.dart，改表结构后必跑
+dart run build_runner build     # 生成 lib/core/database/app_database.g.dart
 dart format .
 flutter analyze
 flutter test                     # 整套测试
 flutter test test/sleep_score_test.dart                      # 单个文件
 flutter test test/sleep_score_test.dart --plain-name "分档阈值"  # 单个用例（子串匹配）
-flutter run -d macos
+flutter run -d macos             # 或 -d chrome / -d <真机或模拟器>
 ```
 
-国内网络下的 pub 镜像、iOS / macOS 构建的网络前提与代理，以及演示数据开关 `DEMO_DATA`，
-见 README「运行与生成」与「构建 iOS / macOS 的网络前提」两节。
+**新检出要先跑一次 `build_runner`**：`app_database.g.dart` 已 gitignore，缺了它 `flutter analyze` /
+`flutter test` 会报几百条 `Undefined name 'ActiveSessionsCompanion'` 之类的错；改表结构后同理。
+
+国内网络下的 pub 镜像、iOS / macOS 与 **Android** 构建的网络前提与代理，以及演示数据开关
+`DEMO_DATA`，见 README「运行与生成」与「构建网络前提」（后者分 iOS / macOS 与 Android 两小节）。
+**Android 构建莫名挂住（不报错、日志不动）时先去读那一节的 Android 小节**——记的是实测出来的
+绕过办法，不是通用建议。
 
 **不要改 `lib/**/*.g.dart`**（已 gitignore，由 Drift 生成）。也不要往 `~/.zshrc` 等
-shell profile 里写环境变量——需要时用命令行前置的临时变量。
+shell profile 里写环境变量，或改 `~/.gradle/init.d/`、仓库里的 `distributionUrl` 这类常驻配置
+——需要时用命令行前置的临时变量或 `-I <临时脚本>`。
 
 ## 架构
 
@@ -69,6 +83,11 @@ shell profile 里写环境变量——需要时用命令行前置的临时变量
 **三条最容易违反的**：Widget 不直接碰数据库（UI 唯一数据源是 `sleepEntriesProvider`）；
 每个 push 页面都走 `Subpage`（推入的路由继承不到 `Scaffold` 与 `Material` 祖先）；
 `SleepRepository.save()` 的 `stages` 传 `null` 表示「保持已有阶段不变」，不是「清空」。
+
+`docs/architecture.md` **落后于代码几处**，动手前以代码为准：provider 表不是全集（只列了首批
+7 个，`lib/` 里实际有三十多个）；schema 版本号也不是当前的（代码是 v6）；`source` 的取值除
+`manual / import / demo` 外还有 `session`（会话落库的记录）；密钥早已进系统钥匙串（v3.7 起），
+文档里「尚未接入安全存储」那句是旧的。
 
 ## 写 Flutter 代码前
 
@@ -80,15 +99,22 @@ DDL）见 **[`.claude/skills/flutter-pitfalls/SKILL.md`](.claude/skills/flutter-
 
 `integration_test/` 不参与 `flutter test`（要 `flutter drive`，见 README「界面截图巡检」）。
 
+`tool/` 下两个脚本产出的是**生成物**：`generate_app_icons.dart`（iOS / macOS / Android 三套图标，
+Android 那套两形式见偏差 #16b）与 `generate_noise_assets.dart`（`assets/noise/` 五条循环素材）。
+要改图标或音效就改生成器再跑一遍，别手改产物。跑法见 README「运行与生成」。
+**助眠音效素材的可商用授权尚未落实，是发布阻塞项。**
+
 ## 其他约定
 
-- 界面文案、注释、文档一律中文；代码标识符英文。
+- 界面文案、注释、文档一律中文；代码标识符英文。**既有一批文件仍是英文注释**
+  （`core/theme`、`core/widgets`、`core/platform`、`compass` 等处）——随改动顺手对齐即可，
+  不要为了统一去批量重写。
 - `analysis_options.yaml` 开了 `avoid_print`、`prefer_const_constructors`——CLI 工具与巡检脚本
-  需要 print 时用 `// ignore: avoid_print`。分析器排除 `build/ ios/ web/ macos/`。
+  需要 print 时用 `// ignore: avoid_print`。分析器排除 `build/ ios/ web/ macos/ android/`。
 - 设计令牌只有一份（`app_tokens.dart` 的 `AppTokens` 主题扩展）。颜色/圆角/动效曲线从
   `AppTokens.of(context)` 取，不要在 widget 里写死色值。
 - 「获取可用模型」调服务商 `GET /models`：API Key 只走请求头，不落日志、不持久化，
   **错误信息也不回显响应体**（服务商可能把请求头原样引回来）。
 
-其余实现细节（宽屏断点、`AppHaptics`、助眠音效合成参数）见
+其余实现细节（宽屏断点、`AppHaptics`、助眠音效素材的循环长度与接缝淡化参数）见
 [`docs/architecture.md`](docs/architecture.md)。

@@ -268,7 +268,7 @@ class CompassStreamHandler(private val activity: Activity) :
      * ⚠️ **90 / 270 这两支尚未在真机上确认过。** Android SDK 自己的
      * `remapCoordinateSystem` 文档里那个「把手机当机械罗盘用」的例子
      * （`ROTATION_90` 用 `AXIS_Y, AXIS_MINUS_X`）暗示的方向与下面这张表相反，
-     * 即可能是这两支要互换。已按实测办法核对过（见 README 验证记录），
+     * 即可能是这两支要互换。已按实测办法核对过（见 docs/verification-log.md），
      * 若将来发现横屏方位差 180°，**改这里的两行即可**。
      */
     private fun forwardFor(rotation: Int): FloatArray = when (rotation) {

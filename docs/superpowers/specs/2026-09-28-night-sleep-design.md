@@ -164,7 +164,7 @@
 1. Flutter 工程，目标平台 iOS / macOS / Web / Android（`--platforms` 可增量添加）。
 2. 四个主入口、手机标签条 / 宽屏侧边栏自适应、完整令牌与组件库、空状态、弹层、滚轮选择器。
 3. 演示数据开关：`AppConfig.demoDataEnabled` 默认取 `kDebugMode`，可用 `--dart-define=DEMO_DATA=` 覆盖；演示行统一 `source = 'demo'`，可在设置中一键清除，发布构建默认关闭。
-4. `README.md`：环境要求、运行命令、项目结构、当前实现范围。
+4. `README.md`：环境要求、运行命令、项目结构、现在能做什么（v3.18 起该节由「当前实现范围」改名）。
 
 **验收：** 四入口可导航；浅色/深色无溢出；`flutter analyze` 零问题；基础测试通过。
 
@@ -424,7 +424,9 @@
 
 ## 9. 测试与验收矩阵
 
-每个里程碑至少执行 `dart format .`、`flutter analyze`、`flutter test`，并在 README 记录实际运行的设备/系统版本和未验证能力。
+每个里程碑至少执行 `dart format .`、`flutter analyze`、`flutter test`，并在
+[`docs/verification-log.md`](../../verification-log.md) 记录实际运行的设备/系统版本和未验证能力
+（**v3.17 起验收记录只在那一处**，README 不再保留任何一版）。
 
 | 类型 | 重点场景 | 当前状态 |
 | --- | --- | --- |
@@ -507,7 +509,7 @@
 | Widget | 会话页**常暗**：应用主题为**浅色**时，会话页内读到的 `Theme.of(context).brightness` 仍是 `dark`（防有人删掉页面自套的 `Theme`） | ✅ `test/sleep_session_page_test.dart`（「浅色主题下会话页仍然是深色」） |
 | Widget | 长按结束：横向胶囊、按住满 1.5s 触发、未满松手不结束、滑开作废、短按只提示；**开启「减弱动态效果」时 1.5 秒守卫仍按真实时长计时**（`AnimationBehavior.preserve`，属 bug 修复回归） | ✅ `test/hold_to_finish_button_test.dart`（6 条） |
 | 集成/真机 | iOS/Android/macOS 核心流程；通知权限；锁屏录音与中断 | macOS 构建、iOS 模拟器构建已验证；**真机、通知投递与分享面板未验证**。**夜间录音（v3.9）只过了单测与 `flutter build macos --debug`，真机整夜后台存活、切片阈值与中断恢复一律未验证**（见本轮新增行与 [验证记录](../../verification-log.md)）。**Android（v3.11）只到「构建通过 + 合并清单核对」**：平台目录已生成、清单已补齐，但**没有设备、没有跑过一次**——通知会不会响、前台录音录不录得下来，全未验证；锁屏/后台录音**连实现都还没有**（见 [安卓平台接入设计](2026-10-12-android-platform-design.md) §二） |
-| Widget / 单测 | **Android 罗盘（v3.12）**：平台判定放行 Android、`CompassUnavailable` 换了新文案、iOS 没被改坏、以及原生 `code=unavailable` 落到「此设备没有可用的罗盘传感器」 | ✅ `test/compass_test.dart`（新增 4 例，其中一例走 `TargetPlatformVariant`）。**必须说清这组用例的能力边界**：它们只钉得住**键名、类型、null 与否、错误 code**，钉不住**任何数值**——`up` 的符号、`rotationRate` 的符号、横屏 forward 分支、`accuracy` 换算全在 Kotlin 侧，而**本仓库没有 Kotlin 测试设施，Kotlin 侧零单测**。那几项的验证只能在真机上做，且目前**只做了一半**（见 README「罗盘」与「验证记录」） |
+| Widget / 单测 | **Android 罗盘（v3.12）**：平台判定放行 Android、`CompassUnavailable` 换了新文案、iOS 没被改坏、以及原生 `code=unavailable` 落到「此设备没有可用的罗盘传感器」 | ✅ `test/compass_test.dart`（新增 4 例，其中一例走 `TargetPlatformVariant`）。**必须说清这组用例的能力边界**：它们只钉得住**键名、类型、null 与否、错误 code**，钉不住**任何数值**——`up` 的符号、`rotationRate` 的符号、横屏 forward 分支、`accuracy` 换算全在 Kotlin 侧，而**本仓库没有 Kotlin 测试设施，Kotlin 侧零单测**。那几项的验证只能在真机上做，且目前**只做了一半**（见 README「罗盘」与[验证记录](../../verification-log.md)） |
 | 视觉检查 | 对照 Figma Make 四页在手机/宽屏、浅色/深色核对层级、间距、字体与安全区 | **部分**：v2.5 的巡检覆盖了四个一级页与详情/音效面板；v2.6 那一版追加确认了顶部渐变顶到物理顶端后硬分界消失（iPhone 16 Pro 模拟器，浅色/深色各一遍）。**v2.6 其余新增/改动的界面（自绘确认弹窗、垃圾桶图标、禁用按钮的页内提示、关于卡片）没有做目视核对**，只有几何/结构断言。v2.7 的标签条浮起量同样**只有几何断言**（`test/tab_bar_inset_test.dart`），没有截图核对；v2.8 的底部模糊带已在 2026-09-29 补做目视核对（iPhone 16 Pro 模拟器；浅色看过首页滚动后 / 统计页 / 睡眠详情与助眠音效弹层，**深色仅首页静置态**）：带子顶边（离屏幕底 121pt）无硬边（离带顶约 20pt 的标题处有效 wash 约 9%，越靠屏底越重）、方向为「下重上轻」（越靠近屏幕底越实）、胶囊下半部未发闷（深色下 `bgNavbar` 76% 填充主导）。**仍未逐页逐屏核对，深色覆盖面只有首页**；证据图见 `screenshots/v2.8-*.png`。**v3.3 的入睡前态（月亮 / 场景选择器 / 设定卡三段、点「开始睡眠」翻进行中、收起不写库）只有几何与结构断言，未目视核对**。**v3.2 的会话页夜景（八套场景动画 + 月亮）只有几何/结构断言，未目视核对**：动画观感、真机帧率与耗电，以及 `flutter_svg` 丢弃 `<filter>` 后月亮外发光近似层的实际观感，均需人工核对，见 [验证记录](../../verification-log.md)。**v3.5 的开屏页已目视核对通过**（macOS，渐变 / 轨道环 / 星点 / logo 与两道声波 / 文案 / 进度条逐项在位，证据 `screenshots/v3.5-splash.png`）；**设置根页与两个新二级页仍未核对**——巡检被系统的「`night_sleep` 想访问『文稿』文件夹」授权框盖住窗口，本机点不掉系统对话框，行内下拉在 390px 与 iPad 横屏下的换行、自绘滑块的拖拽手感因此仍只有几何与结构断言。**v3.6 起确认弹窗改成系统 `CupertinoAlertDialog`（半透明材质叠在模糊背景上），同样只有几何/结构断言**——浅色/深色下的实际观感，以及它与全仓其余玻璃材质的协调度，仍需人工核对 |
 
 v3.9（plan B，夜间录音）追加：

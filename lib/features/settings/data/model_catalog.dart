@@ -129,7 +129,7 @@ const List<InsightProvider> kInsightProviders = [
     modelsUri: 'https://api.openai.com/v1/models',
     curationSource: 'OpenAI 文档未能核实，故不内置任何模型名',
     // OpenAI 兼容协议，与 DeepSeek 共用同一条代码路径；但**没有 key 实测过**，
-    // 见 README「验证记录」。余额接口没有公开文档，故不接。
+    // 见 docs/verification-log.md。余额接口没有公开文档，故不接。
     chatUri: 'https://api.openai.com/v1/chat/completions',
     curated: [],
   ),
