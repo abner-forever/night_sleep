@@ -7,7 +7,8 @@ import '../../../../app/app_toast.dart';
 import '../../../../core/config/app_config.dart';
 // `show` 只取这一个类型：整份 `app_database.dart` 里有一个 drift 生成的
 // `Insight` 行类，与本文件用的领域模型 `Insight` 同名。
-import '../../../../core/database/app_database.dart' show AppSetting;
+import '../../../../core/database/app_database.dart'
+    show AppSetting, databaseProvider;
 import '../../../../core/platform/haptics.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/app_tokens.dart';
@@ -18,6 +19,8 @@ import '../../../../core/widgets/confirm_dialog.dart';
 import '../../../settings/data/insight_credentials.dart';
 import '../../../settings/data/insight_service.dart';
 import '../../../settings/data/model_catalog.dart';
+import '../../data/clip_pruning.dart';
+import '../../data/clip_store.dart';
 import '../../data/sleep_repository.dart';
 import '../../domain/insight_prompt.dart';
 import '../../domain/sleep_entry.dart';
@@ -188,7 +191,13 @@ class _DetailSheetState extends ConsumerState<DetailSheet> {
     );
     if (confirmed != true) return;
 
-    await ref.read(sleepRepositoryProvider).delete(widget.entry.id);
+    // **走这一条，不是 `SleepRepository.delete()`。** 光删行会让这一晚的录音文件留在
+    // 磁盘上，而确认框刚刚才向用户承诺「声音事件都会被永久删除」。
+    await deleteRecordWithRecordings(
+      database: ref.read(databaseProvider),
+      files: ref.read(clipFileStoreProvider),
+      recordId: widget.entry.id,
+    );
     if (!mounted) return;
     Navigator.of(context).pop();
     ref.read(toastProvider.notifier).show('记录已删除。');

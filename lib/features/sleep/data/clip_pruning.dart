@@ -72,3 +72,52 @@ Future<void> deleteOrphanRecordings({
   };
   await files.deleteOrphans(knownIds: known, pendingIds: pending);
 }
+
+/// 删掉一条睡眠记录，**连同它名下的录音文件**。
+///
+/// 光删行是不够的：`sound_clips` 会跟着外键级联消失，而磁盘上的 WAV 一行代码都不碰。
+/// 于是用户点完那个写着「声音事件都会被永久删除，此操作无法撤销」的确认框之后，
+/// 音频还在盘上躺着，要等到**下一次冷启动**的 [deleteOrphanRecordings] 才被扫掉——
+/// 在这中间它既不属于任何记录，也没人删得掉它。真机上实测到了这一串（见
+/// `docs/verification-log.md` v3.19：9 条片段行全没了，9 个 WAV 一个不少）。
+///
+/// **顺序不能反**：文件路径要在 `deleteRecord` 之前读，级联一跑就再也问不出来了。
+Future<void> deleteRecordWithRecordings({
+  required AppDatabase database,
+  required ClipFileStore files,
+  required String recordId,
+}) async {
+  final uris = [
+    for (final clip in await database.clipsFor(recordId)) clip.localUri,
+  ];
+  await database.deleteRecord(recordId);
+  for (final uri in uris) {
+    await files.deleteClip(uri);
+  }
+}
+
+/// 「删除全部本地数据」：记录、阶段、片段行、洞察，**以及磁盘上的每一个录音文件**。
+///
+/// 比 [deleteRecordWithRecordings] 多一类要收拾的东西：**当前会话清单里那些还没入库
+/// 的片段**。会话行会被 `deleteAllUserData` 删掉，清单随之消失，可那几段音频已经落盘
+/// 了——不在这里一起删，它们就正好落进「谁也不认识」的缝里。
+///
+/// 先删库再删文件：文件删失败（[ClipFileStore.deleteClip] 会吞掉 `FileSystemException`）
+/// 留下的是一个孤儿，下次冷启动会清掉；反过来先删文件，中途失败就会留下一行指着不存在
+/// 文件的记录，那才是详情页会当场露馅的那种。
+Future<void> deleteAllUserDataWithRecordings({
+  required AppDatabase database,
+  required ClipFileStore files,
+}) async {
+  final uris = <String?>[
+    for (final clip in await database.allRecordingClips()) clip.localUri,
+    for (final draft
+        in (await SessionRepository(database).load())?.clipJournal ??
+            const <ClipDraft>[])
+      draft.localUri,
+  ];
+  await database.deleteAllUserData();
+  for (final uri in uris) {
+    await files.deleteClip(uri);
+  }
+}

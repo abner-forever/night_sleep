@@ -226,8 +226,11 @@ class SleepRepository {
         );
   }
 
-  Future<void> delete(String id) => _db.deleteRecord(id);
-
+  /// **这里没有 `delete(id)`，是刻意的。** 删一条记录必须连带删掉它名下的录音文件，
+  /// 而文件不归这个仓库管（它只有 `AppDatabase`）。留一个只删行的 `delete`，就等于
+  /// 给「确认框说永久删除、音频却留在盘上」那个洞留了一个入口——真机上实测到过。
+  /// 要删记录请走 `deleteRecordWithRecordings()`（`clip_pruning.dart`），
+  /// 它同时握着库和文件仓库。
   Future<void> deleteDemoData() => _db.deleteDemoData();
 
   /// Re-seeds the bundled sample nights.
@@ -237,7 +240,8 @@ class SleepRepository {
   /// wanting the samples back.
   Future<void> installDemoData() => DemoSeed.install(_db);
 
-  Future<void> deleteAllUserData() => _db.deleteAllUserData();
+  /// 同上：删全部数据也要连文件一起删，所以入口在
+  /// `deleteAllUserDataWithRecordings()`，不在这个仓库里。
 }
 
 /// 把 `sound_clips.waveform_envelope` 里的 JSON 数组读成包络。

@@ -44,6 +44,16 @@ description: 当在本项目中编写或修改 Flutter widget、布局、主题�
   用 `unawaited(...)`，或改用普通 `test()` 函数体（`tool/generate_app_icons.dart` 里的
   `vg.loadPicture` 同理）。现成测试只断言数据库状态、不断言 UI 状态时抓不到这类问题。
 
+- **同一个假时钟也会吃掉 `dart:io`**：`Directory.createTemp` / `File.writeAsBytes` /
+  `File.delete` 这些**真实文件 I/O** 的 Future 在 `testWidgets` 里同样永不完成。
+  2026-10-14 实测：一条用例在测试体里直接建临时目录 + 写文件，**不报错、直接挂满 10 分钟**
+  才吐一行 `TimeoutException`（默认单测超时），看起来像"跑得慢"。**判据是进程 CPU 而不是
+  等待时长**：`flutter_tester` 活着但 CPU 几乎不动，就是挂了。
+  **改法**：UI 层别碰真文件——继承 `ClipFileStore` 覆写掉用到的那两个方法、只记「谁被删了」
+  （`recording_settings_test.dart` 的 `_FakeClipStore` 是现成样板）；真要验文件删没删，
+  用普通 `test()`（`test/clip_pruning_test.dart`），那里没有假时钟。
+  跑单文件时可以临时加 `--timeout 60s`，免得每次白等十分钟。
+
 - **别在 widget 测试里订阅 drift 的 `watch*` 流**：它们靠定时器驱动，FakeAsync 的假时钟不推进，
   拆解时会留下 pending timer。用 provider override 喂数据，写路径直接断言数据库。
 

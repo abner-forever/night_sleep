@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,13 +8,14 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sleep/app/app.dart';
 import 'package:night_sleep/core/database/app_database.dart'
-    show AppDatabase, AppSetting, databaseProvider;
+    show AppDatabase, AppSetting, SoundClipsCompanion, databaseProvider;
 import 'package:night_sleep/core/theme/app_theme.dart';
 import 'package:night_sleep/core/theme/app_tokens.dart';
 import 'package:night_sleep/core/widgets/app_basics.dart';
 import 'package:night_sleep/core/widgets/app_icons.dart';
 import 'package:night_sleep/features/home/presentation/home_page.dart';
 import 'package:night_sleep/features/log/presentation/log_page.dart';
+import 'package:night_sleep/features/sleep/data/clip_store.dart';
 import 'package:night_sleep/features/sleep/data/demo_seed.dart';
 import 'package:night_sleep/features/sleep/data/session_repository.dart';
 import 'package:night_sleep/features/sleep/data/sleep_repository.dart';
@@ -31,6 +35,21 @@ import 'package:night_sleep/features/sleep/domain/sleep_stage.dart';
 ///  * Re-saving must not touch the hypnogram. The form has no stage fields, so
 ///    "save what the form shows" would erase measured stages that the form never
 ///    knew about.
+/// 假的片段文件仓库：**不碰文件系统**，只记下「谁被删了」。
+///
+/// 真 `ClipFileStore.platform()` 要 `path_provider` 的平台通道，而它继承下来的
+/// `pathFor()` 还会真的建目录——两样在 `testWidgets` 的 FakeAsync 里都会挂住。
+/// 与 `recording_settings_test.dart` 那个假仓库同一手法。
+class _RecordingClipStore extends ClipFileStore {
+  _RecordingClipStore()
+      : super(baseDirectory: () async => Directory.systemTemp);
+
+  final List<String?> deleted = [];
+
+  @override
+  Future<void> deleteClip(String? localUri) async => deleted.add(localUri);
+}
+
 void main() {
   late AppDatabase database;
   late SleepRepository repository;
@@ -86,6 +105,7 @@ void main() {
     WidgetTester tester,
     Widget page, {
     List<SleepEntry> entries = const [],
+    ClipFileStore? files,
   }) async {
     tester.view.physicalSize = const Size(430, 2600);
     tester.view.devicePixelRatio = 1.0;
@@ -103,6 +123,10 @@ void main() {
           // `watch*` 流，在 widget 测试里留下 pending timer（见 pages_widget_test
           // 文件头）。这些用例不关心会话，直接给 null。
           activeSessionProvider.overrideWith((ref) => null),
+          // 真 `ClipFileStore.platform()` 要 `path_provider` 的平台通道。删一条
+          // 没有录音的记录不会碰到它（`deleteClip(null)` 直接返回），但只要用例里
+          // 有文件要删，就必须换成指向临时目录的这一份。
+          if (files != null) clipFileStoreProvider.overrideWithValue(files),
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
@@ -404,6 +428,47 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(await database.allRecords(), isEmpty);
+    });
+
+    /// 这个洞是真机上报出来的：删完之后 **9 条片段行全没了、9 个 WAV 一个不少地留在
+    /// 盘上**，而确认框写的是「声音事件都会被永久删除，此操作无法撤销」
+    /// （`docs/verification-log.md` v3.19）。所以入口这一层也要有一条盯着它——
+    /// 只测 `clip_pruning.dart` 里那个函数，挡不住有人把这里改回只删行。
+    ///
+    /// **这里断言的是「走到了文件仓库」，不是「文件真的没了」。** 真正删文件那一半在
+    /// `test/clip_pruning_test.dart` 的普通 `test()` 里验——那是真实的文件系统操作，
+    /// 而 `testWidgets` 的测试体跑在 FakeAsync 里，`Directory.createTemp` /
+    /// `File.writeAsBytes` 这类真实 I/O 的 Future **永远不会完成**，测试会一路挂到
+    /// 10 分钟超时（这不是推测，这条用例第一版就是这么挂的）。
+    testWidgets('确认后记录被删除，并且真的走到了删录音文件那一步', (tester) async {
+      final entry = await seedManual();
+      const path =
+          '/data/user/0/com.example.night_sleep/files/clips/clip-1.wav';
+
+      await database.insertClips([
+        SoundClipsCompanion.insert(
+          id: 'clip-1',
+          recordId: entry.id,
+          kind: 'noise',
+          startedAtUtc: bedtime,
+          durationMs: 3000,
+          localUri: const Value(path),
+          source: const Value('recording'),
+        ),
+      ]);
+
+      final files = _RecordingClipStore();
+      await pump(tester, home(), entries: [entry], files: files);
+      await tester.tap(find.byType(RecordCard).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('删除记录'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('删除'));
+      await tester.pumpAndSettle();
+
+      expect(await database.allRecords(), isEmpty);
+      expect(files.deleted, contains(path),
+          reason: '确认框承诺「声音事件都会被永久删除」，删记录这条路就得走到文件仓库');
     });
   });
 }

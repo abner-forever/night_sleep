@@ -419,6 +419,17 @@ class AppDatabase extends _$AppDatabase {
         .get();
   }
 
+  /// 某条记录名下的全部片段。
+  ///
+  /// **删记录之前必须先用它把文件路径读出来**：`record_id` 是带 `onDelete: cascade`
+  /// 的外键，记录行一删，这些行就跟着没了，连带着 `localUri` 也再没人知道——磁盘上的
+  /// 音频于是变成可能要等到下次冷启动才被扫掉的孤儿。
+  Future<List<SoundClip>> clipsFor(String recordId) {
+    return (select(soundClips)
+          ..where((table) => table.recordId.equals(recordId)))
+        .get();
+  }
+
   /// 把指定片段的文件指针清空，**行本身保留**。
   ///
   /// 这正是 `SoundClips.localUri` 列注释早就写好的语义：音频被裁掉之后事件记录

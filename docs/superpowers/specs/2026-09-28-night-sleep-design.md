@@ -237,6 +237,11 @@
 5. 录音保留期限与一键删除。**v3.9 已落地**：默认保留最近 7 晚（按醒来那天的本地日期归档，与
    `SleepEntry.archiveDay` 同一口径），超期删音频文件、`localUri` 置空、**行保留**（只清
    `source='recording'`）；设置页给出当前占用与「删除全部录音」；启动时另删孤儿文件。
+   **v3.20 补上「删记录 / 删全部数据时也带走音频」**：此前那两条路径只删行，磁盘上的 WAV
+   要等到下次冷启动才被扫掉，而确认框已经承诺过「声音事件都会被永久删除」——真机实测到
+   9 行没了、9 个文件还在（[验证记录](../../verification-log.md) v3.19）。这一条**不新增偏差**：
+   它不改产品语义，只是让那句已经写在确认框上的承诺成真。细节见
+   [夜间录音规格](2026-10-03-night-audio-recording-design.md) §十。
 
 ### M4：AI 洞察 —— 未开始
 
@@ -421,6 +426,7 @@
 | 49（新增） | 会话规格 §六 的「白噪音先、录音后」裁定 | **界面必须写明这段空档**：白噪音播放期间**不录音**，会话页显示「白噪音播放中 · 暂不录音」；白噪音最长 60 分钟，**那段时间里的鼾声或梦话不会被记录** | 这是「白噪音优先」裁定带来的**真实覆盖缺口**，不写清楚就是让用户以为整晚都被录着——正是「让控件声称自己没有的能力」那条红线。见新规格 §六 / §十三。 |
 | 50（新增） | Android 罗盘「不可用」的说法 | 按**原因**分成两种：**平台未实现** → 「当前平台暂不支持罗盘」（Dart 侧 `CompassUnavailable` 给出）；**设备没有传感器** → 「此设备没有可用的罗盘传感器」（原生侧发 `error(code: "unavailable")`，页面映射） | v3.11 之前这两种被合成一句写死的「请使用支持罗盘的 **iPhone** 打开此页面」——**在 Android 上是一句假话**：机器有磁力计（真机实测 `ak0991x`），是**我们没去读它**。把「我们没做」说成「你的设备不行」，是这里最不该犯的错。页面为此早有两条分支，所以 v3.12 只改了 Dart 侧那一条文案 + 补上 Android 原生实现，**页面零改动**。见 [安卓平台接入设计](2026-10-12-android-platform-design.md) §5.3 |
 | 51（新增） | 原型是 iOS 的系统栏语义：应用铺满整屏，状态栏与导航栏**透明地浮在内容之上** | Android 上把两条系统栏也做成透明：`main()` 里 `enableEdgeToEdge()`，`MaterialApp.builder` 上挂 `AnnotatedRegion<SystemUiOverlayStyle>`（`lib/core/platform/system_bars.dart`）。标签条在 Android 上不再从安全区里借（#21） | Android 默认**不是**这样：引擎只申请到 `LAYOUT_FULLSCREEN`（内容铺到顶，但系统在透明状态栏背后加了 25% 黑的对比度蒙层），导航栏那块则被排除在内容区之外——真机上就是「**顶部一条灰带、底部一条黑带把页面截断**」，用户上报的原话。两条都不是渲染问题，是**样式没声明**。**不得用 `SystemUiOverlayStyle.light` / `.dark` 这两个预设**：它们把 `systemNavigationBarColor` 写死成不透明黑，黑带会原样回来。图标明暗跟的是**应用主题**而不是系统设置（应用内可以单独切浅色 / 深色），常暗的会话页另有一层覆写。真机验证与逐条判据见 [安卓平台接入设计](2026-10-12-android-platform-design.md) §六。回归方法：`test/system_bars_test.dart`——把 `systemNavigationBarContrastEnforced` 或 `systemNavigationBarColor` 改回预设值，对应用例变红（已变异验证）。 |
+| 52（新增） | 会话页鼾声那一行写「录音中」，右侧挂一颗灯 | **平台把麦克风静音时改写「麦克风被系统静音 · 现在录不到声音」，那颗灯也不亮。** 判据是采集端连续 60 秒收到**逐样本全零**（`kSilentMicRun`），新增 `NightRecordingState.silenced`——不复用 `stopped`，因为流还活着、声音随时可能回来 | **v3.19 真机实测**：应用一离开前台，Android 就静音它的录音端口（`AudioFlinger: setRecordSilenced(general), portId:<本应用> , silenced 1`，`Sil` 列 前台 `n` → 灭屏后 `s` → 唤醒回到 `n`）并**持续交付零样本**；而 `cmd appops get … RECORD_AUDIO` 全程是 `allow … (running)`，`record` 插件一个中断都不报。于是应用手里的状态确实是「正在录」，界面照着它写了整夜——**但用户第二天只看到「0 条声音事件」，分不清是自己一夜没出声还是根本没在录**。与 #7 / #31 同源。**这条只把假话改成真话，不让整夜录音变成能录**——那要前台服务（见 README「未实现」），本轮没做；也**没有**把「这一夜麦克风是死的」写进记录（那要 schema v7）。见 [夜间录音规格](2026-10-03-night-audio-recording-design.md) §十四与 [验证记录](../../verification-log.md) v3.19。回归方法：`test/night_recorder_test.dart` 的「平台静音」组、`test/sleep_session_page_test.dart` 的两条状态灯用例。 |
 
 ## 9. 测试与验收矩阵
 
@@ -483,7 +489,7 @@
 | 数据 | 时长守门：0 时长与 > 24h **不落库**、不写记录、会话仍在 | ✅ `test/session_repository_test.dart`、`test/sleep_session_test.dart`（结束守门组） |
 | 通知 | `scheduleOnce` 排出 9003 且走**一次性**通道；`sync` **不动** 9003（变异验证）；会话活跃且闹钟开启时排 9003 并让日常起床提醒 `9002` 让位、就寝提醒 `9001` 不受影响；无会话/闹钟关着时 9003 被排掉、`9002` 排回；排定时刻复用 `nextOccurrence`（跨午夜与跨夏令时落在同一墙上时刻） | ✅ `test/reminder_scheduler_test.dart`（起床闹钟组、`nextOccurrence` 组）、`test/reminder_sync_test.dart`（会话闹钟组 6 条） |
 | 数据 | 「鼾声/梦话记录」**只有一个真相来源**：会话页开关写的是 `AppSettings.soundRecordingEnabled` | ✅ `test/sleep_session_page_test.dart`（拨动鼾声开关写回设置） |
-| Widget | 会话页（**v3.3 版式**）：中央 `HH:MM:SS` 秒表 + 月亮；「当前睡眠事件」卡**只回显**——没在放白噪音就没有那一行、闹钟关着就没闹钟行、两行都不再可点；鼾声开关副标题改为录音服务的真实状态（录音中 / 白噪音播放中 · 暂不录音 / 停止原因）；闹钟开着时报剩余时间**并带上后台投递的如实标注**（文案缺失必红）、**没设闹钟但已睡过头时报「已超过起床时间 · 请手动结束睡眠」**（两句不许打架，剩余量只由模型出）。**v3.2 之前**的「点摘要条展开白噪音区 / 圆环进度随已过时长变化」随版式替换作废（见会话规格 §16.2、§17.4） | ✅ `test/sleep_session_page_test.dart` |
+| Widget | 会话页（**v3.3 版式**）：中央 `HH:MM:SS` 秒表 + 月亮；「当前睡眠事件」卡**只回显**——没在放白噪音就没有那一行、闹钟关着就没闹钟行、两行都不再可点；鼾声开关副标题改为录音服务的真实状态（录音中 / 白噪音播放中 · 暂不录音 / **麦克风被系统静音** / 停止原因）；闹钟开着时报剩余时间**并带上后台投递的如实标注**（文案缺失必红）、**没设闹钟但已睡过头时报「已超过起床时间 · 请手动结束睡眠」**（两句不许打架，剩余量只由模型出）。**v3.2 之前**的「点摘要条展开白噪音区 / 圆环进度随已过时长变化」随版式替换作废（见会话规格 §16.2、§17.4） | ✅ `test/sleep_session_page_test.dart` |
 | Widget | 会话页结束方式：**长按 1.5 秒、横向填充条扫满才结束**；未按满松手不结束且无副作用；短按不生效并给出提示；按下即开始（不必等长按超时） | ✅ `test/hold_to_finish_button_test.dart`、`test/sleep_session_page_test.dart`（结束按钮组） |
 | Widget | 会话页评星：结束先问一次星级；跳过 → 落库记录质量为 `null` 且**没有评分**；评了 → 质量写进记录；时长越界不落库并给出手动补录/丢弃两个出口 | ✅ `test/sleep_session_page_test.dart`（结束流程组） |
 | Widget | 会话白噪音：播放器收到选中、再点一次停掉、倒计时到点停掉并清空会话里的选中值；关掉弹窗不停、**pop 掉会话页仍继续响**（播放器挂在 app 级控制器上）；弹窗里的定时只有 15/30/45/60、没有「不限」与 90m | ✅ `test/session_night_widgets_test.dart` |
@@ -497,7 +503,9 @@
 | 单元 | 月亮标记：SVG path / 渐变逐字取自原型、**丢弃 `<filter>` 后不打印 unhandled element**、轨道光晕近似层在位 | ✅ `test/sleep_moon_mark_test.dart`（6 条） |
 | Widget | 会话页夜景：选择器列出且**只有 8 种**场景、点选写回会话行、再进页面仍是它；`MediaQuery.disableAnimations` 为真时背景**停表**（变异验证） | ✅ `test/session_night_widgets_test.dart` |
 | Widget | 会话页事件卡：**没在放白噪音时整行不渲染**、在放时右侧是波形（**不存在「已停止」态**，偏差 #33） | ✅ `test/sleep_session_page_test.dart`、`test/session_night_widgets_test.dart` |
-| Widget | 会话页：中央显示 `HH:MM:SS` 秒表；鼾声行副标题**取自录音服务的真实状态**（v3.9 起，旧「尚未接入录音」文案已删）；「收起」常驻可点且 pop 后会话仍在；起床闹钟行只在闹钟开着/已睡过头时出现、右侧只有状态字 | ✅ `test/sleep_session_page_test.dart` |
+| Widget | 会话页：中央显示 `HH:MM:SS` 秒表；鼾声行副标题**取自录音服务的真实状态**（v3.9 起，旧「尚未接入录音」文案已删；v3.20 起含「麦克风被系统静音」一态）；**「录音中」那颗小灯只在真的在录时亮**——静音态下不许出现「录音中」三个字、灯也不亮 | ✅ `test/sleep_session_page_test.dart` |
+| 单元 | **平台静音的识别**（`night_recorder.dart`，v3.20）：连续 `kSilentMicRun` 的**逐样本全零**才翻成 `NightRecordingState.silenced`，差一格不翻；真声音回来立刻退回 `recording`；**1 LSB 的底噪不算**（判据是全零，不是「很安静」）；全零必须连续，中间夹一格真声音就重新起算；主动停录后不再停留在 `silenced`。**这条是 v3.19 真机实测（`AudioFlinger: setRecordSilenced(…, portId:<本应用>, silenced 1)`）的直接回归** | ✅ `test/night_recorder_test.dart`（「平台静音」组 5 条） |
+| 单元 | **删记录 / 删全部数据都带走音频**（`clip_pruning.dart`，v3.21）：删一条记录会连它名下的 WAV 一起删、**不碰别人的**；删**全部**数据时还多收一类——**当前会话清单里已经落盘、还没入库**的那几段（会话行一删清单就跟着消失，不在那里一起删它们就落进「谁也不认识」的缝里）。**详情页那个入口也要钉住**：只测那个函数挡不住有人把调用点改回只删行。此前两条路径都只删行，真机实测 9 行没了、9 个文件还在（v3.19） | ✅ `test/clip_pruning_test.dart`（三条）、`test/record_edit_delete_test.dart`（「确认后记录被删除，并且真的走到了删录音文件那一步」） |
 | 数据 | `start()` 一次写全入睡前草稿：`alarmEnabled` / `sceneId` / `noiseId` / `noiseVolume` 传什么读回来就是什么；不传时默认值不被新参数带偏 | ✅ `test/session_repository_test.dart` |
 | 数据 | **首次并发读设置不炸**：两个 `getSettings()` 同时跑（入睡前态一帧里就有两个读者），后一个 `insert` 必须让路（`InsertMode.insertOrIgnore`） | ✅ `test/session_repository_test.dart` |
 | Widget | **入睡前态**：报出「晚安 / 准备好休息了吗？ / 放下今天，让夜晚慢下来。 / 睡眠模式 / 夜景氛围 / 常用白噪音 / 开始睡眠 / 屏幕将保持暗色，轻触夜景即可切换氛围」；旧的「没有正在进行的睡眠」空状态不再存在 | ✅ `test/session_setup_page_test.dart` |

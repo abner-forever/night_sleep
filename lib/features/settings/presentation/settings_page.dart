@@ -10,13 +10,16 @@ import '../../../app/app_shell.dart';
 import '../../../app/app_toast.dart';
 import '../../../app/session_teardown.dart';
 import '../../../core/config/app_config.dart';
-import '../../../core/database/app_database.dart' show AppSetting;
+import '../../../core/database/app_database.dart'
+    show AppSetting, databaseProvider;
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_basics.dart';
 import '../../../core/widgets/app_icons.dart';
 import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/ios_controls.dart';
+import '../../sleep/data/clip_pruning.dart';
+import '../../sleep/data/clip_store.dart';
 import '../../sleep/data/sleep_repository.dart';
 import '../data/app_cache.dart';
 import '../data/insight_credentials.dart';
@@ -75,7 +78,12 @@ class SettingsPage extends ConsumerWidget {
     );
     if (confirmed != true) return;
 
-    await ref.read(sleepRepositoryProvider).deleteAllUserData();
+    // **连同磁盘上的录音一起删。** 只删行的话，用户按下的那个写着「永久删除」的
+    // 确认框只做到一半：音频会留到下一次冷启动才被孤儿清理扫掉。
+    await deleteAllUserDataWithRecordings(
+      database: ref.read(databaseProvider),
+      files: ref.read(clipFileStoreProvider),
+    );
     // 与「结束 / 丢弃会话」**同一套收尾**（[teardownSession]）。删掉 active_sessions
     // 行不会自己撤销 9003、也不会把被压着的日常起床提醒 9002 排回来：少了这一步，
     // 「开始会话 → 开起床闹钟 → 收起会话页 → 删除全部本地数据」之后，第二天早上

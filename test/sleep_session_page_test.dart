@@ -1,5 +1,7 @@
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
+// `material.dart` 不带出 `ValueListenable`，而假录音服务要拿它当返回类型。
+import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:night_sleep/app/app.dart';
 import 'package:night_sleep/app/app_shell.dart';
 import 'package:night_sleep/app/app_toast.dart';
+import 'package:night_sleep/app/night_recording.dart';
 import 'package:night_sleep/app/noise_session.dart';
 import 'package:night_sleep/core/database/app_database.dart';
 import 'package:night_sleep/core/platform/reminders.dart';
@@ -16,15 +19,18 @@ import 'package:night_sleep/core/theme/app_theme.dart';
 import 'package:night_sleep/core/widgets/ios_controls.dart';
 import 'package:night_sleep/features/log/presentation/log_new_page.dart';
 import 'package:night_sleep/features/session/presentation/night_scene.dart';
+import 'package:night_sleep/features/session/presentation/night_style.dart';
 import 'package:night_sleep/features/session/presentation/sheets/night_noise_sheet.dart';
 import 'package:night_sleep/features/session/presentation/sleep_session_page.dart';
 import 'package:night_sleep/features/session/presentation/widgets/hold_to_finish_button.dart';
 import 'package:night_sleep/features/session/presentation/widgets/night_backdrop.dart';
 import 'package:night_sleep/features/session/presentation/widgets/night_scene_picker.dart';
+import 'package:night_sleep/features/sleep/data/night_recorder.dart';
 import 'package:night_sleep/features/sleep/data/noise_player.dart';
 import 'package:night_sleep/features/sleep/data/noise_asset.dart';
 import 'package:night_sleep/features/sleep/data/session_repository.dart';
 import 'package:night_sleep/features/sleep/data/sleep_repository.dart';
+import 'package:night_sleep/features/sleep/domain/clip_journal.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_entry.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_quality.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_session.dart';
@@ -91,6 +97,36 @@ class _ThrowingReminderScheduler extends NoopReminderScheduler {
       throw PlatformException(code: 'boom');
 }
 
+/// 只回答「我现在是什么状态」的假录音服务。
+///
+/// 鼾声那一行的副标题由**录音服务的真实状态**驱动，所以要测它就必须能把状态捏成
+/// 任意一态。与 `recording_settings_test.dart` 那个只答权限的假实现不同，这个的重点
+/// 是 [status]。
+class _StatusRecorder implements NightRecorder {
+  _StatusRecorder(NightRecordingStatus status)
+      : _status = ValueNotifier<NightRecordingStatus>(status);
+
+  final ValueNotifier<NightRecordingStatus> _status;
+
+  @override
+  ValueListenable<NightRecordingStatus> get status => _status;
+
+  @override
+  Stream<ClipDraft> get closedClips => const Stream.empty();
+
+  @override
+  Future<bool> ensurePermission() async => true;
+
+  @override
+  Future<void> start() async {}
+
+  @override
+  Future<void> stop() async {}
+
+  @override
+  Future<void> dispose() async => _status.dispose();
+}
+
 void main() {
   late AppDatabase database;
 
@@ -122,6 +158,7 @@ void main() {
     NoisePlayer? player,
     ReminderScheduler? scheduler,
     ThemeData? appTheme,
+    NightRecorder? recorder,
   }) async {
     // 默认给一块很高的视口，好让整页一次渲染完（断言不用先滚）。
     // 要测「屏幕外」这类几何问题，传一个真实手机尺寸的 `size`。
@@ -186,6 +223,10 @@ void main() {
               .overrideWithValue(scheduler ?? NoopReminderScheduler()),
           // 真播放器会碰平台通道；白噪音的播放接缝挂在 app 级 provider 上。
           noisePlayerProvider.overrideWithValue(player ?? _FakeNoisePlayer()),
+          // 真录音器会去开麦克风（平台通道）。不传就沿用默认实现——但**任何**碰到
+          // 鼾声那一行副标题的用例都该传一个，否则测的是「还没对账过」的 idle。
+          if (recorder != null)
+            nightRecorderProvider.overrideWithValue(recorder),
         ],
         child: MaterialApp.router(
           theme: appTheme ?? AppTheme.dark(),
@@ -925,5 +966,78 @@ void main() {
       contains('按住不放'),
       reason: '短按必须告诉用户正确的操作方式',
     );
+  });
+
+  /// 「录音中」那颗小灯。它只在 `recording` 这一态亮，所以断言它等于断言状态。
+  ///
+  /// 按颜色找而不是按下标找：那颗灯是唯一一个拿 `NightStyle.liveDot` 当底色的
+  /// 容器，改成别的颜色就会红——那正是我们要盯住的那件事。
+  Finder liveDot() => find.byWidgetPredicate(
+        (widget) =>
+            widget is Container &&
+            widget.decoration is BoxDecoration &&
+            (widget.decoration! as BoxDecoration).color == NightStyle.liveDot,
+      );
+
+  /// 让录音控制器去对一次账。
+  ///
+  /// 会话页只在「按下开始睡眠」那一步叫它；已经在会话里的页面不会自己再叫一次
+  /// （那是冷启动 `syncWithSession` 的事）。少了这一下，控制器读到的永远是 idle，
+  /// 断言就落在了一个跟被测行为无关的分支上。
+  Future<void> syncRecording(WidgetTester tester) async {
+    await ProviderScope.containerOf(
+            tester.element(find.byType(SleepSessionPage)))
+        .read(nightRecordingControllerProvider.notifier)
+        .syncWithSession();
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('真在录的时候，那一行写「录音中」，灯亮着', (tester) async {
+    final start = DateTime(2026, 8, 30, 23, 14);
+    await database.updateSettings(
+      const AppSettingsCompanion(soundRecordingEnabled: Value(true)),
+    );
+    await pumpSession(
+      tester,
+      session: sessionAt(start),
+      now: start.add(const Duration(hours: 1)),
+      recorder: _StatusRecorder(
+        const NightRecordingStatus(NightRecordingState.recording),
+      ),
+    );
+    await syncRecording(tester);
+
+    expect(find.textContaining('录音中 · 还没录到有声响的片段'), findsOneWidget);
+    expect(liveDot(), findsOneWidget, reason: '真在录，灯就该亮');
+  });
+
+  /// 实测（MI 9 / Android 11）：应用一离开前台，平台就静音录音端口并**持续交付零
+  /// 样本**，而 `record` 插件不报任何中断。没有这一段，界面会整夜写着「录音中」，
+  /// 用户第二天才发现什么都没录到，还分不清是自己一夜没出声还是根本没在录。
+  /// 见 `docs/verification-log.md` v3.19 与 `test/night_recorder_test.dart` 的
+  /// 「平台静音」一组。
+  testWidgets('平台把麦克风静音时如实说出来，并且那盏灯不许亮', (tester) async {
+    final start = DateTime(2026, 8, 30, 23, 14);
+    await database.updateSettings(
+      const AppSettingsCompanion(soundRecordingEnabled: Value(true)),
+    );
+    await pumpSession(
+      tester,
+      session: sessionAt(start),
+      now: start.add(const Duration(hours: 1)),
+      recorder: _StatusRecorder(
+        const NightRecordingStatus(
+          NightRecordingState.silenced,
+          reason: kSilencedMicReason,
+        ),
+      ),
+    );
+    await syncRecording(tester);
+
+    expect(find.textContaining('麦克风被系统静音'), findsOneWidget);
+    expect(find.textContaining('录音中'), findsNothing,
+        reason: '这一夜它确实没有在录，说「录音中」是假话');
+    expect(liveDot(), findsNothing,
+        reason: '一盏写着「正在聆听」却什么都没在听的灯，正是偏差 #31 当初要挡的东西');
   });
 }

@@ -363,7 +363,11 @@ void main() {
       );
       expect(await database.stagesFor('cascade-1'), hasLength(1));
 
-      await repository.delete('cascade-1');
+      // 这一条测的是**库里的级联**，所以直接走库这一层。
+      // `SleepRepository` 上不再有删记录的方法：删记录必须连带删掉磁盘上的录音，
+      // 而文件不归那个仓库管（见 `sleep_repository.dart` 里的注释）。
+      // 带文件的整条路径在 `test/clip_pruning_test.dart`。
+      await database.deleteRecord('cascade-1');
 
       expect(await database.stagesFor('cascade-1'), isEmpty);
       expect(await repository.loadAll(), isEmpty);
@@ -371,7 +375,8 @@ void main() {
 
     test('删除全部本地数据清空记录与洞察', () async {
       await DemoSeed.install(database, now: DateTime(2026, 9, 27, 12));
-      await repository.deleteAllUserData();
+      // 同上：这里测的是库里那张表的清空，文件那一半在 `clip_pruning_test.dart`。
+      await database.deleteAllUserData();
 
       expect(await repository.loadAll(), isEmpty);
       expect(await database.allInsightsByRecord(), isEmpty);

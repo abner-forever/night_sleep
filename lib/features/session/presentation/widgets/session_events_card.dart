@@ -85,6 +85,11 @@ class _SessionEventsCardState extends ConsumerState<SessionEventsCard> {
           ? '录音中 · 还没录到有声响的片段'
           : '录音中 · 已录到 ${recording.clipCount} 段',
       NightRecordingState.waitingForNoise => '白噪音播放中 · 暂不录音',
+      // **这一句是这一整块最要紧的一行字。** 实测（MI 9 / Android 11）上，应用一离开
+      // 前台，平台就把录音端口静音并持续交付零样本，而 `record` 插件不会报任何中断
+      // ——不知道这件事的话，界面会整夜写着「录音中」，用户第二天才发现什么都没录到，
+      // 却分不清是自己一夜没出声还是根本没在录。见 `docs/verification-log.md` v3.19。
+      NightRecordingState.silenced => recording.status.reason ?? '麦克风没有在收音。',
       NightRecordingState.stopped => recording.status.reason ?? '录音已停止。',
       NightRecordingState.idle => _recordingEnabled
           // 开关开着却没在录：会话还没起来。与其说一句「已开启」，不如如实说

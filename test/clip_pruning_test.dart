@@ -60,6 +60,79 @@ void main() {
     return path;
   }
 
+  /// 删记录 / 删全部数据时必须**连磁盘上的音频一起删**。
+  ///
+  /// 真机上实测到的洞：9 条片段行被级联删光，9 个 WAV 一个不少地留在盘上，而确认框
+  /// 写着「声音事件都会被永久删除，此操作无法撤销」（见 `docs/verification-log.md`
+  /// v3.19）。文件要等到**下一次冷启动**的 `deleteOrphanRecordings` 才被扫掉。
+  group('删记录 / 删全部数据都带走音频', () {
+    test('删一条记录：它的录音文件跟着没了', () async {
+      final path =
+          await addNight(recordId: 'r1', wakeDay: DateTime(2026, 10, 13));
+      expect(File(path).existsSync(), isTrue);
+
+      await deleteRecordWithRecordings(
+        database: database,
+        files: files,
+        recordId: 'r1',
+      );
+
+      expect(File(path).existsSync(), isFalse,
+          reason: '确认框说「声音事件会被永久删除」，那就得真的删掉');
+      expect(await database.allRecordingClips(), isEmpty);
+      expect(await database.allRecords(), isEmpty);
+    });
+
+    test('删一条记录：别人的录音一个都不碰', () async {
+      final mine =
+          await addNight(recordId: 'r1', wakeDay: DateTime(2026, 10, 13));
+      final theirs = await addNight(
+        recordId: 'r2',
+        wakeDay: DateTime(2026, 10, 13),
+        clipId: 'clip-2',
+      );
+
+      await deleteRecordWithRecordings(
+        database: database,
+        files: files,
+        recordId: 'r1',
+      );
+
+      expect(File(mine).existsSync(), isFalse);
+      expect(File(theirs).existsSync(), isTrue, reason: '只该删这一条名下的');
+    });
+
+    test('删全部数据：记录下的与**当前会话清单里还没入库的**一起删', () async {
+      final recorded =
+          await addNight(recordId: 'r1', wakeDay: DateTime(2026, 10, 13));
+
+      // 会话进行中、还没入库的那一段：文件已经落盘，但记录行还不存在。
+      final pending = await files.pathFor('clip-pending');
+      await File(pending).writeAsBytes(List<int>.filled(64, 0));
+      final sessions = SessionRepository(database);
+      await sessions.start(
+          now: DateTime.utc(2026, 10, 3, 22), wakeMinutes: 420);
+      await sessions.update(clipJournal: [
+        ClipDraft(
+          id: 'clip-pending',
+          startedAtUtc: DateTime.utc(2026, 10, 4, 1),
+          durationMs: 3000,
+          localUri: pending,
+        ),
+      ]);
+
+      await deleteAllUserDataWithRecordings(database: database, files: files);
+
+      expect(File(recorded).existsSync(), isFalse);
+      // 会话行会被删掉、清单随之消失；不在这里一起删，这几段就正好落进
+      // 「谁也不认识」的缝里——下次冷启动才有人想起它们。
+      expect(File(pending).existsSync(), isFalse,
+          reason: '会话清单里那几段已经落盘了，不能跟着会话行一起变成孤儿');
+      expect(await database.allRecords(), isEmpty);
+      expect(await database.activeSession(), isNull);
+    });
+  });
+
   group('保留最近 7 晚', () {
     test('第 8 晚一到，最旧那晚的文件删掉、行留着、文件指针清空', () async {
       final paths = <String>[];

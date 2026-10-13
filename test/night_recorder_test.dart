@@ -228,4 +228,76 @@ void main() {
       expect(emitted, 0);
     });
   });
+
+  /// 平台静音：应用离开前台之后，Android 会静音录音端口并**持续交付零样本**，
+  /// 而 `record` 插件不报任何中断。没有这段逻辑的话，界面会整夜写着「录音中」。
+  /// 真机实测与判据见 `docs/verification-log.md` v3.19。
+  group('平台静音', () {
+    /// 一整段逐样本全零的 PCM——平台静音时交上来的就是这种东西。
+    ///
+    /// **不能拿 `amplitude: 1` 冒充**：那是一个真实的 1 LSB 底噪（约 −90 dBFS），
+    /// 安静，但不是全零，两者必须分得开。
+    Uint8List digitalSilence(int milliseconds) =>
+        _pcm(milliseconds: milliseconds, amplitude: 0);
+
+    test('全零攒够 kSilentMicRun 之前不翻状态，越过之后转成 silenced', () async {
+      await recorder.start();
+      expect(recorder.status.value.state, NightRecordingState.recording);
+
+      input.push(digitalSilence(kSilentMicRun.inMilliseconds - 100));
+      await settle();
+      expect(recorder.status.value.state, NightRecordingState.recording,
+          reason: '差一格就是还没到，提前翻状态等于冤枉一个好麦克风');
+
+      input.push(digitalSilence(200));
+      await settle();
+      expect(recorder.status.value.state, NightRecordingState.silenced);
+      expect(recorder.status.value.reason, isNotNull);
+      // **不是"停了"**：流还活着，采样还在来，只是每个都是 0。
+      expect(recorder.status.value.isRecording, isFalse);
+    });
+
+    test('声音一回来就回到 recording', () async {
+      await recorder.start();
+      input.push(digitalSilence(kSilentMicRun.inMilliseconds + 1000));
+      await settle();
+      expect(recorder.status.value.state, NightRecordingState.silenced);
+
+      input.push(_pcm(milliseconds: 500, amplitude: 8000));
+      await settle();
+      expect(recorder.status.value.state, NightRecordingState.recording);
+      expect(recorder.status.value.reason, isNull);
+    });
+
+    test('安静但有底噪不算平台静音——判据是逐样本全零，不是"很安静"', () async {
+      await recorder.start();
+      // 1 LSB 的底噪：约 −90 dBFS，比任何切片阈值都低，但它不是 0。
+      input.push(_pcm(
+          milliseconds: kSilentMicRun.inMilliseconds + 5000, amplitude: 1));
+      await settle();
+      expect(recorder.status.value.state, NightRecordingState.recording);
+    });
+
+    test('全零必须连续：中间夹一格真声音就重新起算', () async {
+      await recorder.start();
+      final half = kSilentMicRun.inMilliseconds ~/ 2;
+      input.push(digitalSilence(half));
+      input.push(_pcm(milliseconds: 100, amplitude: 1));
+      input.push(digitalSilence(half));
+      await settle();
+      expect(recorder.status.value.state, NightRecordingState.recording,
+          reason: '两段各半、中间被打断，加起来够阈值也不算数');
+    });
+
+    test('主动停录之后不再停留在 silenced', () async {
+      await recorder.start();
+      input.push(digitalSilence(kSilentMicRun.inMilliseconds + 1000));
+      await settle();
+      expect(recorder.status.value.state, NightRecordingState.silenced);
+
+      await recorder.stop();
+      expect(recorder.status.value.state, NightRecordingState.idle,
+          reason: '会话都结束了还说"麦克风被静音"，是在说一件已经不成立的事');
+    });
+  });
 }

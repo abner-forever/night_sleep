@@ -27,6 +27,13 @@ enum NightRecordingState {
   /// 正在录。
   recording,
 
+  /// **在录，但平台交上来的是静音**——连续收了一段时间的逐样本全零。
+  ///
+  /// 与 [stopped] 分开是必须的：流还活着、采样还在源源不断地来，只是每一个都是 0。
+  /// 麦克风可能在下一秒就回来（实测 Android 上应用一回到前台就恢复），所以这时候说
+  /// 「已停止」是假的，说「录音中」也是假的——它既不响，也没停。
+  silenced,
+
   /// 录过，但已经停了（来电抢占、出错、被系统中断）。
   stopped,
 }
@@ -66,6 +73,24 @@ const kRecordBytesPerSample = 2;
 /// 振幅聚合窗口。固定 100ms，与插件吐出来的分片大小无关——否则同一段音频在
 /// 不同设备上会切出不同的片段。
 const kAmplitudeWindow = Duration(milliseconds: 100);
+
+/// 连续这么多**逐样本全零**的振幅格之后，认定麦克风没有在收音。
+///
+/// **与切片那七个参数一样是拍的**，待真机标定。判据取「每一个采样都正好是 0」而不是
+/// 「很安静」，因为这两件事完全不同：真实麦克风永远有本底噪声（实测这台机器上这间房
+/// 约 −55 dBFS），一整格 1600 个采样全是 0 只可能是**平台没有把麦克风的声音交给应用**。
+/// 所以这是一次测量，不是一次猜测。
+///
+/// 60 秒给得很宽：起录瞬间的空缓冲、以及任何真实的安静房间都够不到它。实测 Android 上
+/// （MI 9 / Android 11）灭屏之后平台会静音录音端口、并持续交付零样本，触发时延是秒级。
+const kSilentMicRun = Duration(seconds: 60);
+
+/// 判定「麦克风被静音」时给用户看的那句话。
+///
+/// 「系统静音」这一半在 Android 上是实测过的（`AudioFlinger: setRecordSilenced(…),
+/// portId:<本应用的录音端口>, silenced 1`，见 `docs/verification-log.md` v3.19）；
+/// 在其他平台上，同样的「逐样本全零」只说明输入设备没有在收音，措辞仍然成立。
+const kSilencedMicReason = '麦克风被系统静音 · 现在录不到声音';
 
 /// 采集端的缝。
 ///
@@ -176,6 +201,10 @@ class RecordNightRecorder implements NightRecorder {
 
   int _windowIndex = 0;
 
+  /// 连续收到了多少格逐样本全零。任何一格不是全零就归零——它要的是"连续"，
+  /// 不是"累计"。
+  int _zeroRun = 0;
+
   /// 还在窗口内的振幅采样点，供 [envelopeFor] 算包络。与 PCM 缓冲同一时间跨度。
   final List<AmplitudeSample> _samples = [];
 
@@ -246,8 +275,16 @@ class RecordNightRecorder implements NightRecorder {
     }
 
     await _flush();
-    if (_status.value.state == NightRecordingState.recording) {
-      _status.value = const NightRecordingStatus.idle();
+    // `silenced` 也要落回 idle：它是"在录但收不到声音"，主动停下来之后那个状态
+    // 就不再成立，留着会让界面在会话已经结束之后继续说"麦克风被静音"。
+    switch (_status.value.state) {
+      case NightRecordingState.recording:
+      case NightRecordingState.silenced:
+        _status.value = const NightRecordingStatus.idle();
+      case NightRecordingState.idle:
+      case NightRecordingState.waitingForNoise:
+      case NightRecordingState.stopped:
+        break;
     }
   }
 
@@ -290,6 +327,7 @@ class RecordNightRecorder implements NightRecorder {
     _totalBytes = 0;
     _windowFill = 0;
     _windowIndex = 0;
+    _zeroRun = 0;
     _samples.clear();
     _writes.clear();
     _sessionStartUtc = _clock().toUtc();
@@ -320,11 +358,14 @@ class RecordNightRecorder implements NightRecorder {
     _windowBytes.clear();
     _windowFill = 0;
 
+    final analysed = _analyseWindow(bytes);
     final sample = AmplitudeSample(
       offset: Duration(microseconds: _windowIndex * 100000),
-      dbfs: _rmsDbfs(bytes),
+      dbfs: analysed.dbfs,
     );
     _windowIndex++;
+
+    _trackSilence(analysed.allZero);
 
     _samples.add(sample);
     _trimWindow();
@@ -461,10 +502,16 @@ class RecordNightRecorder implements NightRecorder {
 
   int _byteOffsetInverse(int bytes) => bytes * 1000000 ~/ _bytesPerSecond;
 
-  /// 一个窗口的 RMS，换算成 dBFS。全静音时封底在 −160，不产生 `-Infinity`
-  /// ——那个值传进切片函数会把阈值比较变成一片混乱。
-  double _rmsDbfs(Uint8List bytes) {
-    if (bytes.length < 2) return -160;
+  /// 一个窗口的 RMS（换算成 dBFS），外加**这一格是不是逐样本全零**。
+  ///
+  /// 全静音时封底在 −160，不产生 `-Infinity`——那个值传进切片函数会把阈值比较变成
+  /// 一片混乱。
+  ///
+  /// 两件事一起算是因为它们共用同一次求和：`sum == 0` 且只有它，才说明 1600 个采样
+  /// 无一例外都是 0。**不能拿「dBFS 等于 −160」当同一件事**——那是个有下限的近似值，
+  /// 稍高于它的安静房间也会被压到同一个读数上，两者必须分开。
+  ({double dbfs, bool allZero}) _analyseWindow(Uint8List bytes) {
+    if (bytes.length < 2) return (dbfs: -160.0, allZero: false);
     final samples = bytes.length ~/ 2;
     var sum = 0.0;
     final view = ByteData.view(bytes.buffer, bytes.offsetInBytes, samples * 2);
@@ -472,9 +519,39 @@ class RecordNightRecorder implements NightRecorder {
       final value = view.getInt16(i * 2, Endian.little);
       sum += value * value;
     }
+    if (sum == 0) return (dbfs: -160.0, allZero: true);
     final rms = math.sqrt(sum / samples);
-    if (rms < 1) return -160;
-    return (20 * (math.log(rms / 32768) / math.ln10)).clamp(-160.0, 0.0);
+    if (rms < 1) return (dbfs: -160.0, allZero: false);
+    return (
+      dbfs: (20 * (math.log(rms / 32768) / math.ln10)).clamp(-160.0, 0.0),
+      allZero: false,
+    );
+  }
+
+  /// 记账「平台是不是正在交静音」，并在跨过 [kSilentMicRun] 时把状态翻过去。
+  ///
+  /// 两个方向都要走：全零攒够了 → `silenced`；一旦真声音回来 → 立刻回到 `recording`
+  /// （实测里这一步是自动的，应用一回到前台平台就解除静音）。**不在这条路上停录**：
+  /// 流还活着，停下来才是真的把后面可能回来的声音丢掉。
+  void _trackSilence(bool allZero) {
+    if (!_running) return;
+
+    if (!allZero) {
+      _zeroRun = 0;
+      if (_status.value.state == NightRecordingState.silenced) {
+        _status.value =
+            const NightRecordingStatus(NightRecordingState.recording);
+      }
+      return;
+    }
+
+    _zeroRun++;
+    if (_status.value.state != NightRecordingState.recording) return;
+    if (kAmplitudeWindow * _zeroRun < kSilentMicRun) return;
+    _status.value = const NightRecordingStatus(
+      NightRecordingState.silenced,
+      reason: kSilencedMicReason,
+    );
   }
 }
 
