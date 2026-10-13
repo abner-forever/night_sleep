@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/database/app_database.dart';
+import '../core/platform/system_bars.dart';
 import '../core/theme/app_theme.dart';
 import '../core/theme/app_tokens.dart';
 import '../core/widgets/atmosphere.dart';
@@ -118,6 +119,9 @@ class NightSleepApp extends ConsumerWidget {
       darkTheme: AppTheme.dark(),
       themeMode: themeMode,
       routerConfig: _router,
+      // 系统栏（状态栏 / 导航栏）的样式。**必须挂在 `builder` 上**：这里在主题
+      // 之内、路由之上下，`Theme.of(context)` 拿到的才是应用当前生效的明暗。
+      builder: appSystemUiOverlayRegion,
     );
   }
 }

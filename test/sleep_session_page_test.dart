@@ -11,6 +11,7 @@ import 'package:night_sleep/app/app_toast.dart';
 import 'package:night_sleep/app/noise_session.dart';
 import 'package:night_sleep/core/database/app_database.dart';
 import 'package:night_sleep/core/platform/reminders.dart';
+import 'package:night_sleep/core/platform/system_bars.dart';
 import 'package:night_sleep/core/theme/app_theme.dart';
 import 'package:night_sleep/core/widgets/ios_controls.dart';
 import 'package:night_sleep/features/log/presentation/log_new_page.dart';
@@ -27,6 +28,8 @@ import 'package:night_sleep/features/sleep/data/sleep_repository.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_entry.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_quality.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_session.dart';
+
+import 'system_bar_probe.dart';
 
 /// 记下每一次播放器调用的假实现。
 ///
@@ -118,6 +121,7 @@ void main() {
     Size? size,
     NoisePlayer? player,
     ReminderScheduler? scheduler,
+    ThemeData? appTheme,
   }) async {
     // 默认给一块很高的视口，好让整页一次渲染完（断言不用先滚）。
     // 要测「屏幕外」这类几何问题，传一个真实手机尺寸的 `size`。
@@ -184,7 +188,11 @@ void main() {
           noisePlayerProvider.overrideWithValue(player ?? _FakeNoisePlayer()),
         ],
         child: MaterialApp.router(
-          theme: AppTheme.dark(),
+          theme: appTheme ?? AppTheme.dark(),
+          // 与 `NightSleepApp` 同构：外层这一层系统栏样式挂在 `builder` 上，
+          // 会话页自己那一层压在它上面。少了它，「页面覆写压过外层」这条根本测不到
+          // （同 `test/system_bars_test.dart` 的说明）。
+          builder: appSystemUiOverlayRegion,
           routerConfig: router,
         ),
       ),
@@ -253,6 +261,35 @@ void main() {
     expect(find.textContaining('23:14 开始'), findsOneWidget);
     // 闹钟那一行的标题带时刻。
     expect(find.text('07:00 起床闹钟'), findsOneWidget);
+  });
+
+  testWidgets('常暗的会话页自己那一层系统栏样式压过应用那一层', (tester) async {
+    final start = DateTime(2026, 8, 30, 23, 14);
+    // 外层给**浅色**主题：那样 `appSystemUiOverlayRegion` 算出的是「浅色页面配深色
+    // 图标」。而这一页常暗，必须是浅色图标才看得见——所以量到的只能是页面自己那层。
+    await pumpSession(
+      tester,
+      session: sessionAt(start),
+      now: start.add(const Duration(hours: 3)),
+      appTheme: AppTheme.light(),
+    );
+
+    expect(
+      systemBarStyleAt(tester),
+      appSystemUiOverlayStyle(Brightness.dark),
+      reason: '状态栏取的是应用那一层——浅色主题配深色图标，压在满屏夜景上等于没有',
+    );
+    expect(
+      systemBarStyleAt(tester, top: false),
+      appSystemUiOverlayStyle(Brightness.dark),
+      reason: '导航栏同上',
+    );
+    // 顺带钉住「不是 `SystemUiOverlayStyle.light` 那个预设」：预设的导航栏是
+    // 不透明黑，换回去时上面这条会红，而状态栏那条看不出来。
+    expect(
+      systemBarStyleAt(tester, top: false)!.systemNavigationBarColor,
+      Colors.transparent,
+    );
   });
 
   testWidgets('超过起床时间后在闹钟行给出「已超过」与手动结束的指令', (tester) async {

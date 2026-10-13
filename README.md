@@ -150,7 +150,7 @@ test/                  领域计算与页面测试
   「白噪音播放中 · 暂不录音」——**这段空档是真的覆盖缺口**（偏差 #49）。schema v5 → v6 加了三列
   可空列（不重建表）。取舍、实测与七个阈值默认值见
   [specs/2026-10-03-night-audio-recording-design.md](docs/superpowers/specs/2026-10-03-night-audio-recording-design.md)。
-  ⚠️ **真机整夜后台存活、切片阈值、界面目视均未验证**（见「验证记录」）。
+  ⚠️ **真机整夜后台存活、切片阈值、界面目视均未验证**（见[验证记录](docs/verification-log.md)）。
 - **回顾**（v3.0，取代原「记录」Tab）：对最近一条**真实**记录补充主观感受（质量、四类事件、
   备注），记录头可点开选择器换一晚，**不改起止时刻**。演示记录不参与补充。**手动补录降级为
   二级页 `/log/new`**（入口在回顾页底部）：实时时长预览、日期/入睡/起床滚轮、1–5 星质量、
@@ -252,7 +252,7 @@ test/                  领域计算与页面测试
   界面上如实标注「由系统通知投递；休眠模式下可能晚几分钟，
   强度不如系统闹钟」——这句标注只出现在「起床闹钟」那一行，**全页仅此一处**
   （`ReminderScheduler.wakeAlarmDeliveryNote`）。权限闸口 `ensureNotificationPermission`
-  与设置页共用。**真机到点投递未验证**（见「验证记录」）。
+  与设置页共用。**真机到点投递未验证**（见[验证记录](docs/verification-log.md)）。
 - **助眠音效素材**：由 `tool/generate_noise_assets.dart` 从源录音生成，产出
   `assets/noise/` 下 5 条 `.m4a`。ffmpeg 滤镜链（单声道化 → 响度归一 → 折回式无缝接缝 →
   AAC 编码）里有**三处写错会静默失效**的细节——`asplit` 不能省、接缝要折回而不是淡入、
@@ -320,8 +320,8 @@ Kotlin 侧**没有任何单元测试**（本仓库没有 Kotlin 测试设施）�
 | 白噪音的后台播放 / 锁屏控制 | 未接入。会话白噪音在**收起页面后仍继续响**（播放器提到 app 级），但退到后台或锁屏后声音会停，界面已如实标注 |
 | 助眠音效素材的可商用授权 | **未落实（发布阻塞项）**。5 条录音来自爱给网（aigei.com），使用方 2026-10-03 裁定为「尚未确认、仅供个人试用」。代码、`pubspec.yaml`、README 与规格均已如实标注，规格 §10 第 3 条**不关闭**。发布前必须确认授权、换素材或退回合成 |
 | 小米手环数据导入 | 未接入。需真实导出样本或官方接口文档，导入按钮禁用并说明原因 |
-| AI 洞察服务 | **部分接入（v3.7）**。已能查余额（**仅 DeepSeek**）、做连通性测试、在睡眠详情里重新生成一晚的模型总结并落库；API Key 存**系统钥匙串**（v3.7 起，重启后仍在，设置页有「清除密钥」）。**仍未做**：Claude 的对话与余额（Messages API 形状不同且无 key 可实测）、余额的持久化与历史曲线、**发送前「将要发送哪些数据」的逐项确认界面**（规格 M4 第 3 条的后半句）。OpenAI 的对话路径与 DeepSeek 同一份代码，但**没有 key 实测过**（见「验证记录」） |
-| **Android 平台** | **平台目录已生成（v3.11，2026-10-12）**：`android/` 由 `flutter create --platforms=android .`（Flutter 3.47.5）产出，清单里补了 `RECEIVE_BOOT_COMPLETED` 与 `ScheduledNotificationReceiver` / `ScheduledNotificationBootReceiver` 两个 receiver，gradle 开了 core library desugaring。**「提醒不会因为重启而失效」这条现在成立**（此前是「开关看着有效、实际不响」）。**仍未做**：真机 / 模拟器安装启动、通知真的投递、前台录音在 Android 上录得下来——**一律未验证**。见下方「Android 上的已知缺口」 |
+| AI 洞察服务 | **部分接入（v3.7）**。已能查余额（**仅 DeepSeek**）、做连通性测试、在睡眠详情里重新生成一晚的模型总结并落库；API Key 存**系统钥匙串**（v3.7 起，重启后仍在，设置页有「清除密钥」）。**仍未做**：Claude 的对话与余额（Messages API 形状不同且无 key 可实测）、余额的持久化与历史曲线、**发送前「将要发送哪些数据」的逐项确认界面**（规格 M4 第 3 条的后半句）。OpenAI 的对话路径与 DeepSeek 同一份代码，但**没有 key 实测过**（见[验证记录](docs/verification-log.md)） |
+| **Android 平台** | **平台目录已生成（v3.11，2026-10-12）**：`android/` 由 `flutter create --platforms=android .`（Flutter 3.47.5）产出，清单里补了 `RECEIVE_BOOT_COMPLETED` 与 `ScheduledNotificationReceiver` / `ScheduledNotificationBootReceiver` 两个 receiver，gradle 开了 core library desugaring。**「提醒不会因为重启而失效」这条现在成立**（此前是「开关看着有效、实际不响」）。**真机安装启动已在 v3.12 跑通**（MI 9 / API 30），**界面层的系统栏与安全区已在 v3.13 适配**（两条系统栏透明、页面背景铺到物理边缘，见「验证记录」v3.13）。**仍未做**：通知真的投递、前台录音在 Android 上录得下来——**一律未验证**。见下方「Android 上的已知缺口」 |
 | Android 上的已知缺口（v3.11 起逐条列出，**不得视为已完成**） | ① **后台 / 锁屏录音**：清单里声明了 `FOREGROUND_SERVICE` 与 `FOREGROUND_SERVICE_MICROPHONE`，但**没有前台服务实现**——退到后台或锁屏后录音仍然停止。**声明了不等于能用**。② **「去系统设置」在 Android 上是死按钮**：`app_settings.dart` 对非 iOS/macOS 退回 `app-settings:`，Android 没有等价 scheme，点了没反应（麦克风权限被拒时那一行）。③ **`android:allowBackup` 未改**：备份开着意味着数据库与录音片段可能被上传到用户自己的 Google Drive，而应用承诺「不会上传」。三个处置方案见规格 §5.4，**待使用方裁定**。④ **发布阻塞**：applicationId 仍是占位 `com.example.night_sleep`；release 构建用 debug 签名（模板默认）；`FOREGROUND_SERVICE_MICROPHONE` 在没有对应服务前不应带着上架（Google Play 有单独用途申报） |
 | ~~启动图标是 Flutter 默认 logo~~ | **v3.11 已修**：`tool/generate_app_icons.dart` 现在同时产出 Android 的传统位图（API < 26）与自适应图标（API ≥ 26，两层 + 声明文件）。见上方「Android 启动图标」。 |
 
@@ -391,7 +391,7 @@ widget 测试里的假播放器一步都走不到，巡检脚本又只开弹窗�
 缝里漏出去的（会话规格 §17.7）。素材换成本地打包录音后，这条用例改钉「资源真的能被解码」，
 原先那条「合成的 WAV 有没有落盘」随之作废。
 （手动补录页**不在**巡检脚本内。v3.0 把脚本里的「记录」改成了「回顾」，但**那一轮没有重跑
-`flutter drive`**——见「验证记录」的未验证项。）
+`flutter drive`**——见[验证记录](docs/verification-log.md)的未验证项。）
 
 会话页那几步有两个实测到的坑：**（1）动画只在推帧时前进**——集成测试的 live binding 里，
 `await Future.delayed` 光等时钟过去，按钮的填充条会停在原地，所以长按那两步走
@@ -556,561 +556,33 @@ snake_case）。两者是两个独立的商店身份，不要求一致；待项�
 
 ## 验证记录
 
-本机环境：macOS 14.8.9（23J631，Intel），Flutter 3.47.5 stable。
+**本节只留最近一版。** 逐版的实测结果与**未验证清单**在
+[`docs/verification-log.md`](docs/verification-log.md)（按时间倒序，最新在最上面）——
+README 是「怎么跑、能干什么」，那份文档才是「验到了哪一步、还有什么没验」。
 
-**v3.12（2026-10-13：Android 罗盘 + `.metadata` 修复）——Windows 11 / Flutter 3.47.5 / Android SDK 36：**
+**v3.13（2026-10-13：Android 系统栏与安全区）——Windows 11 / Flutter 3.47.5 / Android SDK 36：**
 
-真机：Xiaomi MI 9（`cepheus`，adb serial `e0e60672`），**Android 11（API 30）/ MIUI 12.5.6 / arm64-v8a**。
+真机同上：Xiaomi MI 9（`cepheus`，adb serial `e0e60672`），**Android 11（API 30）/ MIUI 12.5.6 / arm64-v8a**。
 
-- `flutter analyze` 无问题；`flutter test` **592/592 通过**（v3.11 是 588，本轮新增 **4** 例，
-  全在 `test/compass_test.dart`——其中一例走 `TargetPlatformVariant`）。
-- **跑过的（真机）**：`gradlew assembleDebug` 与 `assembleRelease` 均 BUILD SUCCESSFUL；
-  release 包 `app-release.apk` 71 MB，aapt2 核过 `application-label:'夜深'`、targetSdk 36、
-  `native-code: arm64-v8a`（含 armeabi-v7a / x86_64），签名是 **Android Debug 证书**（能侧载、不能上架）。
-- **罗盘的真机行为**：通道 ~30 Hz 出数；页面从「请使用支持罗盘的 iPhone…」变为实时读数
-  （`51°` / `东北 · 艮山` / `手机倾斜 5°`）；平放时 `tilt ≈ 5°`，**正面验证了重力矢量的符号修正**；
-  磁场被污染时（实测 259 µT，地磁只有 25–65 µT）**正确地拒绝发布方位**并显示校准提示，
-  挪开后降到 62–64 µT、方位随即出现。与系统自带 `com.miui.compass` 的对照**只做到一半**。
-- **没跑过的**：上面那条 **43° 的差异未定案**（手机证明过静止）；**横屏 90°/270° 折算未验证**
-  （本机自动旋转是关的）；**macOS / Web / 无磁力计设备一律没测**；**Kotlin 侧零单测**。
-- **本机的构建坑（三条，都已写进「构建 Android 的网络前提」与记忆）**：绕过 Flutter CLI 直接
-  `gradlew assembleRelease` 会因 `integration_test` 是 dev 依赖而报「找不到符号」；
-  `flutter build apk` 传不了 `-Pkotlin.incremental=false`，会撞 Kotlin 增量缓存故障；
-  **引擎的 ABI jar 来自 `storage.googleapis.com/download.flutter.io`，不在镜像改写范围内**，
-  缺 `FLUTTER_STORAGE_BASE_URL` 时 `:app:compileDebugKotlin` 会**挂十几分钟且不报错**——
-  诊断靠 `--offline`，它会把「挂住」变成「明确说你缺哪个包」。
-
-**v3.11（2026-10-12：Android 平台接入 + Android 启动图标）——在另一台机器上做的：**
-
-> 本轮是在一台 **Windows 11** 机器上做的（不是上面那台 macOS）。那边的 Flutter 基线一开始
-> 根本跑不起来——PATH 上的是 3.16.7 / Dart 3.2.4，解析不了本工程
-> （`Because night_sleep requires SDK version >=3.3.0 <4.0.0, version solving failed`）。
-> 装了 **3.47.5 / Dart 3.13.4** 到 `C:\src\flutter-3.47.5`，**与旧 SDK 并存、未改 PATH**。
-> 因此本节所有命令都是用**绝对路径**调那个 3.47.5 跑的。
-
-- `flutter pub get --enforce-lockfile` → 成功，且 **`pubspec.lock` 零改动**。
-  （第一次不加 `--enforce-lockfile` 时 pub 顺手把 `analyzer` 14.4→14.5、`build_runner`
-  2.16.1→2.16.2 等一串 dev/传递依赖升了级——与本次改动无关的 diff，已还原并用
-  `--enforce-lockfile` 顶住。）**没有设 `PUB_HOSTED_URL`**，锁文件里 129 条
-  `url: "https://pub.dev"` 一条没动。
-- `dart run build_runner build` → 生成 299 个产物。**这一步是前置**：`app_database.g.dart`
-  已 gitignore，新检出里没有它，不生成会得到几百条 `Undefined name 'ActiveSessionsCompanion'`。
-- `dart format .` → **无额外改动**；`flutter analyze` → **No issues found**。
-- `flutter test` → **588/588 通过**（v3.10 的 584 + 本轮新增 4 条 Android 图标断言）。
-  **条数只增不减，且新增的全在图标那一个文件里**——Dart 侧一行未改，这一点由
-  `git diff --stat` 里没有 `lib/` 交叉验证。
-- `flutter test tool/generate_app_icons.dart` → 通过，**iOS 与 macOS 的图标产物一个字节都没变**
-  （`git status` 里没有 `ios/` `macos/` 下的图标文件）——证明重构 `_writeAll` 时没有碰坏
-  原有两条渲染路径。
-- **Android 图标目视核对（部分）**：`mipmap-xxxhdpi/ic_launcher.png`（满幅渐变 + 月牙 + 声波）
-  与 `ic_launcher_foreground.png`（主体居中、四周透明）都**逐张看过**。
-  **没有在真机或模拟器的启动器里看过**——那需要设备。
-- **Android 图标像素级独立核对**：用 **Python + Pillow**（**不是** Dart 那套代码）重读了产物——
-  五个密度下前景 `alpha>8` 的像素**没有一个**落在中央 72dp 圆之外（`pixelsOut=0`）、
-  背景与传统位图都是色型 2 且四角不透明、背景层近白像素数为 0、角像素正是渐变起点 `#75D8FF`。
-  用另一套工具量同一件事，比让生成器和测试互相印证更有说服力。
-- **Android 构建**：`gradlew assembleDebug`（带下面的镜像 `-I`）**成功**（3m19s，452 个任务）。
-  产物 `build/app/outputs/flutter-apk/app-debug.apk`（170 MB，debug 含全部 ABI）。
-  ⚠️ **但文档里那条 `flutter build apk --debug` 在本机跑不通**——它**不接受 `-I`**，
-  拿不到镜像脚本，于是直连 `dl.google.com`，报错却是：
-
-  ```
-  > 'kotlin-android' plugin requires one of the Android Gradle plugins.
-    Please apply one of the following plugins to ':just_audio' project: …
-  [!] Gradle threw an error while downloading artifacts from the network.
-  ```
-
-  **别被那句「kotlin-android 插件需要 Android 插件」带偏去查 gradle 配置**——真实原因是 AGP
-  压根没拉下来（同一个网络问题）。在这台机器上要让**这条命令**可用，只有两条路：
-  ① 配一个**机器级**的 Gradle 镜像（`~/.gradle/init.d/cn-mirrors.gradle`，会影响本机所有
-  Gradle 工程）；② 把网络修好（让 `dl.google.com` / `repo.maven.apache.org` 可靠可达）。
-  需要时用 ① 的内容见计划文档 Task 5。**本轮走的是「命令行内联」这条路，没有动机器级配置。**
-- **合并清单核对（本轮最要紧的一条）**：读的是
-  `build/app/intermediates/merged_manifests/debug/processDebugManifest/AndroidManifest.xml`
-  ——**不是源码**，只有它同时能证明「我们加对了」与「插件确实合并进来了」：
-
-  | 权限 | 来源 |
-  | --- | --- |
-  | `RECEIVE_BOOT_COMPLETED`、`FOREGROUND_SERVICE`、`FOREGROUND_SERVICE_MICROPHONE`、`INTERNET` | **应用自己声明**（其中 `INTERNET` 是差点漏掉的那条） |
-  | `POST_NOTIFICATIONS`、`VIBRATE` | **`flutter_local_notifications` 22.3.1 合并进来**——证明「不重复声明」的决定成立 |
-  | `RECORD_AUDIO` | **`record_android` 2.2.0 合并进来**——订正了上游文档那句「要补 RECORD_AUDIO」 |
-  | `ACCESS_NETWORK_STATE`、`DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` | 插件 / AGP 生成 |
-
-  **确实没有** `SCHEDULE_EXACT_ALARM` / `USE_EXACT_ALARM`（刻意的非精确闹钟）；
-  `<service>` **零个**（没有声明空壳前台服务）；两个 FLN receiver 的**四个 action** 齐全；
-  `label=夜深`、`icon=@mipmap/ic_launcher`。
-- **APK 侧复核**（`aapt2 dump badging`）：`minSdkVersion 24` / `targetSdkVersion 36` /
-  `compileSdkVersion 36`、`application-label:'夜深'`，且 **`application-icon-<每个密度>`
-  都解析到 `res/mipmap-anydpi-v26/ic_launcher.xml`**——系统在全部密度上取的都是**自适应图标**
-  而不是传统位图，这正是想要的。
-- **模拟器实跑（Pixel 6 Pro / API 34 / Android 14，`emulator-5554`）**：`adb install` 成功 →
-  `am start` 成功（焦点 `com.example.night_sleep/.MainActivity`）→ **首页完整渲染**
-  （讲解卡、圆环、最近记录、玻璃胶囊标签条、中文全部正常），**logcat 里该应用无任何
-  error / exception / fatal**。证据图：`screenshots/v3.11-android-app.png`（应用内）、
-  `v3.11-android-launcher.png`（桌面）、`v3.11-android-icon-zoom.png`（图标放大）、
-  `v3.11-android-icons-compare.png`（与同屏其它图标并排）。
-- **Android 图标在真实启动器里的目视核对**：Pixel 桌面用**圆形遮罩**，我们的图标被正确套成
-  圆形、**月牙与两道声波完整可见、没有被切、构图居中**——这正是「墨迹必须落在中央 72dp 圆内」
-  那条断言要保证的效果，现在有了真机（模拟器）层面的证据。同一屏上相册 / YouTube 显示的是
-  **旧式处理（缩小放在白色圆盘上）**，只有我们的图标铺满整个遮罩，说明自适应图标这条路真的生效了。
-  **一处未解释的观感**：我们的图标在最外圈约 1/4 半径处有一圈**淡淡的浅蓝亮环**，
-  而同屏 Chrome 的图标没有。已核实**这不是我们产物的问题**——用两层位图自己做合成 + 圆形遮罩，
-  扫描线上没有亮环（`screenshots/v3.11-android-icon-composite.png`）。成因未定，
-  怀疑与启动器对**位图背景层**的处理或模拟器 GPU 渲染有关，**留作待查**，
-  下一步可试「把背景层换成纯色 `@color` 看亮环是否消失」。
-
-**Android 构建踩到的四个环境坑，都不报错，比报错难查**（判定与解法都记在
-「构建 Android 的网络前提」一节）：
-
-| 坑 | 现象 | 判据 |
-| --- | --- | --- |
-| Gradle 发行包 | `.part` 停在 4 MB 不动 | `$SDK` 下 `gradle-9.3.1-all/*.part` 不再增长 |
-| Maven 依赖 | 挂在 `assembleDebug`，daemon 十几条 established 连接收不到数据 | `find ~/.gradle/caches/modules-2/files-2.1 -type f -newermt "-5 minutes" \| wc -l` **持续为 0** |
-| NDK / Platform 35、36 | 卡在 `Preparing "Install ..."`；或解压报 `ZipException: Archive is not a ZIP archive`（包被**截断**：`.temp` 下只有 500 KB，完整包 62 MB） | 目标目录下只有一个空 `.installer` |
-| **Kotlin 增量编译缓存** | `:flutter_timezone` 与 `:audio_session` 的 `compileDebugKotlin` 报 `Could not close incremental caches … .tab`，连报两次 | 本轮用 `-Pkotlin.incremental=false` **命令行属性**绕过（**没有改仓库里任何文件**；写进 `gradle.properties` 就等于要求所有开发者关掉增量编译）。**疑为杀软实时扫描占住刚写完的 `.tab`**，根治要给项目 `build/` 与 `~/.gradle` 加排除项 |
-
-另外两个只影响诊断、不影响结论的发现：**被停掉的构建留下的 Gradle daemon 仍会攥着工程锁**，
-表现为新构建「1 busy Daemon could not be reused」后干等（要单独停那个旧 daemon）；
-`Get-Process java | Stop-Process` **不能用来停 Gradle**——本机 `java` 是 Android Studio 自带的
-JBR，那样会连 IDE 一起杀掉，必须按 PID 精确停。
-
-**v3.10（2026-10-03：主按钮高光裁进圆角 + 会话页状态栏 + 入睡前页一屏放下 + 清除缓存二次确认）
-最近一次复跑：**
-
-- `dart format .` → 无额外改动；`flutter analyze` → **No issues found**。
-  （跑的过程中出现过一条 `integration_test/app_screens_test.dart` 的 `main` 未定义，来自
-  `lib/main.dart` 被整段注释掉的**本地临时改动**（不是本轮改的），已单独报给使用方，
-  当场还原后复跑即无。）
-- `flutter test` → **584/584 通过**（v3.9 的 578 之后净增 6 条）：
-  - `test/primary_action_test.dart` 的「顶边高光被裁进圆角，不从左右上角溢出」——**含变异验证**
-    （摘掉 `clipBehavior` 该条立刻变红）；
-  - `test/session_setup_page_test.dart` 新增「底部安全区与一屏放下」组 4 条：三档机型
-    （393×852 / 402×874 / 430×932）各自钉「上半区滚动上限 == 0」与「按钮完整落在底部安全区
-    之上」，另有一条 SE（375×667）的「确实放不下、但按钮照样不被切」；
-  - `test/pages_widget_test.dart` 的「清除缓存：取消（或点蒙层）之后一个文件都不删」。
-  「宽屏下两态内容居中限宽 680」与「hero 的高度按可用高度连续取值」两条随实现改写
-  （前者不能再拿 `ListView.first` 量——入睡前态已经不是 `ListView` 了）。
-- **目视**：
-  - 主按钮在黑底 1x / 3x 快照上**逐像素核对**过——修前左右上角**外侧**（y = 顶边 +1）是
-    `(48,48,48)` 的白灰条，修后归零，而顶边正中那截 `(58,153,253)` 两版一致。
-  - 入睡前那一屏拍了**整页黑底快照**（402×874 / 393×852 / 390×844 / 430×932）：三行卡片与
-    按钮都完整，按钮下方还有那行「屏幕将保持暗色…」与 34pt 的 home indicator 区。
-  - 两份快照都是**一次性**用例拍完即删，没进版本库。**仍未在模拟器 / 真机上目视过**；
-    会话页状态栏只有结构改动、**未截图**。
-- **构建**：本轮**没有重跑任何构建**，只跑了 `flutter test` 与 `flutter analyze`。
-
-**上一版（v3.9，2026-10-03：夜间录音接入 / plan B）复跑：**
-
-- `dart format .` → 无额外改动；`flutter analyze` → **No issues found**
-- `flutter test` → **578/578 通过**（v3.8 的 469 之后净增 109 条）。本轮新增的测试文件：
-  `test/night_recorder_test.dart`（8）、`test/session_recording_test.dart`（13）、
-  `test/clip_pruning_test.dart`（5）、`test/clip_segmentation_test.dart`（25）、
-  `test/wav_file_test.dart`（22）、`test/sound_card_test.dart`（12）、
-  `test/recording_settings_test.dart`（8）；`test/schema_migration_test.dart` 另加 v5 → v6 五条与
-  「旧库直升 v6」三条。既有三处页面测试（`pages_widget_test.dart`、`sleep_session_page_test.dart`、
-  `session_setup_page_test.dart`）随文案改写同步更新。
-  **其中 5 条是审查后补的**：`stop()` 返回时最后一段已送达订阅方、丢弃时收尾那一刻才定案的
-  片段文件也要删掉、删掉全部录音时清单指针一并清空、用出厂默认参数也能把换气停顿并起来、
-  `PcmRing.slice` 与整段读出的子区间一致。前四条各自做过变异验证（把修复改回去就变红）。
-- `flutter build macos --debug` → **通过**（证明 `record` 插件与 macOS 的麦克风 entitlement 接得上）。
-- `flutter build ios --simulator --debug` → **通过**。并已核对**打包产物**而不只是源码：
-  `Runner.app/Info.plist` 里确有已确认的那句麦克风用途串与 `UIBackgroundModes = ["audio"]`，
-  `ios/Runner/GeneratedPluginRegistrant.m` 里确有 `RecordIosPlugin`。
-  **构建通过不等于录音可用。**
-- **本轮没有跑过什么（不得当成已完成）**：
-  - **真机整夜后台录音**：锁屏后 Dart isolate 是否持续收到 PCM、片段是否持续落盘——这是整条路
-    的**前提**，而**测试钉不住它**；本轮只跑了单测与构建。必须在真机上插着电源睡一晚，第二天看
-    片段的时间分布是否覆盖整夜。
-  - **切片阈值调参**：`ClipParams` 那七个默认值（触发 −38 dBFS、结束 −45 dBFS、静音 2s、
-    前置 padding 500ms、最短 1s、最长 60s、合并间隔 3s）**全部是拍的**，没有在真机上用真实
-    打鼾 / 梦话样本调过。
-  - **界面目视核对**：会话页录音指示、设置页新增两行（占用 / 删除全部录音）、声音卡标注三选
-    **只有几何与结构断言**，没有截图核对。
-  - 顺带：白噪音与录音的切换（倒计时到点后是否真的接上）、来电 / 抢麦中断后的行为、整夜耗电，
-    均未在真机验证。
-- **重复强调**：切片纯函数、WAV 写入、采集端、会话接线、保留期限这些是**单测**，不是真机验证；
-  「跑绿了」只能说明逻辑自洽，说明不了真机上录得到整夜。
-
-**v3.8（2026-10-03：助眠音效换成打包实景录音）最近一次复跑：**
-
-- `dart format .` → 无额外改动；`flutter analyze` → **No issues found**
-- `flutter test` → **469/469 通过**（上一版 479；净减 10：删掉合成器的 `noise_synth_test.dart`，
-  新增 `noise_asset_test.dart` 5 条，其余为既有用例的 import 与名称跟改）
-- **变异验证**：把音效格宽度从「面板宽度 ÷ 条数」换回「屏幕宽度 ÷ 条数」，
-  `test/noise_sheet_test.dart` 的「宽屏下面板限宽，五格仍是一行且不溢出」**立刻变红**；
-  还原后复绿
-- **素材生成管线逐条量过**（ffmpeg 9.0，`ebur128=peak=true`）：
-
-  | 文件 | 时长 | 响度 | 真峰 | 循环点样本阶跃 / 该文件步进 p99 | 字节 |
-  | --- | --- | --- | --- | --- | --- |
-  | `forest.m4a` | 75.000 s | −22.1 LUFS | −3.0 dBFS | 2470 / 4031 | 745 KB |
-  | `fire.m4a` | 71.000 s | −23.0 LUFS | −1.9 dBFS | 1632 / 5828 | 800 KB |
-  | `ocean.m4a` | 75.000 s | −22.2 LUFS | −2.8 dBFS | 789 / 4208 | 742 KB |
-  | `stream.m4a` | 75.000 s | −22.1 LUFS | −3.0 dBFS | 1532 / 4190 | 761 KB |
-  | `wind.m4a` | 44.000 s | −22.3 LUFS | −5.2 dBFS | 122 / 1071 | 435 KB |
-
-  合计 **3.40 MB**；**响度跨度 0.9 LU**（源素材是 14 LU）；真峰全部 ≤ −1.9 dBFS，无削波；
-  接缝阶跃全部落在各自步进分布的 p99 以内，即听不出接缝。解码长度精确等于标称时长，
-  说明 `m4a` 的 edit list 已裁掉 AAC priming，接缝处不会多出静音。
-- **打包资源真能被解码并起播**（macOS，真平台）：
-  `flutter drive --driver=test_driver/integration_test.dart \
-  --target=integration_test/noise_playback_test.dart -d macos` → **All tests passed**。
-  这条覆盖的是 widget 测试一步都走不到的路径：`setAsset` → 资源包 → 平台解码器 →
-  `ProcessingState.ready`（音量 0，不出声）。它同时证明了**素材确实打进了应用包**
-  （pubspec 的 `assets/noise/` 写错的话，这里会以加载失败收场）。
-- **尚未做**：**听感未核对**（五条的主观可用性、切换时 0.9 LU 的响度差、循环接缝是否可闻）；
-  **素材授权未落实**（见「未实现」表）；5 格新布局**无截图核对**（只有几何断言）。
-
-**v3.7（2026-10-03：DeepSeek 余额查询 / 连通性测试 / 详情页重新生成）最近一次复跑：**
-
-- `dart format .` → 无额外改动；`flutter analyze` → **No issues found**
-- `flutter test` → **479/479 通过**（上一版 424；本轮净增 55 条：`insight_service_test.dart`
-  18 条、`insight_prompt_test.dart` 7 条、`sleep_insight_test.dart` 9 条、
-  `insight_credentials_test.dart` 6 条、`app_cache_test.dart` 7 条，
-  `pages_widget_test.dart` 补 5 条交互用例，`model_catalog_test.dart` 补 2 条能力表用例，
-  另把配置页那条「标注未接入项」改写为「给出实测支持的动作」）
-- **清除缓存在真实目录上验证过**（macOS，临时 `integration_test` 脚本，跑完已删）：
-  `size()` 读出 8 个白噪音 WAV 共 **6.7 MB**（`du` 报 6.8 MB 磁盘占用，差值来自块对齐），
-  > 2026-10-03 注：白噪音改成打包资源后不再进临时目录，这份读数的**内容**不再可复现
-  > （`size()` / `clear()` 的语义本身没变）。留下的只有导出副本，未导出时读数为 0 B。
-  `clear()` 之后目录里 **0 个文件**、再读为 `0 B`。同一次还顺手确认了 `getTemporaryDirectory()`
-  在 macOS 上就是 `~/Library/Caches/<bundle id>`（与 `noise_player.dart` 的注释一致）。
-- **钥匙串在真实平台上验证过**（macOS，临时 `integration_test` 脚本，跑完已删）：
-  写 → 读 → 覆盖写 → 删全部通过；并且**换一个进程仍读得到**（先跑 `PHASE=write` 的进程写入，
-  再用 `security find-generic-password -s flutter_secure_storage_service -a insight_api_key`
-  确认条目真的进了系统钥匙串，最后跑 `PHASE=read` 的**另一个进程**读回同一串值）。
-  「重启后仍在」这句话就是靠这一步成立的，不是靠推断。**未在 iOS / Android 实测**。
-  macOS 走的是旧版钥匙串、**没有加** `keychain-access-groups`（见规格偏差 #8 里的取舍）。
-- **开发期会遇到一次钥匙串授权框**，原因已查清并实测过：`flutter build macos --debug`
-  产出的是临时签名（`codesign -dv` 报 `Signature=adhoc`、`TeamIdentifier=not set`），
-  designated requirement 就是 **cdhash**，每重新编译一次就变一次，旧钥匙串条目的 ACL
-  随之对不上。表现是「写入钥匙串之后又重编过」时，下次读会弹一次
-  「想要使用您存储在钥匙串的…中的机密信息」，点**始终允许**即可（把新哈希加进 ACL）。
-  用写入时的同一个二进制启动**不会弹**（已实测）。正常使用不会遇到这件事，
-  只有开发期反复重建会遇到。
-- **用户实机复测后补修两条**（第二次是靠读用户机器上的真实库定的性：`app_settings` 存着
-  `deepseek / deepseek-v4-pro`、`insights.provider` 全部是 `demo` —— 设置一直是对的，
-  缺的是**会话内存里的密钥**，而调试期间应用重启了几次）：
-  1. 设置根页那一行改走 `resolveInsightSelection()` 并**说出密钥在不在**（「未填 API Key
-     （重启后需重填）」），不再读裸列显示与事实不符的「未配置」；
-  2. 详情页「重新生成」**按钮常驻**，跑不了时变灰 + 一句指名道姓的说明，点它不发请求。
-- 回归用例：`sleep_insight_test.dart` 的「全新安装也照样给按钮」「没填 API Key 时按钮仍在
-  但变灰」，`pages_widget_test.dart` 的两条根页副标题用例。
-- **活体冒烟（用真实 key 打真接口，一次性脚本，跑完已删；脚本与仓库都不含该 key）**：
-  余额读取成功、连通性通过、生成返回 `score=82` 与一段中文总结。这一条是本轮唯一能证明
-  「地址、请求体、响应解析在真实服务商上确实成立」的证据——其余测试全部用 `MockClient`。
-- **已变异验证**：`SleepEntry.scoreSource` 退回只看 `isUsable` → 「模型没给分时回退到
-  本地估算」变红；连通性判定改成要求 `content` 非空 → 「推理模型正文为空也算连通」变红。
-- **未实测**：OpenAI 的对话路径（与 DeepSeek 同一份代码，但没有 OpenAI 的 key）；
-  Claude 的对话与余额（**刻意未实现**，见规格偏差 #46）。
-- **未目视核对**：详情页常显的洞察区块、配置页三个动作按钮的浅色/深色观感与排版，
-  以及 `¥` 读数在窄屏下的换行，**只有几何/结构断言**（同 v3.5 / v3.6 的待办）。
-
-**上一版（v3.6，2026-10-03：确认弹窗改用 iOS 系统组件）复跑：**
-
-- `dart format .` → 无额外改动；`flutter analyze` → **No issues found**
-- `flutter test` → **424/424 通过**。本轮只重写 `test/confirm_dialog_test.dart`（仍是 7 条，
-  断言对象从「自绘特征」换成「系统组件特征」：`CupertinoAlertDialog` 在位、取消/蒙层返回
-  `false`、确认返回 `true`、取消在左确认在右、破坏性取 `danger` 非破坏性取 `accent`、
-  深色下亮度跟随应用而非系统）。三处调用方一字未改，`pages_widget_test.dart` 与
-  `record_edit_delete_test.dart` 里依赖文案/可见性的确认用例**直接复用、无需改动**。
-  **已变异验证**：把实现退回 HEAD 的自绘版本，「系统组件」「破坏性取 danger」「深色亮度」
-  3 条立刻变红，而 4 条返回语义/按钮次序的用例与实现无关、保持绿。
-- **构建**：本轮**没有重跑任何构建**，只跑了 `flutter test` 与 `flutter analyze`。
-- **未目视核对**：新弹窗底色是半透明材质叠在模糊背景上，浅色/深色下的实际观感与它同全仓
-  其余玻璃材质的协调度**只有几何/结构断言**，需人工核对（同 v3.5 设置页的待办）。
-
-**上一版（v3.5，2026-10-03：设置页信息架构重排 + 两个新二级页 + 开屏页）复跑：**
-
-- `dart format .` → 无额外改动；`flutter analyze` → **No issues found**
-- `flutter test` → **424/424 通过**（本轮净增 9 条：新增开屏 5 条；设置页那两组重写后
-  净增 3 条——删掉 3 条随版式作废的旧用例，补上 6 条新的二级页用例；又补 1 条
-  「下拉箭头贴右」的几何回归）
-- 三条新断言做了**变异验证**，逐条确认能变红：
-  - 把滑块 `_snap` 退回直接 `clamp`（去掉 0.5 小时吸附）→「按 0.5 小时吸附，两端不越界」
-    报「滑块在 0.13 处落库 342 分钟，没有吸附到 0.5 小时」
-  - 开屏收起条件去掉 `settingsAsync.isLoading` →「设置还没读到第一帧时，开屏不会先收起」
-    报找不到 `SplashScreen`
-  - 把声音检测的副标题换成原型那句「检测打鼾、梦话并生成洞察」→ 红线用例报找不到
-    「尚未接入录音」
-- **提醒相关的 9 条既有用例全部通过在**（挂载点从设置根页改到 `/settings/sleep`），
-  行为一字未改：权限被拒回弹、开启时连同默认时刻落库、全量重排、`denied` 时的「去系统设置」、
-  「删除全部本地数据」的会话收尾。
-- **巡检脚本已按新文案更新**（`integration_test/app_screens_test.dart` 新增「外观」「睡眠设置」
-  两步，导入/洞察两步改用新行名），`flutter analyze` 覆盖了它的编译；**未实跑**
-  （要 `flutter drive` + 设备）。
-- **目视核对（macOS，`flutter run -d macos`）**：**开屏页通过了**。深蓝渐变、两圈轨道环、
-  星点、圆角图标（moon + 两道声波弧的描线都在）、`夜深`（宽字距）与`听见夜晚，看见睡眠`、
-  底部进度条，逐项在位，与原型一致。证据图：`screenshots/v3.5-splash.png`（文案与进度条都在
-  的那一帧）、`v3.5-splash-early.png`（只到轨道环与星点的早期帧，可见入场是从无到有）。
-- **设置根页与「外观」「睡眠设置」两个新二级页仍未目视核对**：macOS 巡检跑到一半弹出了系统
-  的「`night_sleep` 想访问『文稿』文件夹」授权框，它盖住了应用窗口，而本机没给 osascript
-  辅助访问权限、点不掉系统对话框，抓到的帧全是那个弹框。这一条同时解释了由来已久的
-  「巡检在 macOS 上跑不完」——**那多半不是脚本的问题**（见「界面截图巡检」新增的注意点）。
-  行内下拉在 390px 与 iPad 横屏下的换行、自绘滑块的拖拽手感，因此**仍然只有几何与结构断言**。
-- **已知项**：开屏挂在 `AppScaffold` 的 `Stack` 里，冷启动若有深链直达子页会被盖住
-  （当前没有深链）。
-
-**v3.4（2026-10-03：iPad 横屏下的两处弹层缺陷）最近一次复跑：**
-
-- `dart format .` → 格式化改动文件；`flutter analyze` → **No issues found**
-- `flutter test` → **415/415 通过**（v3.3 那次的 413 之后净增 2 条回归用例）
-- 两条新回归都做了**变异验证**：把音效格宽度换回「屏幕宽度」→
-  「宽屏下面板限宽，八格仍是四列两行且不溢出」报 1 行 8 格；把弹层浮起 24px 加回去 →
-  「宽屏下面板限宽 560，但下沿仍贴屏幕底」报 `810 ≠ 834`
-- **目视核对（使用方自验，iPad 横屏）**：音效格那一处已确认修好；弹层贴底那一处是同一轮
-  提出后新改的，**本机只做了 1194×834 的 golden 渲染**（面板贴底、四列两行、音量条与定时
-  chips 都在位），**未在真机重新核对**。**仍未覆盖**：真实 iPad 上的安全区取值、深浅两套
-  主题、以及 iPhone 横屏。
-
-**同日补丁（2026-10-03 晚：白噪音在 macOS 上放不出声——两处缺陷）最近一次复跑：**
-
-- `dart format` / `flutter analyze` → **No issues found**
-- `flutter test` → **413/413 通过**（未增删用例：两处修复都在平台侧，widget 测试用的是假
-  播放器，本来也盖不到——这正是它们能漏出去的原因）
-- `flutter drive --target=integration_test/noise_playback_test.dart -d macos` → **All tests
-  passed**（真合成 → 真落盘 → 真起播，音量 0 不出声；**2026-10-03 当日的记录**，素材换成打包
-  录音后这条链路已消失）。**并做了正反对照**：先清掉缓存目录
-  （实测 `getTemporaryDirectory()` 返回时 `exists=false`，就是报错里那个路径），去掉
-  `directory.create(recursive: true)` 那一行再跑，同一条用例报的正是截图里那句
-  `无法生成音频：PathNotFoundException … errno = 2`；恢复后冷跑通过，缓存目录里落下
-  `noise-fan.wav` 882,044 字节（20 秒 × 22050Hz × 16 位 + 44 字节头）。
-- **巡检（`integration_test/app_screens_test.dart`，macOS）本轮跑了两次，都没跑完**：
-  - 第一次**暴露了新加那一步自己的错**：`find.text('风扇')` 同时命中弹窗宫格与**底下那一屏**
-    的常用白噪音四格（弹窗是叠上去的，下面那棵树还在），`ensureVisible` 抛
-    `Bad state: Too many elements`，还把后面三步一起带塌
-    （`TOUR skipped session-*`）。已改成用 `GridView` 限定范围——整个 `lib/` 里只有这个弹窗
-    用 `GridView`。
-  - 第二次跑到 00:5x 时**机器自动锁屏**：锁屏后不再产帧，每一步都在推帧的巡检随即停摆，
-    日志停在 `request_data message is taking a long time to complete`。这条已记进
-    「界面截图巡检」的注意点（**先 `caffeinate -d`**）。
-  - 所以**巡检全趟通过这一条仍然没有被验证**——与 v3.0 / v3.2 / v3.3 那几条同类，
-    继续挂在下面的「未验证」里。两次都没写库（`active_sessions` 为空、DB 文件时间戳未变）。
-
-**v3.3（2026-10-03：会话页补「入睡前」态，记录起点挪进页内）最近一次复跑：**
-
-- `dart format .` → `Formatted 122 files (6 changed)`（本轮改动的文件）
-- `flutter analyze` → **No issues found**
-- `flutter test` → **413/413 通过**（v3.2 那次的 400 之后，净增 13 条：新增 20 条、删掉 7 条
-  被新语义取代的旧用例）。本轮新增/补测（新断言逐条做了变异验证）：
-  - **入睡前态 10 条**（`test/session_setup_page_test.dart`）：hero 三段文案与「开始睡眠」按钮
-    在位、旧的「没有正在进行的睡眠」空状态**不再存在**；**进页面不写库**；**点「开始睡眠」才
-    写会话行**且 `startAtUtc` 就是按下的那一刻；草稿（场景 / 白噪音 / 音量）随行一次写进去；
-    收起不写库、停掉试听、回上一页；草稿不跨页存活；闹钟权限被拒与通过两条；
-    宽屏 1200 下两态都居中限宽 680
-  - **数据 3 条**（`test/session_repository_test.dart`）：`start()` 一次写全草稿；
-    不传时默认值不被新参数带偏；**首次并发读设置不炸**——最后这条是**既有缺陷**的回归
-    （`getSettings()` 的「先读后插」在并发首读时撞 `UNIQUE constraint failed:
-    app_settings.id`，正是入睡前态一帧两个读者稳定触发的）
-  - **夜景组件 4 条**（`test/session_night_widgets_test.dart`）：入睡前变体多一行
-    「夜景氛围 / 左右滑动切换」而进行中变体没有；选中卡是**绕中心** `scale(.98)`
-    （订正照抄错层，见会话规格 §17.6）；另两条白噪音生命周期用例从会话页搬过来（那边
-    的点按入口已被收紧掉）
-  - **媒体查询 3 条**（`test/session_setup_page_test.dart`）：窄屏（375）常用白噪音四格**竖排**
-    （标签在图标下方）、宽屏（430）并排；高屏（≥860）hero 撑到 285、矮屏更矮——这条挡的是
-    「把 285 写死、不再看屏高」
-  - **首页入口 1 条**（`test/pages_widget_test.dart`）：点「开始入睡」**只推入页面、不写会话行**，
-    收起后库里仍为空（走真实路由，顺带覆盖 `app.dart` 注册的 `path: 'sleep/session'`）
-- **本轮没有重跑任何构建**（`flutter build macos` / `flutter build ios`），也**没有重跑
-  `flutter drive` 巡检**：巡检脚本已按新流程改写（入睡前那一屏 → 「完整设置」弹窗 →
-  「开始睡眠」→ 长按/评星），但**一次都没执行过**，见「未验证」。
-- 逐句核对了原型 `index.css` 的**最终生效层**（第 1730–1960 行那段
-  `/* ── Immersive sleep controls ── */` 覆盖了前面第 1557 行起的同名规则），并借此订正了两处
-  照抄错层：场景卡选中态（`scale(.98)` 而非 `translateY(-2px)`）与内容限宽（两态都是 680）。
-
-**上一版（v3.2，2026-10-02：会话页照原型「睡眠进行中」态重建）复跑：**
-
-- `dart format .` → 只有 `test/pages_widget_test.dart` 有**既存**的格式漂移（不属于本轮改动，
-  已 `git checkout` 还原、未提交）；本轮改动的文件本身无需格式化
-- `flutter analyze` → **No issues found**
-- `flutter test` → **400/400 通过**（v3.0 那次的 337 之后，v3.1 与 v3.2 累计新增 63 条）。本轮
-  新增/补测：夜景几何 19（`test/night_backdrop_test.dart` 16 + `test/night_scene_test.dart` 3，
-  含「流星只在 `meteor` / `moon` / `galaxy` 三场景可见」这条**订正**）、月亮标记 6
-  （`test/sleep_moon_mark_test.dart`，含「丢弃 `<filter>` 后不打印 unhandled element」）、
-  会话页夜景 widget 7（`test/session_night_widgets_test.dart`：8 种场景、`disableAnimations`
-  停表、弹窗九宫格与四档时长、**浅色应用主题下弹窗内仍是深色令牌**）、长按按钮 7
-  （`test/hold_to_finish_button_test.dart`，含
-  「**开启「减弱动态效果」时 1.5 秒守卫仍按真实时长计时**」这条**行为修复**的回归、
-  「**按满触发后指针被取消，再短按仍给提示**」这条 `onPointerCancel` 复位的回归）、
-  v4→v5 迁移 4（`test/schema_migration_test.dart` 的 `v4 → v5` 组）、场景持久化
-  （`test/session_repository_test.dart`）与 `SleepSession.elapsedClockAt`
-  （`test/sleep_session_test.dart`）；会话页自身补到 33 条
-  （`test/sleep_session_page_test.dart`，含「浅色主题下会话页仍然是深色」这条**真的跑浅色主题**
-  的回归）。新断言逐条做了变异验证。
-- **构建**：本轮**没有重跑任何构建**（`flutter build macos` / `flutter build ios`），只跑了
-  `flutter test` 与 `flutter analyze`。
-
-**上一版（v3.0，2026-10-02：会话 + 回顾 + 起床闹钟 + 显示名）终审修复后复跑：**
-
-- `dart format --set-exit-if-changed .` → 无改动
-- `flutter analyze` → **No issues found**
-- `flutter test` → **337/337 通过**。本轮新增/补测（未逐条列举，完整场景见规格第 9 章）：
-  v3→v4 迁移 6（`test/schema_migration_test.dart`，含「重建后 `quality` 可空」
-  「既有记录/阶段/片段/洞察/设置一行不动」「子表外键仍级联」「再次打开不重跑」）、
-  会话领域 13（`test/sleep_session_test.dart`）、会话仓库 16
-  （`test/session_repository_test.dart`，含 `finish` 不写阶段、时长守门、冷启动恢复）、
-  会话页 widget 28（`test/sleep_session_page_test.dart`，含诚实文案在位、闹钟被拒回弹、
-  白噪音收起/离开页面仍继续、闹钟胶囊已过起床时间不再说「还有 0h 0m」）、
-  回顾页 10（`test/review_page_test.dart`）、会话闹钟（`test/reminder_scheduler_test.dart`
-  的起床闹钟组、`test/reminder_sync_test.dart` 的会话闹钟组 7，含「调度器没就绪时不排
-  9003」）、显示名 5（`test/app_display_name_test.dart`）；首页与手动补录页的改动落在
-  `test/pages_widget_test.dart`。终审修复波另补「删除全部本地数据」的收尾断言
-  （`test/reminder_settings_test.dart`：残留会话被清、9002/9003 重新推导、白噪音停掉）。
-  **新断言逐条做了变异验证**（拆掉实现会真的变红）。
-- 上一版（v2.9，2026-09-29）复跑记录：**238/238 通过**（当时从 176 起，逐步增至 216，终审修复波再补 1 至 217：
-  schema v3 迁移 6（含 `record_id` 为空的洞察存活分支）、
-  演示数据重装与幂等 2、冷启动播种兜底 4、图标取色 4、顶部渐变与安全区/错误分支留白 3、
-  关于卡片居中与版本号 2、自绘确认弹窗 7（另有演示数据页的确认 1，落在 `pages_widget_test`）、
-  删除图标 2、`PrimaryAction` 禁用态 10；
-  v2.7 再补 4：标签条浮起量与页面底部留白同源、胶囊实测高度 65px（`test/tab_bar_inset_test.dart`）；
-  v2.8 再补 12：底部模糊带的遮罩层级（套在 `BackdropFilter` 外面）与遮罩方向、模糊半径 14、
-  填充 0→78% 且单调递增、高度 = 底部预留 + 20（含无安全区的 113）、宽屏不渲染、整条带不拦手势
-  （`test/bottom_fade_test.dart`）；
-  v2.9 再补 5：应用图标几何分平台断言（实体四角透明、中心不透明、实体包围盒 824×824 且四边留白 100、
-  iOS 仍满幅、无 alpha 通道（色型 2）；另有一条覆盖七个尺寸——文件名与真实像素尺寸绑定、实体宽随尺寸
-  等比、实体下方投影存在、圆角半径带宽。`test/app_icons_asset_test.dart`）；
-  各测试文件覆盖的场景见
-  [规格第 9 章](docs/superpowers/specs/2026-09-28-night-sleep-design.md)）。
-  本轮多处断言做了**变异验证**（拆掉实现会真的变红），不是「不可能失败的断言」
-
-- **构建**：v2.5 那次 `flutter build macos --debug` / `flutter build ios --simulator --no-codesign`
-  成功产物的记录仍适用；**本轮（v2.6）没有重跑任何构建**。因此本轮新增的
-  `package_info_plus` 依赖虽然连 `macos/Flutter/GeneratedPluginRegistrant.swift` 一并提交了，
-  但它在新构建里的原生注册、以及设置页版本号的实际取值**都没有在构建/运行中验证过**
-  （测试里用的是包自带的 `setMockInitialValues`）
-- **应用图标构建（v2.9）**：`flutter build macos --debug` 于 **2026-09-29** 成功，
-  `build/macos/Build/Products/Debug/night_sleep.app/Contents/Resources/AppIcon.icns` 的时间戳为
-  **2026-09-29 18:56:15**（源 PNG 为 18:12:25，确认本次重建吃到了新产物）。用 `iconutil` 把该
-  `.icns` 抠出来量了 256px 那一档：色型 6、实体 206×206、四边留白各 25、**画布角与实体角 alpha 均为 0**、
-  中心 255——即**构建产物里确实带着烘焙好的圆角**，不是只有源文件对。
-  **但 Dock 里实际画出来的样子仍未经人眼确认**（本任务不做目视，见下「未验证」）——断言与量产物
-  只能保证文件几何正确，保证不了 Dock 的绘制；清缓存步骤见 CHANGELOG 2.9
-- **界面巡检**：
-  - v2.5 那轮完整巡检（iOS 模拟器截图，浅色/深色各一遍，逐屏看过首页/记录/统计/设置/
-    二级页/睡眠详情/助眠音效面板）的记录仍适用。
-  - 本轮**只有任务 5（顶部渐变）真的跑了模拟器**：用临时巡览脚本（已删）依次切到四个一级页
-    各下拉 300px，宿主机 `xcrun simctl io screenshot` 循环采样，iPhone 16 Pro、浅色与深色
-    各看一遍，确认顶部硬分界消失、未滚动时标题不被状态栏压住。
-  - **本轮其余新增/改动的界面没有做目视确认**：自绘确认弹窗（含浅色下卡片描边是否可见）、
-    垃圾桶图标、禁用按钮的页内提示、关于卡片的居中与版本号行——这些只有几何/结构断言，
-    没有截图核对。这是有意的取舍：有一位实现者曾在跑模拟器截图时卡死 600 秒，
-    此后本轮禁止后续任务碰模拟器，目视集中留待下一轮。
-  - v2.7（标签条浮起量 34pt → 20pt）**同样只有几何断言**：只截了一张模拟器截图用于确认
-    改动前的现状，改完后没有再看一眼，实际观感需人工确认。
-  - v2.8（底部模糊带）**已在 2026-09-29 下午补做目视核对**（iPhone 16 Pro 模拟器，手段沿用上节
-    「界面截图巡检」：宿主机 `xcrun simctl io booted screenshot` 循环采样 +
-    `flutter drive --target=integration_test/app_screens_test.dart`）。要看的三件事都通过：
-    (1) **带子顶边（离屏幕底 121pt）没有硬边**——离带顶约 20pt 处的「最近记录」标题（离底约 91.7pt）
-    在两套主题下都清晰，该处的有效 wash 只有约 9%（遮罩与填充在带顶附近都接近 0），越往屏幕底越重，
-    是连续过渡；(2) **方向对**（越靠近屏幕底越实）——浅色统计页上胶囊下方那段的「平均时长」只剩
-    很淡的残影，深色首页上胶囊下方的内容被洗到接近 `bgBase`（黑），而带子上方的内容
-    （「推荐 7–9h」「雨声·海浪·篝火」）保持清晰；(3) **胶囊下半部没有发闷、没丢玻璃透感**——
-    浅色下胶囊仍通透，深色下胶囊仍读作正常的玻璃条（`bgNavbar` 76% 填充主导）。
-    **覆盖面（不是逐页逐屏核对）**：浅色看过首页（滚动后）、统计页、睡眠详情/助眠音效弹层
-    （弹层盖在带子之上、**不被**底部带模糊，属预期行为）；**深色只看过首页静置态**。
-    两条如实记下的偏差：**深色那一遍不是巡游览到的**——把模拟器切 dark 对 app 无效，因为 app 里存的
-    外观偏好是「浅色」（`app_settings.theme_mode = 'light'`，这是正确行为、不是缺陷）；深色帧是把该
-    偏好**临时**改成 dark、用 `flutter run` 起应用截的，截完已还原为 light（演示数据 5 条未受影响）；
-    巡检中途在助眠音效面板**卡住不动**（95 秒内每帧完全相同），已终止——上节本来就记过
-    `flutter drive` 这条通道在本机不可靠。
-    证据图（`screenshots/`，**该目录在 `.gitignore` 里、未入库**，这三张只存在于本机工作树；
-    均为 1206×460 的底部裁剪，来自同一次采样的原始帧，未重新生成或美化）：
-    `screenshots/v2.8-light-home-scrolled.png`（浅色首页滚动后，「最近记录」清晰、其下化开）、
-    `screenshots/v2.8-light-stats.png`（浅色统计页，最底部「平均时长」只剩残影）、
-    `screenshots/v2.8-dark-home.png`（深色首页，胶囊下方洗到接近黑）。
-  - v3.1（会话页重排）**已目视核对**（2026-10-02，iPhone 16 Pro 模拟器 iOS 18.3、深色、
-    宿主机 `simctl` 每 1.3 秒采样）。看过的：**收合态整页**（圆环 → 圆形「结束」按钮 + 外圈
-    进度环 → 「按住不放」→ 今晚的设定两个开关，鼾声那行注明「尚未接入录音，开关只保存偏好」
-    → `白噪音 · 音量 50% 更多 ⌄`）；**按住中的进度环**（红色弧从 12 点顺时针扫到约 40%，
-    松手退回）；**展开的白噪音区**（八宫格 + 音量 + 定时 + 说明**整块都在屏幕内**）；
-    **按住到底后的评星弹层**（且跑完后「回顾」页确实多出一条 `来自：睡眠会话` 的记录）。
-    **展开区落在屏幕外**这个问题正是这次目视发现的：点了「更多」只看到箭头翻面，内容全在
-    折叠线以下（60m 那颗 chip 落在 1112.5，屏幕高 932），已按此加了自动滚动（见规格 §四）。
-    一条如实记下的：第一遍用 `Future.delayed` 模拟按住时，环停在 40% 走不完——集成测试的
-    live binding 里动画只在推帧时前进（见上节），改用推帧循环后才拍到了评星那一帧。
-    会话页已补进常驻巡检脚本，**末尾一轮跑通**（`flutter drive`，02:34，`All tests passed`；
-    只跳过 `settings-demo` 与 `detail-sheet` 两步，原因与本次改动无关）。
-- **未验证（不得视为已完成）**：
-  - **v3.0 新增的未验证项**（逐条不得当成已完成）：
-    - **起床闹钟是否真的到点投递**：Dart 侧的调度契约（`scheduleOnce` 不重复、9003 不被
-      `sync` 抹掉、`_resume` 映射）由测试钉住，但**「到点真的响了」需真机确认**——与下一条
-      通知投递是同一类问题
-    - **`timeSensitive` 当前并不会穿透专注模式**：iOS / macOS **请求**了
-      `interruptionLevel: timeSensitive`，但工程里没有配套的 Time Sensitive
-      Notifications entitlement（`ios/` 下没有任何 `.entitlements`，
-      `macos/Runner/*.entitlements` 也没有
-      `com.apple.developer.usernotifications.time-sensitive`），按 Apple 的规则该级别会被
-      系统降级。**解锁需要**：加 entitlement、在 App ID 上开启该能力，并真机开专注模式实测
-    - **宽屏（macOS 侧边栏）下的会话页与回顾页**：会话页是推入式全屏页，**没有在宽屏下逐屏
-      核对版式**（不能默认窄屏版式拉伸后可用）
-    - **Dock / 桌面 / 菜单栏显示名的实际观感**：`CFBundleDisplayName` 改成了「夜深」，
-      但 plist 改了不等于系统重读了缓存；**没有人看过 Dock / 桌面实际画出来的名字**。
-      另外 **macOS 菜单栏读的是 `CFBundleName`（工程里仍是 `night_sleep`），可能仍显示英文名**，
-      需人工核对（`PRODUCT_NAME` 与构建路径不受影响）
-    - **`integration_test/` 的「记录 → 回顾」改动没有跑过 `flutter drive`**：该目录不参与
-      `flutter test`，本轮的「记录 Tab → 回顾」改名与相关巡检脚本改动**只做了静态检查**，
-      需要人工跑一次 `flutter drive`（见「界面截图巡检」）确认巡检仍能走通
-  - **v3.2 新增的未验证项**（逐条不得当成已完成）：
-    - **夜景动画的观感、真机帧率与耗电未实测**：八套场景动画只用单测钉了「几何算式」与
-      「减弱动态效果时停表」，**测试盖不住观感**，需在真机/模拟器上目视核对动画节律、是否
-      掉帧、整夜挂着的耗电
-    - **`flutter_svg` 丢弃 `<filter>` 导致的近似未目视核对**：月亮原本的外发光靠 SVG 的
-      `<filter>`，`flutter_svg` 2.3 会**静默丢弃**它（已实测），改用轨道径向光晕近似——
-      近似效果与原型的差距没有人看过
-    - **`integration_test/` 不参与 `flutter test`**：本轮对巡检脚本的改动（走到会话页之后改用
-      显式推帧、打开并收掉白噪音弹窗）**跑不到**，需人工 `flutter drive` 手动验——与上面
-      v3.0 那条「记录 → 回顾」未跑 `flutter drive` 是同一类
-    - **事件卡不叠 `backdrop-filter`（偏差 #34）的观感**：这是为整夜挂着省算力的取舍，实际
-      读起来是否仍与原型接近，未目视核对
-    - **`_RejectedSheet`（时长越界说明层）与评星弹窗在浅色应用主题下仍是浅色面板**（已知不一致）：
-      这两块走 `AppSheet`、取**应用主题**，而会话页其余部分是页面自套的 `Theme(AppTheme.dark())`，
-      所以浅色主题下会看到一次深浅跳变。本轮**刻意不动**：`AppSheet` 的外观是共享组件的职责，
-      改它等于给全站换肤（与偏差 #32 同一理由）。见会话规格 §十三。
-      （**白噪音弹窗不在此列**：它走 `showGeneralDialog` + `NightStyle`，并在 `pageBuilder` 里
-      显式又包了一层 `Theme(AppTheme.dark())`，浅色主题下也是深色面板。）
-  - **v3.3 新增的未验证项**（逐条不得当成已完成）：
-    - **入睡前那一屏：已在 macOS 上看过一次，iOS 真机/模拟器仍未看。**
-      2026-10-03 用 `flutter run -d macos`（真实 Impeller/Metal 引擎）起应用，在一个约 412pt 宽、
-      约 890pt 高的窗口里把这一屏看全了：收起胶囊 / 「睡眠模式」/ 月亮轨道 / 晚安 /
-      「准备好休息了吗？」 / 「放下今天，让夜晚慢下来。」/ deck 的夜景氛围选择器（流星夜选中态、
-      横向滚动）/ 常用白噪音四格 / 白噪音（未开启）/ 起床闹钟（关，无时刻胶囊）/ 鼾声检测
-      （带「尚未接入录音」那句）/ 渐变「开始睡眠」按钮 / 底部提示，**一屏内全部装得下，没有滚动**，
-      `flutter run` 日志里**没有异常、没有 RenderFlex overflow**——deck 那层
-      `backdrop-filter: blur(24) saturate(130%)`（`ImageFilter.compose` + 色彩矩阵）在真实引擎上
-      没有报错。**仍未验证**：小屏（iPhone 那类 ~758pt 可用高度）下按钮与提示是否要滚动才够得着；
-      深色观感之外的动效节律与整夜耗电。
-    - **`integration_test/` 的巡检脚本改动未执行**：脚本已按新流程改写（入睡前 → 完整设置弹窗 →
-      「开始睡眠」→ 长按 → 评星），但**没跑过 `flutter drive`**；与 v3.0 / v3.2 那两条同类
-    - **「开始睡眠」按钮在真机首屏是否无需滚动就能点到**：入睡前那一屏比原先长（hero + 设定卡 +
-      按钮 + 提示），测试用的是一块超高视口（2000pt），真机（852pt 上下）里按钮是否落在首屏内
-      没人看过。若被折到屏幕外，用户要滚一下才能开始——这是本轮引入的真实风险
-  - **通知投递**：没有真机 / 模拟器人工确认过「到点了真的会响」。Dart 侧的调度契约
-    被测试钉住，但通知是否真的投递、前台是否展示、时区是否选对，都仍需人工确认
-  - **系统分享面板**：导出经 `share_plus` 交付，面板的实际弹出与去向选择**没有实测过**；
-    导出内容的字节（BOM、CRLF、RFC 4180 转义、不含本地路径与 `AppSettings`）由单元测试覆盖
-  - **macOS 未签名调试构建的通知授权行为**：本机钥匙串里没有签名证书，权限可能拿不到或不持久。
-    实现按 `permission()` 的真实返回降级（界面照实显示），但这一项只能人工验证
-  - **`package_info_plus` 的实际返回值**：只验证过它的 API 形状与「取不到时不显示版本号」的
-    降级分支；`version` / `buildNumber` 在**真机 macOS / iOS 上映射到 `CFBundleShortVersionString`
-    / `CFBundleVersion` 的对应关系没有实测**（测试用 mock 注入）
-  - **本轮 UI 的目视观感**：见上「界面巡检」——确认弹窗、垃圾桶、禁用按钮提示、关于卡片、
-    标签条浮起量（v2.7）仍未经眼。底部模糊带（v2.8）已在 2026-09-29 看过一遍（浅色：首页滚动后 /
-    统计页 / 详情与助眠音效弹层；深色：首页静置态），但**深色只有首页这一屏、没有逐页核对**，
-    浅色下详情/音效弹层以外的二级页（设置、数据导入、洞察服务、演示数据）也未见，故仍有未覆盖面
-  - **macOS Dock 图标的目视确认（v2.9）**：产物已重建、其几何也经像素核对（见上「应用图标构建」），
-    但**没有人看过 Dock 里实际画出来的样子**——Dock 图标缓存、macOS 版本差异都可能在文件正确的前提下
-    画出别的东西。**需人工确认后**才能把 v2.9 这条划掉
-  - 真机交互、窄屏宽屏溢出检查：**尚未执行**
-    （宽屏侧边栏布局只在 macOS 桌面构建里跑过，未逐屏核对）
-  - **Android 构建：v3.11 已跑通**（2026-10-12，`assembleDebug`），平台目录已生成；
-    但**装到设备上会怎样一律未验证**——见「验证记录」的 v3.11 一节。
-    **Web 构建：尚未执行**。
-  - 外部服务、小米数据：未接入，不能视为已完成。**夜间录音已接入（v3.9）**，但真机整夜后台
-    存活、切片阈值调参与界面目视**均未验证**（见 v3.9 那一节），不能当成已完成。
-    助眠音效已实现（**2026-10-03 起是打包的实景录音**，此前为设备内合成）。
-    **起播这条链路**已在 macOS 上由 `integration_test/noise_playback_test.dart` 跑通
-    （旧版钉「合成 → 落盘 → 起播」，新版钉「打包资源 → 解码 → 起播」）；
-    但**实际发声效果仍没有听过**——那条用例是音量 0，需要人工试听才知道像不像、
-    五条之间的响度差与循环接缝听不听得出来
-- **AI 模型列表**：DeepSeek 与 Anthropic 的模型 ID 已对照官方文档核实（2026-09-27），
-  OpenAI 文档无法访问故未内置任何模型名，需用「获取可用模型」实时拉取
+- `flutter analyze` 无问题；`flutter test` **609/609 通过**（v3.12 是 592，净增 17）。
+- **跑过的（真机，改前 / 改后是同一台机器、同一个页面）**：
+  - 顶部：`x=30` 一列逐像素采样，`y<75` 由 `(181,181,186)` 变成 `(241,241,248)` 一类的
+    页面背景——**灰带整条消失**；浅色主题下状态栏图标仍是深色。
+  - 底部：黑带消失，页面背景铺到 `y=2339`；胶囊底边 `y=2296`、手势条上沿 `y=2310`。
+  - 推入页（`外观`，走 `Subpage` 的 `SafeArea`）同样两条栏透明。
+  - **浅色应用主题下进常暗的会话页**：状态栏图标如期变白、背景铺到导航栏后面。
+  - **应用内切深色而系统仍是浅色**：状态栏与手势条图标双双变白。
+- **没跑过的**：**API 29 以下的设备**（引擎 `SDK_INT >= 29` 的门槛让 `edgeToEdge` 成为
+  空操作，应维持旧样子）；**API 35 及以上**（本轮用的几个字段在那条线以上是 deprecated
+  no-op，系统自己强制 edge-to-edge，预期一样但那是另一套行为）；**iOS / macOS**
+  （**状态栏样式的来源被改了**——从跟随系统外观改成跟随应用主题，是本意但没跑过）；
+  **三键导航**（安全区约 48dp，胶囊会整个让开——推断，未实测）；**横屏**。
+  判据与逐条截图对照见[安卓平台接入设计](docs/superpowers/specs/2026-10-12-android-platform-design.md) §6.4–6.5。
+- **本机构建**：`flutter build apk` 撞上 Kotlin 增量缓存时，异常里那句
+  `Could not close incremental caches … different roots` 就是根因——**pub 缓存在 `C:`、
+  工程在 `D:`**，增量缓存存的是绝对路径，跨盘建不起来（此前记的「疑为杀软占住 `.tab`」
+  只是同一现象的另一种猜测）。**绕开 CLI、`cd android` 后直接跑 `gradlew assembleDebug`**，
+  带 `-Pkotlin.incremental=false` 与 `-Pkotlin.compiler.execution.strategy=in-process`，
+  48 秒完成。**`gradlew` 的 `APP_HOME` 取的是当前目录**（不是脚本所在目录），
+  从仓库根跑 `./android/gradlew` 会报 `ClassNotFoundException: GradleWrapperMain`——
+  而 wrapper jar 其实好好地在 `android/gradle/wrapper/`。详见「构建 Android 的网络前提」。

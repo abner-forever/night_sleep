@@ -1,8 +1,9 @@
 # 安卓平台接入设计
 
-日期：2026-10-12
+日期：2026-10-12（§六 为 v3.13 / 2026-10-13 原地新增）
 档位：**spec + plan**（新平台、影响「已支持平台」这一产品语义、含权限与构建取舍）
-配套计划：[2026-10-12-android-platform.md](../plans/2026-10-12-android-platform.md)
+配套计划：[2026-10-12-android-platform.md](../plans/2026-10-12-android-platform.md)、
+[2026-10-13-android-system-bars.md](../plans/2026-10-13-android-system-bars.md)
 
 上游规格：
 
@@ -177,7 +178,128 @@ Google Drive**，而应用对自己的承诺是「录音片段仅保存在本机
 **本轮三个都没执行**：代码停在 Android 默认值上（清单里不写 `allowBackup`），
 界面文案也一字未动。这是一条**已识别、已记录、待裁定**的取舍，不是遗留的疏忽。
 
-## 六、测试与验证矩阵
+## 六、系统栏与安全区（v3.13，2026-10-13）
+
+**这一节回答「Android 上顶部一条灰带、底部一条黑带把页面截断」**——它是装到真机上
+第一眼就看得见的东西，也是「安全区适配不像 iOS」这句话的全部内容。
+
+### 6.1 两个来源，都不是渲染问题
+
+| 现象 | 根因（真机实测，MI 9 / Android 11 / 1080×2340 @ 440dpi） |
+| --- | --- |
+| 顶部一条灰带。浅色主题下量到 `(181,181,186)` | 引擎默认只申请到 `LAYOUT_FULLSCREEN`（`PlatformPlugin` 的 `mEnabledOverlays = 0x500` = `LAYOUT_STABLE \| LAYOUT_FULLSCREEN`）：状态栏盖在内容**之上**，内容确实画到了顶，但系统在**透明**状态栏背后自动加了一层对比度蒙层（Android 10+ 的 `enforceStatusBarContrast`）。那层蒙层把状态栏那一条压成了 `(181,181,186)`，而紧挨着它的页面像素是 `(240,242,248)`——**比值约 0.75，即蒙层约 25% 黑**（`(240,242,248) × 0.75 = (180,182,186)`，与实测差 1 级）。**这两个都是真机采样读数，不是令牌值**：浅色 `bgBase` 是 `0xFFF2F2F7`、`Atmosphere` 顶色是 `0xFFF6F8FF`，都对不上——拿令牌去复算这条会算不出来 |
+| 底部一条**不透明黑**带，把页面截断在导航栏上沿 | `mEnabledOverlays` 里**没有** `LAYOUT_HIDE_NAVIGATION`，导航栏那块被排除在内容区之外。实测 Flutter 内容区止于 `y=2296`，黑带从 `y=2296` 起（屏高 2340）——也就是说 `MediaQuery.padding.bottom` 是 **0**，而顶部的 `padding.top` 是 75px |
+
+**两条都别去渲染层找原因**。它们各自对应一个没声明出去的字段，跟 widget 树无关。
+
+### 6.2 做了什么
+
+新增 `lib/core/platform/system_bars.dart`（两个函数 + 一个 `builder`，外加会话页那一层覆写）：
+
+- `enableEdgeToEdge()`：`SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge)`，
+  在 `main()` 里**第一帧之前** `await`。Android 专属（`kIsWeb` 排在平台判断之前，
+  与 `compass.dart` 同源）。
+- `appSystemUiOverlayStyle(Brightness)` + `appSystemUiOverlayRegion`，后者挂在
+  `MaterialApp.builder` 上。**必须挂在 `builder`**：那里在主题之内、路由之上下，
+  `Theme.of(context)` 拿到的才是应用当前生效的明暗；各页自己的 `AnnotatedRegion`
+  又压在它上面（`AnnotatedRegion` 取覆盖该区域的最上面一层），常暗的会话页因此仍然说话算数。
+
+四条要点，每条都对着 §6.1 那个表：
+
+1. **两条栏透明**——页面自己的背景（`Atmosphere` / `NightBackdrop`）铺到物理边缘。
+2. **`systemStatusBarContrastEnforced: false` / `systemNavigationBarContrastEnforced: false`**。
+   这是顶部那条灰带的**唯一**解法；只把颜色设成透明是不够的，蒙层照加。这也是引擎
+   `setSystemChromeSystemUIOverlayStyle` 里为数不多会一路传到 `Window` 的字段（已读字节码核对）。
+3. **不得用 `SystemUiOverlayStyle.light` / `.dark` 这两个预设**：它们把
+   `systemNavigationBarColor` 写死成不透明黑（`0xFF000000`），导航栏会重新变回一条黑带。
+   两个预设都长得像为此准备的，所以 `test/system_bars_test.dart` 专门钉了一条断言把
+   **上游这个坑**记在案。
+4. **图标明暗跟的是应用主题，不是系统设置**：应用内可以单独切浅色 / 深色。真机验证了
+   「系统浅色 + 应用深色」这一组（状态栏图标如期变白）。
+
+**API 29 以下 `edgeToEdge` 是空操作**：引擎的 `PlatformPlugin.setSystemChromeEnabledSystemUIMode`
+里有 `SDK_INT >= 29` 的门槛（读字节码确认），那些设备维持旧行为。**这是引擎的限制，不是遗漏**，
+不要试图在应用侧补。
+
+### 6.3 标签条的浮起量按平台分叉（全工程唯一一处）
+
+`app_shell.dart` 的 `tabBarFloat` 由「安全区底部 − 回收量」算出，**回收量按平台分叉**。
+理由是一条实测几何：
+
+- iOS 的 home indicator 5pt 高、贴底 8pt，34pt 的安全区里**空着 21pt**，
+  所以借得起那 14pt（总规格偏差 #21 的由来）；
+- Android 的手势条贴在安全区**下沿**：安全区 44px（16dp），手势条画在离底 20–29px
+  （约 7–11dp）那一段。照搬 iOS 的 14 之后，**胶囊底边落在 `y≈2307`、手势条上沿在
+  `y≈2312`**——只差 5px，截图里看着就是压在一起，像胶囊被截断。
+
+所以 Android 上 `relief = 0`：整个让开安全区，一点都不借。
+
+### 6.4 真机验证（Xiaomi MI 9 / Android 11 / MIUI 12.5.6，`e0e60672`）
+
+**已验证**（方法是 `adb` 抓设备帧缓冲、逐像素采样；改前与改后是同一台机器上的同一个页面。
+**截图本身没有入库**——`screenshots/` 在 `.gitignore` 里、本轮的临时图也没留，所以下面
+记的是**读数**而不是图。要复核得重跑一遍：见 §8 回归方法第 5 条）：
+
+> **本节是「改前」那个读数的唯一出处。** 谁要是想复核它，只能把 `lib/core/platform/system_bars.dart`
+> 那两处调用临时摘掉、重新构建再看一次——原始截图已经没有了。
+
+- **顶部**：取 `x=30` 一列在屏幕上部逐点采样，`y<75` 由 `(181,181,186)` 变成页面自己
+  的背景色——**关键在于跨过 `y=75` 没有台阶**，而不是某个具体值（那取决于当前是哪一页：
+  设置页量到 `(241,241,248)`，首页量到 `(246,248,255)`，正是 `Atmosphere` 的顶色
+  `0xFFF6F8FF`）。状态栏图标仍是深色（浅色主题）。
+- **底部**：黑带消失，页面背景一直铺到 `y=2339`；胶囊底边落在 `y=2296`（离底 44px，
+  2.75 倍下正好 16dp，正是 `tabBarFloat` 算出来的），手势条画在 `y=2310–2319`
+  （按「三通道均值 < 90」判为暗像素量出的范围），两者之间留出 14px。
+- **推入页**：`外观`（走 `Subpage` 的 `SafeArea`）在同一台机器上同样两条栏透明。
+- **模态底部弹层**：睡眠详情的声音记录弹层同样两条栏透明——状态栏那一段与紧邻的
+  蒙层像素连续、没有色阶；手势条画在弹层之上（与上一段同一位置，不另记读数——
+  同一件系统部件在两个界面上是同一个东西，记两个数只会自找对不上），弹层自己的
+  底部留白读的就是 `MediaQuery.padding.bottom`，跟着一起对了。
+- **常暗的会话页**：浅色应用主题下进「睡眠模式」，状态栏图标如期变白、页面背景铺到
+  导航栏后面——这一条正面验证了「页面自己的 `AnnotatedRegion` 压过 `builder` 那一层」。
+- **深色主题**：应用内切成深色（系统仍是浅色），状态栏图标变白、手势条变白。
+- `flutter test` → **609/609 通过**（v3.12 是 592，净增 17）；`flutter analyze` 零问题。
+  新增的网见 §7 矩阵：`system_bars_test.dart` 10 条（含两条**起真实 `NightSleepApp`** 的
+  挂载点断言——审查发现删掉 `app.dart` 那一行原先一条都不会红）、`tab_bar_inset_test.dart`
+  由 4 条变 10 条、`sleep_session_page_test.dart` 补了「页面自己那一层压过外层」一条。
+
+**未验证**：
+
+- **API 29 以下的设备**（本机只有 API 30 一台）——按 §6.2 末段的引擎门槛，那些设备应维持旧样子。
+- **API 35 及以上的设备**：`targetSdk` 是 **36**（`FlutterExtension.targetSdkVersion`），
+  而 `Window.setStatusBarColor` / `setNavigationBarColor` / `setStatusBarContrastEnforced`
+  在 API 35 起是 deprecated no-op——引擎字节码里也有 `SDK_INT < 35` 的门槛，本轮的样式
+  有几个字段在那条线以上根本发不出去。**预期结果一样**（系统从那一条起自己强制
+  edge-to-edge，两条栏本来就是透明的），但那是**另一套系统行为**，与「API 29 以下是空操作」
+  同属一类，本机没验过。
+- **三键导航**：真机常年是手势导航。三键导航下安全区是 48dp 左右，按本轮的规则胶囊会
+  整个让开它（浮起 48dp）；**这是推断，没有实测**。
+- **横屏**：本轮只测了竖屏。
+
+### 6.5 顺带改了 iOS / macOS 的系统栏样式来源（原计划的硬约束没做到，如实记）
+
+计划的硬约束原文是「**iOS / macOS 的行为一个字都不许变**」。**这条没做到**，原因是
+`appSystemUiOverlayRegion` 挂在 `MaterialApp.builder` 上，是**无条件**的：
+
+- **改之前**：整个 `lib/` 里只有会话页一处 `AnnotatedRegion`（v3.10 加的），
+  其余页面的系统栏样式**由系统定**——iOS 上就是跟随**系统外观**。
+- **改之后**：跟随**应用主题**（`Theme.of(context).brightness`）。iOS 读的是
+  `statusBarBrightness`（SDK 注明 "Only honored in iOS"），它现在被显式设上了。
+
+于是「应用主题 ≠ 系统外观」的场合（应用内把外观切成深色、系统仍是浅色，或反过来），
+**iOS 的状态栏前景色会跟着应用走**——这与 Android 侧同一条规则，也正是本意：
+应用有自己独立的外观开关，若系统栏跟随系统，深色的页面上就会压出一排看不见的黑字。
+**会话页不受影响**：两版算出的 `statusBarBrightness` 都是 `dark`，iOS 视角等价。
+
+**但这一条没有在 iOS / macOS 上验过**——本轮全程在 Windows 上，只有一台 Android 真机，
+没有 iOS 设备也没有跑模拟器。**按本仓库的规矩，未验证就是未验证**，不许写成「已适配
+iOS」。要在 iOS 上确认，看两件事：系统浅色 + 应用深色时状态栏是不是浅色内容；以及
+应用内切主题时它跟不跟着变。
+
+macOS 没有系统状态栏，`statusBarBrightness` 在那边无人读取；这条改动对 macOS
+**预期**无影响，同样**未验证**。
+
+## 七、测试与验证矩阵
 
 | 类型 | 重点场景 | 预期状态 |
 | --- | --- | --- |
@@ -189,8 +311,16 @@ Google Drive**，而应用对自己的承诺是「录音片段仅保存在本机
 | 未验证 | 通知真的会响、重启后真的会重排 | **未做**。Dart 侧调度契约有测试钉着，清单有构建产物为证，但「到点投递」仍需人工 |
 | 未验证 | 前台录音在 Android 上录得下来 | **未做** |
 | 未验证 | 后台 / 锁屏录音 | **未做**，且缺实现（§5.1） |
+| 系统栏（v3.13） | 两条系统栏透明、页面背景铺到物理边缘；浅色主题下状态栏图标为深色、深色主题下为浅色；常暗的会话页覆写生效 | **本轮真机验证**（逐条与判据见 §6.4） |
+| 系统栏（v3.13） | 标签条不压在手势条上 | **本轮真机验证**：胶囊底边 `y=2296`、手势条上沿 `y=2310`，中间 14px |
+| 系统栏（v3.13） | 样式声明的回归：两条栏透明、蒙层关闭、图标明暗跟随**应用主题** | `test/system_bars_test.dart` 10 条（含「跟应用主题而不是系统」一组） |
+| 系统栏（v3.13） | **两个挂载点真的挂上了**：`main()` 里调了 `enableEdgeToEdge()`、`app.dart` 的 `builder` 挂了 region。另有「常暗的会话页自己那一层压过外层」 | 同上 + `test/sleep_session_page_test.dart` 一条。用 `test/system_bar_probe.dart` 复刻 `RenderView._updateSystemChrome` 的取值路径，量**框架真会发给平台的样式**；已变异验证：删掉 `app.dart` 那一行、或把会话页换回预设，对应用例变红 |
+| 系统栏（v3.13） | 标签条浮起量的平台分叉 | `test/tab_bar_inset_test.dart` 10 条，每条用 `TargetPlatformVariant` 写明平台 |
+| 未验证 | **API 29 以下的设备**上的系统栏 | **未做**。按 §6.2 第 5 条，那些设备应维持旧样子（引擎门槛），本机只有 API 30 |
+| 未验证 | **三键导航**下的标签条浮起量 | **未做**。手势导航实测通过；三键导航安全区约 48dp，胶囊会整个让开它——**推断，未实测** |
+| 未验证 | 横屏下的系统栏 | **未做**，本轮只测竖屏 |
 
-## 七、回归方法
+## 八、回归方法
 
 1. **清单没被改坏**：`flutter build apk --debug` 之后，
    在 `build/app/intermediates/merged_manifests/`（或 `packaged_manifests/`）下读合并后的
@@ -201,3 +331,9 @@ Google Drive**，而应用对自己的承诺是「录音片段仅保存在本机
 3. **`.metadata` 有 `android` 条目**：没有它，下次 `flutter create` 会重新认领平台。
 4. Dart 侧**一行都不改**——所以 `flutter test` 的条数应与本轮之前**完全相同**。
    条数变了就说明平台目录的接入意外碰了 Dart 代码。
+5. **系统栏没被改回去**（v3.13）：`test/system_bars_test.dart` 六条。三个最容易犯的——
+   把 `appSystemUiOverlayStyle` 换成 `SystemUiOverlayStyle.dark` / `.light` 预设（导航栏
+   变回不透明黑）、删掉两个 `*ContrastEnforced: false`（顶部灰带回来）、把 `AnnotatedRegion`
+   从 `MaterialApp.builder` 挪进 `AppScaffold`（弹层与推入页就覆盖不到了）。
+   **真机上一眼可判**：浅色主题下，状态栏那一条与页面背景之间不该有任何色阶；
+   屏幕最底下不该出现一条与页面背景不同的实心带。

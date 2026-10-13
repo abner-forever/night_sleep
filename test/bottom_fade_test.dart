@@ -182,21 +182,28 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('手机布局下贴着屏幕底边，高度 = 底部预留 + 20', (tester) async {
-    await pumpShell(tester);
+  // 这一条断言的是 iPhone 16 Pro 的具体数字，**必须钉住平台**：`tabBarFloat`
+  // 在 Android 上整个让开安全区（见 `app_shell.dart`），而 widget 测试默认跑在
+  // android 上，不钉就量的是另一套几何。
+  testWidgets(
+    '手机布局下贴着屏幕底边，高度 = 底部预留 + 20',
+    (tester) async {
+      await pumpShell(tester);
 
-    final band = tester.getRect(find.byType(BottomFade));
-    expect(band.bottom, tester.getRect(find.byType(AppShell)).bottom);
-    // iPhone 16 Pro：预留 101（胶囊 65 + 浮起 20 + 呼吸 16）+ 20。
-    expect(band.height, 121);
-    // 与页面底部留白同源：留白一变，带子必须跟着变。
-    final reserve = tester
-        .widget<ListView>(find.byType(ListView))
-        .padding!
-        .resolve(TextDirection.ltr)
-        .bottom;
-    expect(band.height, closeTo(reserve + 20, 0.01));
-  });
+      final band = tester.getRect(find.byType(BottomFade));
+      expect(band.bottom, tester.getRect(find.byType(AppShell)).bottom);
+      // iPhone 16 Pro：预留 101（胶囊 65 + 浮起 20 + 呼吸 16）+ 20。
+      expect(band.height, 121);
+      // 与页面底部留白同源：留白一变，带子必须跟着变。
+      final reserve = tester
+          .widget<ListView>(find.byType(ListView))
+          .padding!
+          .resolve(TextDirection.ltr)
+          .bottom;
+      expect(band.height, closeTo(reserve + 20, 0.01));
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+  );
 
   testWidgets('无安全区（macOS / Web）时高度 113', (tester) async {
     await pumpShell(tester, safeBottom: 0);
@@ -259,43 +266,48 @@ void main() {
     );
   });
 
-  testWidgets('带子盖住的位置仍能点到内容', (tester) async {
-    var taps = 0;
-    tester.view.physicalSize = const Size(402, 874);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+  // 同样按 iPhone 的几何来量（安全区 34pt、胶囊离底 20pt），所以钉住 iOS。
+  testWidgets(
+    '带子盖住的位置仍能点到内容',
+    (tester) async {
+      var taps = 0;
+      tester.view.physicalSize = const Size(402, 874);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.light(),
-        home: MediaQuery(
-          data: const MediaQueryData(
-            size: Size(402, 874),
-            padding: EdgeInsets.only(bottom: 34),
-          ),
-          child: Scaffold(
-            body: SafeArea(
-              top: false,
-              bottom: false,
-              child: AppShell(
-                current: AppTab.home,
-                onSelect: (_) {},
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => taps++,
-                  child: const SizedBox.expand(),
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: MediaQuery(
+            data: const MediaQueryData(
+              size: Size(402, 874),
+              padding: EdgeInsets.only(bottom: 34),
+            ),
+            child: Scaffold(
+              body: SafeArea(
+                top: false,
+                bottom: false,
+                child: AppShell(
+                  current: AppTab.home,
+                  onSelect: (_) {},
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => taps++,
+                    child: const SizedBox.expand(),
+                  ),
                 ),
               ),
             ),
           ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    // 屏幕底上方 8pt：在带子（高 121）里面，但在**胶囊之下**——胶囊占离底
-    // 20–85pt，点在那里会被标签条接走，测的就不是这条带了。
-    await tester.tapAt(const Offset(200, 874 - 8));
-    expect(taps, 1);
-  });
+      // 屏幕底上方 8pt：在带子（高 121）里面，但在**胶囊之下**——胶囊占离底
+      // 20–85pt，点在那里会被标签条接走，测的就不是这条带了。
+      await tester.tapAt(const Offset(200, 874 - 8));
+      expect(taps, 1);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+  );
 }

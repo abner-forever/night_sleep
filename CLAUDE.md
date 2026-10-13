@@ -14,8 +14,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 不猜小米导入字段」这几条是产品红线，不是待办：原型里这些是演示数据，规格书明令不得当真实能力实现。
 `README.md` 的「未实现」表同样不要当成已完成。
 
-新增或修改能力后，同步更新该规格（偏差表 / 测试矩阵）与 `README.md`（实现范围 / 验证记录），
+新增或修改能力后，同步更新该规格（偏差表 / 测试矩阵）与 `README.md`（实现范围），
 版本变更记入 `CHANGELOG.md`。
+
+**验收记录分两处**（v3.14 拆的，理由见 [`docs/verification-log.md`](docs/verification-log.md) 开头）：
+本轮实跑结果与**未验证项**写进 `README.md` 的「验证记录」，同时把**被顶下来的上一版**
+挪进 `docs/verification-log.md`（按时间倒序）。**「未验证」那一半不许省**——它是规格书
+「不得把没做过的事写成已完成」那条红线的凭据。
 
 新的设计规格落 `docs/superpowers/specs/`，新的实现计划落 `docs/superpowers/plans/`，
 文件名一律 `YYYY-MM-DD-<topic>.md`。规格是活文档：创建时定日期，之后原地更新，不新开文件，

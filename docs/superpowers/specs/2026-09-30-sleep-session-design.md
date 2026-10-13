@@ -929,9 +929,12 @@ plan C（v3.2）独有：
 - **会话页是常暗的**（整页包 `Theme(AppTheme.dark())`），浅色应用主题下进去也是深色——
   这是原型的睡眠模式设计（setup 页写着「屏幕将保持暗色」）。回归依据是
   `test/sleep_session_page_test.dart` 的「浅色主题下会话页仍然是深色」一条**真的跑浅色主题**的用例。
-  **状态栏另算**（v3.10）：整页外面再包一层 `AnnotatedRegion<SystemUiOverlayStyle>`，固定成
-  `SystemUiOverlayStyle.light`。系统状态栏跟的是**应用主题**而不是这层页面 `Theme`，亮色主题下
-  时间与电池图标是黑的，压在满屏夜景上等于没有；这一页常暗，所以对两种主题一律取浅色前景。
+  **系统栏另算**（v3.10，v3.13 改过写法）：整页外面再包一层 `AnnotatedRegion<SystemUiOverlayStyle>`，
+  取深色底上的那套前景（`appSystemUiOverlayStyle(Brightness.dark)`）。系统栏跟的是**应用主题**
+  而不是这层页面 `Theme`，亮色主题下时间与电池图标是黑的，压在满屏夜景上等于没有；这一页常暗，
+  所以对两种主题一律取浅色前景。**v3.13 起不再用 `SystemUiOverlayStyle.light` 那个预设**：
+  它把 `systemNavigationBarColor` 写死成不透明黑，会在这一页底部重新压出一条黑带
+  （详见 [安卓平台接入设计](2026-10-12-android-platform-design.md) §6.2）。
 
 plan B 独有：
 

@@ -9,11 +9,16 @@ import 'app/reminder_sync.dart';
 import 'core/config/app_config.dart';
 import 'core/database/app_database.dart';
 import 'core/platform/reminders.dart';
+import 'core/platform/system_bars.dart';
 import 'features/settings/data/insight_credentials.dart';
 import 'features/sleep/data/demo_seed.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 内容铺到屏幕物理边缘。**必须在第一帧之前**，否则用户会看到顶部一条灰带、
+  // 底部一条黑带先出现、再跳成页面背景。Android 专属，其余平台是空操作。
+  await enableEdgeToEdge();
 
   final database = await AppDatabase.open();
   final scheduler = LocalReminderScheduler();

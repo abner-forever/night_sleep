@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -35,22 +36,41 @@ final activeTabProvider = StateProvider<AppTab>((ref) => AppTab.home);
 /// `test/tab_bar_inset_test.dart` 量的是渲染出来的胶囊，改这里之前先跑它。
 const double _tabBarHeight = 56 + 8 + 1;
 
-/// 标签条从安全区底部往回收多少。
+/// iOS 上标签条能从安全区底部往回收多少。
 ///
 /// 原型写的是 `bottom: max(12px, env(safe-area-inset-bottom))`，本实现特意
 /// **更贴底** 14px（见规格书第 8 章偏差 #21）：安全区底部那 34px 是留给系统
 /// 手势的**整块**空间，而 home indicator 本身只画在底部 8–13px，照搬安全区
-/// 会让玻璃胶囊平白悬空一大截。下限 12px 留给没有安全区的 macOS / Web。
-const double _tabBarFloatRelief = 14;
+/// 会让玻璃胶囊平白悬空一大截。
+const double _iosTabBarFloatRelief = 14;
 
 /// 标签条玻璃胶囊下边缘到屏幕底边的浮起量。
 ///
 /// [tabBarReserve] 与 `_TabBar` 必须共用它：两处各算一遍时，任何一侧单独
 /// 调整都会让页面底部留白与胶囊的位置脱节——留白算小了最后一行压进玻璃，
 /// 算大了玻璃上方空出一条。
+///
+/// **「能借多少」取决于手势指示条画在安全区的哪一段，这一点两个平台不一样，
+/// 也是这个文件里唯一按平台分叉的地方**：
+///
+///  * iOS 的 home indicator 5pt 高、贴底 8pt，34pt 的安全区里空着 21pt，
+///    所以借得起那 14pt——胶囊底边落到离底 20pt，指示条上沿之上还留 7pt；
+///  * Android 的手势条贴在安全区**下沿**（真机 MI 9 / API 30 实测：16dp 的安全区
+///    里只有约 5dp 是空的），借不了。照搬 iOS 那个 14 的后果很具体——胶囊底边落到
+///    `y≈2307`、手势条上沿在 `y≈2312`，**只差 5px，看着就是压在一起**。
+///    所以 Android 整个让开安全区，不去借（改完胶囊底边在 `y=2296`，中间留出 14px）。
+///
+/// 下限 12px 留给没有安全区的 macOS / Web。
 double tabBarFloat(BuildContext context) {
   final safeBottom = MediaQuery.paddingOf(context).bottom;
-  final float = safeBottom - _tabBarFloatRelief;
+  // `kIsWeb` 排在平台判断之前，与 `compass.dart` / `reminders.dart` /
+  // `system_bars.dart` 三处同款：Web 上 `defaultTargetPlatform` 报的是**宿主操作系统**，
+  // 拿它来分叉会得出「按 Android 的规矩算间距、却没按 Android 铺满屏」（`enableEdgeToEdge`
+  // 被 `kIsWeb` 挡掉了）这种半套结论。Web 归到桌面那一支。
+  final relief = !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+      ? 0.0
+      : _iosTabBarFloatRelief;
+  final float = safeBottom - relief;
   return float > 12 ? float : 12;
 }
 

@@ -249,8 +249,7 @@ void main() {
     expect(error, isA<CompassUnavailable>());
     final message = (error! as CompassUnavailable).message;
     expect(message, contains('平台'));
-    expect(message, isNot(contains('传感器')),
-        reason: '「平台没实现」与「设备没传感器」是两回事，不能混');
+    expect(message, isNot(contains('传感器')), reason: '「平台没实现」与「设备没传感器」是两回事，不能混');
     expect(message, isNot(contains('iPhone')));
   });
 

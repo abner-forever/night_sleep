@@ -15,6 +15,7 @@ import '../../../app/session_teardown.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/platform/haptics.dart';
 import '../../../core/platform/reminders.dart';
+import '../../../core/platform/system_bars.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_basics.dart';
@@ -182,10 +183,13 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage> {
       ),
     );
 
-    // 状态栏另行声明成浅色前景：这一页常暗，而系统状态栏跟的是**应用主题**的明暗
+    // 系统栏另行声明成深色底上的样式：这一页常暗，而系统栏跟的是**应用主题**的明暗
     // ——亮色主题下时间是黑字，压在满屏夜景上等于没有。
+    //
+    // 用的是与应用同一份 [appSystemUiOverlayStyle]，不是 `SystemUiOverlayStyle.light`
+    // 预设：那个预设把导航栏写成不透明黑，进这一页会重新压出一条黑带。
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.light,
+      value: appSystemUiOverlayStyle(Brightness.dark),
       child: page,
     );
   }

@@ -3,6 +3,135 @@
 本文件记录「夜深」项目规格的版本变更。规格正文见
 [docs/superpowers/specs/2026-09-28-night-sleep-design.md](docs/superpowers/specs/2026-09-28-night-sleep-design.md)。
 
+## 3.14（2026-10-13）
+
+**把 `README.md` 的「验证记录」拆成 [`docs/verification-log.md`](docs/verification-log.md)，
+README 只留最近一版 + 指向它的指针。** 纯文档改动，Dart 与测试代码一行未动。
+
+### 为什么要拆
+
+那一节到拆之前是 **584 行，占 1140 行 README 的 51%**，8 个版本条目、平均 73 行一版，
+而且**只增不减**。README 的职责是「怎么跑、现在能干什么」，不该兼做逐版流水账；
+两者的读者与更新频率本来就不一样。
+
+**三处分工没有变**（v2.4 文档重组时定的，见
+[文档重组设计](docs/superpowers/specs/2026-09-28-docs-reorganization-design.md)）：
+README 记「怎么跑」、总规格 §9 记「哪些场景被覆盖」、验证记录记「某一次验收跑出了什么」。
+这次只是把第三样的**存放位置**从 README 挪到 `docs/`，内容一份没删——
+**「未验证」清单整份跟着搬过去了**，那是规格书「不得把没做过的事写成已完成」这条红线的凭据，
+不许在搬家路上掉。
+
+### 新的维护规则（已写进 `CLAUDE.md`）
+
+本轮实跑结果与未验证项写进 `README.md` 的「验证记录」；写新一轮时，把**被顶下来的上一版**
+挪进 `docs/verification-log.md`（按时间倒序，最新在最上面）。README 因此恒为「最近一版」，
+有界且不必手工压缩。
+
+### 引用怎么处理的
+
+- **`README.md` 内部 3 处**「见「验证记录」」（v3.4 的录音、v3.6 的提醒投递、v3.9 的截图巡检）
+  改成直链指向新文档——它们要说的事都在更早的版本条目里。
+- **`CHANGELOG.md` 里的历史引用一律不改。** 它们写的是当时那句「记在 README「验证记录」」，
+  改了就篡改了记录；而指针也不会断——README 那一节的第一行就写着完整记录在哪。
+- `docs/superpowers/specs/2026-09-28-docs-reorganization-design.md` 的「职责边界」表加了
+  一行给新文档，并把 README 那行的「最近验证记录」写实（原地更新，不新开规格）。
+- 顺带：`test/compass_test.dart` 有一处**上一版遗留**的纯格式化改动（`dart format .` 把
+  两行的 `expect` 合成一行，无行为变化）。不是这一轮改的，但既然 `dart format .` 每次都会
+  重排它，就一并留着并在这里记一笔，免得下一个人以为是本版引入的。
+
+## 3.13（2026-10-13）
+
+**把 Android 的系统栏拉齐到 iOS 的语义：内容铺满整屏，状态栏与导航栏透明地浮在内容
+之上。** 用户真机上报的两条——「顶部状态栏是灰色的（light 模式下）」「底部的安全区域
+被截断，不像 iOS 那样的安全区适配」——都是同一条根因的两副面孔。顺带修掉标签条压在
+手势条上的问题（那是把系统栏改成 transparent 之后**才暴露出来**的，见下）。
+
+### 根因：两条都不是渲染问题，是样式没声明
+
+到动手之前没有猜过一条，全是量的（判据与命令见规格 §6.1）：
+
+- **顶部灰带**：引擎默认只申请到 `LAYOUT_FULLSCREEN`（`PlatformPlugin` 的
+  `mEnabledOverlays = 0x500` = `LAYOUT_STABLE | LAYOUT_FULLSCREEN`）。内容其实**已经**
+  画到顶了，是系统在**透明**状态栏背后自动加了一层对比度蒙层（Android 10+ 的
+  `enforceStatusBarContrast`）。那层蒙层把状态栏那一条压成了 `(181,181,186)`，而紧挨着
+  它的页面像素是 `(240,242,248)`——**比值约 0.75，即蒙层约 25% 黑**（真机采样读数，不是
+  令牌值：浅色 `bgBase` 是 `0xFFF2F2F7`、`Atmosphere` 顶色是 `0xFFF6F8FF`，都对不上）。
+- **底部黑带**：`mEnabledOverlays` 里**没有** `LAYOUT_HIDE_NAVIGATION`，导航栏那块被
+  排除在内容区之外。实测 Flutter 内容区止于 `y=2296`（屏高 2340），黑带从那里起——
+  也就是说 `MediaQuery.padding.bottom` 是 **0**。
+
+### 改动
+
+- 新增 `lib/core/platform/system_bars.dart`：`enableEdgeToEdge()`（`main()` 里**第一帧
+  之前**调，Android 专属，`kIsWeb` 排在平台判断之前）+ `appSystemUiOverlayStyle(Brightness)`
+  - `appSystemUiOverlayRegion`（挂在 `MaterialApp.builder` 上：那里在主题之内、路由之上下，
+  `Theme.of(context)` 拿到的才是应用当前生效的明暗；各页自己的 `AnnotatedRegion` 又压在
+  它上面，所以常暗的会话页照旧说话算数）。
+- **不得用 `SystemUiOverlayStyle.light` / `.dark` 这两个预设**：它们把
+  `systemNavigationBarColor` 写死成不透明黑（`0xFF000000`），黑带会原样回来。两个预设
+  长得就像为此准备的，所以 `test/system_bars_test.dart` 专门钉了一条断言把这个坑记在案。
+- **`*ContrastEnforced: false` 是顶部那条灰带的唯一解法**——只把颜色设成透明不够，蒙层照加。
+- `sleep_session_page.dart` 那一层固定的 `SystemUiOverlayStyle.light` 换成同一份函数：
+  否则进睡眠模式时导航栏会单独变回黑带（同一个预设坑）。
+- **`tabBarFloat` 的回收量按平台分叉**（iOS 14 / Android 0），这是全工程唯一按平台分叉的
+  布局常量。改成 transparent **之后**才量得出来：Android 的手势条贴在安全区**下沿**
+  （16dp 里只有约 5dp 是空的），照搬 iOS 那 14 之后胶囊底边落在 `y≈2307`、手势条上沿在
+  `y≈2312`，只差 5px——看着就是压在一起。改完胶囊底边在 `y=2296`（离底 44px，2.75 倍下正好 16dp，
+  正是 `tabBarFloat` 算出来的），与手势条之间留出 14px。总规格偏差 #21 与 #51 已同步。
+
+### 真机验证（Xiaomi MI 9 / Android 11 / MIUI 12.5.6，`e0e60672`）
+
+**已验证**（改前 / 改后是同一台机器、同一个页面）：
+
+- 顶部 `x=30` 一列采样：`y<75` 从 `(181,181,186)` 变成 `(241,241,248)` 一类的页面背景——
+  灰带整条消失，浅色主题下状态栏图标仍是深色。
+- 底部黑带消失，页面背景铺到 `y=2339`；胶囊底边 `y=2296`、手势条上沿 `y=2310`。
+- 推入页（`外观`，走 `Subpage` 的 `SafeArea`）同样两条栏透明。
+- **浅色应用主题下进常暗的会话页**：状态栏图标如期变白、背景铺到导航栏后面——
+  这一条正面验证了「页面自己的 `AnnotatedRegion` 压过 `builder` 那一层」。
+- **应用内切深色而系统仍是浅色**：状态栏与手势条图标双双变白。
+- `flutter test` → **609/609 通过**（v3.12 是 592，净增 17）；`flutter analyze` 零问题。
+  其中 `test/system_bars_test.dart` 10 条、`test/tab_bar_inset_test.dart` 由 4 条变 10 条
+  （每条平台用例都改用 `TargetPlatformVariant` 写明平台，**不这么做 iOS 那一支永远不会被
+  碰到**：`flutter_test` 会把 `defaultTargetPlatform` 恒钉成 android）。
+
+### 一处「计划里说不许变、实际变了」的行为：iOS / macOS
+
+计划的硬约束原文是「iOS / macOS 的行为一个字都不许变」。**没做到。**
+`appSystemUiOverlayRegion` 挂在 `MaterialApp.builder` 上是无条件的，于是 iOS 的状态栏
+前景色从「跟随**系统外观**」（改前全应用只有会话页一处 `AnnotatedRegion`）变成了
+「跟随**应用主题**」。**那正是本意**——应用有自己独立的外观开关，系统栏若跟随系统，
+深色的页面上会压出一排看不见的黑字——但当初写约束时没想清楚，而 **iOS / macOS 本轮
+一次都没跑过**（全程 Windows + 一台 Android 真机）。如实记，未验证。
+
+### 测试网：审查发现两个挂载点零覆盖，已补
+
+独立审查（一份，末尾做一次）指出：**把 `app.dart` 的 `builder: appSystemUiOverlayRegion`
+整行删掉，606 条全绿**；会话页那一层覆写同样零覆盖。两条都成立——原先的
+`test/system_bars_test.dart` 各自搭一个 `MaterialApp` 测函数本身，对「挂没挂上去」一无所知。
+
+补齐方式：新增 `test/system_bar_probe.dart`（探针，**不以 `_test.dart` 结尾所以不会被当用例跑**），
+复刻 `RenderView._updateSystemChrome` 的取值路径——状态栏取屏幕水平中线与顶部的交点、
+导航栏取与底部的交点，各取覆盖该点的最上面一层。于是断言的是**框架真会发给平台的样式**。
+用它补了三条：真实 `NightSleepApp` 的两条栏都读得到样式、应用切深色时跟着翻、
+常暗的会话页自己那一层压过应用那一层（外层刻意给浅色主题才区分得出来）。
+**已变异验证**：删掉 `app.dart` 那一行 → 前两条红；把会话页换回
+`SystemUiOverlayStyle.light` 预设 → 第三条红。另补了 `enableEdgeToEdge()` 的两条：
+Android 上发出 `SystemUiMode.edgeToEdge`、iOS / macOS 上一次都不发（截 `SystemChannels.platform`）。
+
+**未验证，不得当成已完成**：
+
+- **API 29 以下的设备**：引擎的 `setSystemChromeEnabledSystemUIMode` 有 `SDK_INT >= 29`
+  的门槛，`edgeToEdge` 在那些设备上是空操作，应维持旧样子。**本机只有 API 30 一台，没验过。**
+- **API 35 及以上的设备**：`targetSdk` 是 36，而本轮用到的
+  `setStatusBarColor` / `setNavigationBarColor` / `setStatusBarContrastEnforced`
+  在 API 35 起是 deprecated no-op（引擎字节码里也有 `SDK_INT < 35` 的门槛）。
+  预期结果一样（系统自己强制 edge-to-edge），但那是另一套系统行为，**没验过**。
+- **iOS / macOS**：见上面那一节——状态栏样式的来源被改了，且**一次都没跑过**。
+- **三键导航**：真机常年手势导航。三键导航安全区约 48dp，按本轮规则胶囊会整个让开它
+  ——**这是推断，不是实测**。
+- **横屏**：本轮只测竖屏。
+
 ## 3.12（2026-10-13）
 
 **把罗盘接上 Android：新增一条手写的 Kotlin `EventChannel`，逐项复刻 iOS 那套算法；
