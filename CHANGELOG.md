@@ -3,6 +3,59 @@
 本文件记录「夜深」项目规格的版本变更。规格正文见
 [docs/superpowers/specs/2026-09-28-night-sleep-design.md](docs/superpowers/specs/2026-09-28-night-sleep-design.md)。
 
+## 3.16（2026-10-13）
+
+**小米手环 9 接上 Gadgetbridge——配对、RFCOMM 连接、认证全部成功；睡眠阶段仍未验证。
+纯文档改动，Dart 与测试代码一行未动，导入按钮仍然禁用。**
+
+同日 3.15 之后继续做的一轮，把规格 §八 的下一步真跑了一遍。产物是
+[可行性设计](docs/superpowers/specs/2026-10-13-xiaomi-band-sleep-integration-design.md)
+原地新增 §3.3 与 §6.1，以及 README「验证记录」换成 v3.16（v3.15 挪进 `docs/verification-log.md`）。
+
+### 打通的（三条判据，全来自 logcat）
+
+```
+Bond state changed  08:16:D5:73:9E:EF   BOND_BONDING → BOND_BONDED
+BtBRQueue(0): Connected to RFCOMM socket for Xiaomi Smart Band 9 9EEF
+XiaomiAuthService: Authenticated, further communications are encrypted
+```
+
+- **密钥是对的**——3.15 里从 `XiaomiFit.main.log` 取的那把 `encryptKey` 通过了认证
+  （日志里有两个候选值，取最后出现的那个是对的）。
+- **「手环 9 走经典蓝牙」现在有三条独立证据**：SDP 记录、官方 App 只发 `CLASSICAL-CONNECTED`、
+  以及 Gadgetbridge 自己的 `BtBRQueue`。
+- Gadgetbridge 用的是 `XiaomiSupport` + `MiBand9Coordinator`，**不是老款 Mi Band 那套**。
+
+安装方式记一笔：从 Codeberg 官方 release 直链下载 0.95.1（中途断过一次，断点续传补齐），
+验签（`CN=APKSignKey, OU=Gadgetbridge`，SHA-256 `01cce931…`）后 adb 安装。
+
+### 四个坑（都写进规格 §3.3）
+
+1. **MIUI 的 `force-stop` 压不住小米运动健康**——它有个 `com.mi.health:device` 子进程会被反复拉起，
+   一直抢手环。最终 `pm disable-user` 停用。**这是「不能共存」的机制层解释。**
+2. **手环不与手机配对时不广播**——从系统蓝牙删掉它之后就连 Gadgetbridge 也扫不到，
+   **必须在手环上主动进「连接新手机」模式**才会重新广播。
+3. **扫描列表里混着家电**——`midea`（美的，厂商 ID `1704`）被长按后 Gadgetbridge 拿老款
+   `MiBandSupport` 去连、崩溃断开。**是选错设备，不是缺陷。**
+4. 密钥用 `adb shell input text` 从文件直输，不手抄。
+
+### 顺带推翻/确立的两件事
+
+- **Health Connect 对本机是死的**：GMS / Play 商店 / GSF **全部被禁用**（`enabled=2`，GMS 零进程），
+  而 Android 11 的 HC 依赖 Google Play 服务。但**代码级证据说小米会写阶段**——dex 里有
+  `HealthConnectApi` / `HealthConnectSyncDao` / `PLATFORM_TO_SDK_SLEEP_STAGE_TYPE` / `STAGE_TYPE_AWAKE`，
+  **有阶段映射表就说明在处理阶段**（代码证据，非实测）。
+- **规格新增 §6.1：「自己用」与「给别人用」是两个卡点完全不同的问题。**
+  ② 只可能是自己用的方案；要能分发只剩 ③（合规风险）或 ⑤（覆盖不了国行用户），**没有第三条**。
+  好消息是两条路在应用里长得一样，**领域侧共用，先做自己用不白做**。
+
+### 「未验证」照旧不省
+
+**最要紧的一条仍然空着：Gadgetbridge 解不解得出睡眠阶段。** 数据库在 `/data/data/…`
+（无 root 读不了），要等它导出到外部目录；手环里此刻有没有睡眠数据也不确定。
+**这一条直接决定这条路走不走得下去**，也决定实现计划写不写得出来。
+其余未验证项（云 API、官方平台申请、打开 GMS 再试 HC、时钟对齐）见规格 §九。
+
 ## 3.15（2026-10-13）
 
 **新开[小米手环睡眠数据接入可行性设计](docs/superpowers/specs/2026-10-13-xiaomi-band-sleep-integration-design.md)，
