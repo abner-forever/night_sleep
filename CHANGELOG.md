@@ -3,6 +3,44 @@
 本文件记录「夜深」项目规格的版本变更。规格正文见
 [docs/superpowers/specs/2026-09-28-night-sleep-design.md](docs/superpowers/specs/2026-09-28-night-sleep-design.md)。
 
+## 3.17（2026-10-13）
+
+**验收记录从 `README.md` 里彻底搬走——README 不再保留任何一版，逐版记录的唯一位置是
+[`docs/verification-log.md`](docs/verification-log.md)。纯文档改动，Dart 与测试代码一行未动。**
+
+### 为什么改
+
+v3.14 把「验证记录」从 README 拆出去时留了一条尾巴：**README 仍留最近一版**，理由是
+「单看 README 也知道当前验到了哪一步」。使用方随后明确要求**全部搬走**——README 是
+「怎么跑、能干什么」，连一版流水账都不该留。
+
+所以本次把 README 里那一节**整节删除**（连同「本节只留最近一版」那段引言），
+v3.16 的内容按倒序插进 `docs/verification-log.md` 的最上面。
+
+### 改了哪些地方
+
+| 文件 | 改什么 |
+| --- | --- |
+| `README.md` | **删掉整个「验证记录」节**；「项目结构」块补上 `docs/` 三个条目（其中点名 `verification-log.md`）；三处没带链接的「见「验证记录」vX」改成指向本文档的链接；「未实现」表的小米手环一行更新到 v3.16（Gadgetbridge 已配对成功） |
+| `CLAUDE.md` | 「验收记录分两处」改为**「只有一处」**，并写明 README 里不再保留任何一版 |
+| `docs/verification-log.md` | 开头那段「最近一版仍留在 README」改成 v3.17 的新说明 |
+| 总规格与 `2026-09-30-sleep-session-design.md` | 7 + 1 处 `README「验证记录」` 的行内指针改为指向 `../../verification-log.md` |
+| `2026-09-28-docs-reorganization-design.md` | 「文档职责」表里 `README.md` 与 `verification-log.md` 两行按 v3.17 改写 |
+
+### 刻意不改的
+
+- **`CHANGELOG.md` 自己的历史条目**——它们写的是当时那句「记在 README『验证记录』」，
+  是记录，改了就是篡改。指针断不断无所谓，它们不是给读者导航用的。
+- **`docs/superpowers/plans/*`**——同理，计划是当时的过程记录。
+- 总规格里 `2026-09-28-export-and-reminders-design.md` 等把「往 README 验证记录里补」
+  当成**待办描述**的句子，也属于历史语境，不动。
+
+### 「未验证」照旧不省
+
+这次搬的是**位置**，内容一份没删。最要紧的未验证项仍立在
+[`docs/verification-log.md`](docs/verification-log.md) v3.16 顶部：
+**Gadgetbridge 解不解得出睡眠阶段**。
+
 ## 3.16（2026-10-13）
 
 **小米手环 9 接上 Gadgetbridge——配对、RFCOMM 连接、认证全部成功；睡眠阶段仍未验证。

@@ -3,7 +3,7 @@
 > 日期：2026-09-30（plan B 夜间录音于 2026-10-03 落地，见 §六）
 > 状态：**plan A / plan B / plan C / plan D 均已落地**。会话页两态、夜间录音、显示名、回顾、
 > 起床闹钟全部实现；**夜间录音的真机整夜后台存活、切片阈值与界面目视仍未验证**（见 §十三 与
-> README「验证记录」）。plan B 的完整规格见
+> [验证记录](../../verification-log.md)）。plan B 的完整规格见
 > [2026-10-03-night-audio-recording-design.md](2026-10-03-night-audio-recording-design.md)。
 > 偏差与已知项见 §十五、§十六、§十七。
 > 范围：应用显示名改为中文；新增「开始睡眠」入口与动态睡眠会话页；「记录」Tab 改为「回顾」Tab；

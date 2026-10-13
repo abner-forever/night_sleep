@@ -5,7 +5,11 @@
 
 它是从 `README.md` 的「验证记录」一节拆出来的（v3.14，2026-10-13）：那一节到拆之前已经
 **584 行、占 README 的 51%**，而且只增不减——README 是「怎么跑、能干什么」，不该兼做流水账。
-**最近一版仍留在 `README.md`**，这样单看 README 也知道当前验到了哪一步；更早的版本只在这里。
+
+**v3.17（2026-10-13）起，README 里不再保留任何一版。** v3.14 拆出本文时留了一条尾巴——
+「最近一版仍留在 README」；使用方随后明确要求**全部搬走**，README 里连指针式的一段都不留。
+所以**逐版记录的唯一位置就是本文**，按时间倒序，最新在最上面。
+（README 里仍有若干「见验证记录」的行内链接指向本文，那是描述具体能力时指路用的，不是记录本身。）
 
 三处分工是刻意划的，别混（沿自[文档重组设计](superpowers/specs/2026-09-28-docs-reorganization-design.md)）：
 
@@ -20,6 +24,51 @@
 真机读数），每一条没做的都必须留在「未验证」里，不许悄悄消失。
 
 本机环境：macOS 14.8.9（23J631，Intel），Flutter 3.47.5 stable。
+
+**v3.16（2026-10-13：小米手环 9 接上 Gadgetbridge——连接与认证打通，阶段待验）——Windows 11 / Flutter 3.47.5 / Android SDK 36：**
+
+真机同上：Xiaomi MI 9（`cepheus`，adb serial `e0e60672`），**Android 11（API 30）/ MIUI 12.5.6 / arm64-v8a**。
+设备：小米手环 9 NFC。
+
+**本轮仍是调研 + 真机实测，Dart 代码一行未改**，因此**没有复跑** `flutter analyze` / `flutter test`
+（上一次是 v3.13 的 609/609）。判据全部是 `adb shell` 与 logcat 的原始输出。
+
+- **跑过的（真机）**：
+  - **Gadgetbridge 0.95.1 装上了**：从 Codeberg 官方 release 直链下载（21 MB，中途断过一次、断点续传补齐），
+    验签通过（`CN=APKSignKey, OU=Gadgetbridge, O=Freeyourgadget`，SHA-256
+    `01cce9316fcb77ea02c6dea81fde9f3176469202c0cea0514c0e03cb969bc7be`），zip 完整性 OK。
+  - **配对 → RFCOMM 连接 → 认证，全部成功**：
+    `BOND_BONDING → BOND_BONDED`；`BtBRQueue(0): Connected to RFCOMM socket for Xiaomi Smart Band 9 9EEF`；
+    `XiaomiAuthService: Authenticated, further communications are encrypted`；`XiaomiSupport: onAuthSuccess`。
+    **密钥取对了，而且「手环 9 走经典蓝牙」这条现在有三条独立证据**（SDP 记录、官方 App 只发
+    `CLASSICAL-CONNECTED`、Gadgetbridge 自己的 `BtBRQueue`）。Gadgetbridge 用的是
+    `XiaomiSupport` + `MiBand9Coordinator`，不是老款 Mi Band 那套。
+  - **四个坑，判据与处置见规格 §3.3**：① MIUI 的 `force-stop` 压不住小米运动健康——
+    它有个 `com.mi.health:device` 子进程会被反复拉起，最终用 `pm disable-user` 停用（`enabled=3`、进程归零）；
+    ② **手环不与手机配对时不广播**，从系统蓝牙删掉它之后 Gadgetbridge 就再也扫不到，
+    **必须在手环上主动进「连接新手机」模式**（设置 → 系统操作）才会重新广播；
+    ③ **扫描列表里混着家电极易选错**——`midea`（美的，广播厂商 ID `1704` = `0x06A8`）被当成手环长按后，
+    Gadgetbridge 拿老款 `MiBandSupport` 去连，`NullPointerException: DeviceInfo.isMili1()`、
+    派发线程死亡、`GATT_VALUE_NOT_ALLOWED` 断开（**是选错设备，不是缺陷**）；
+    ④ 密钥用 `adb shell input text` 从文件直输，避免手抄 32 位出错。
+  - **Health Connect 这条对本机是死的**：GMS / Play 商店 / GSF **全部被禁用**
+    （`enabled=2`，GMS 零进程），而 Android 11 上的 HC 依赖 Google Play 服务，装上也跑不起来。
+- **没跑过的**：
+  - **Gadgetbridge 解不解得出睡眠阶段——最要紧的一条，仍未验证。** 连接与认证已通，
+    但**它解不解得出深睡/REM、解出来准不准，一概未知**。数据库在 `/data/data/…`
+    （无 root 读不了，`Permission denied`），要等它导出到外部目录；
+    而且手环里**此刻有没有睡眠数据本身也不确定**（这台手环今晚才与手机配对）。
+    **这一条直接决定这条路走不走得下去。**
+  - **小米云 API 未实测**；**官方开放平台未申请**；**打开 GMS 再试 Health Connect 没做**；
+    **手环数据与手机录音的时钟对齐没碰**。
+  - 完整清单见[可行性设计](docs/superpowers/specs/2026-10-13-xiaomi-band-sleep-integration-design.md) §九。
+- **本轮新增的结论（写进规格 §6.1）**：「自己用」与「给别人用」是**两个卡点完全不同的问题**。
+  ② Gadgetbridge 只可能是「自己用」的方案；要能分发，只剩 ③ 云端登录（有合规风险）
+  或 ⑤ Health Connect（覆盖不了国行用户）——**没有第三条**。
+  好消息是两条路在应用里长得一样（都是「导入睡眠数据」那一屏），**领域侧共用，先做自己用不白做**。
+  另外 Health Connect 的可行性有一条**代码级证据**：小米运动健康的 dex 里有
+  `HealthConnectApi` / `HealthConnectSyncDao` / `PLATFORM_TO_SDK_SLEEP_STAGE_TYPE` / `STAGE_TYPE_AWAKE`
+  ——**有一张阶段映射表，说明它在写阶段**（但这是代码证据，不是实测）。
 
 **v3.15（2026-10-13：小米手环睡眠数据接入可行性判定）——Windows 11 / Flutter 3.47.5 / Android SDK 36：**
 

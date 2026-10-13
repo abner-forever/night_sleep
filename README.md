@@ -90,6 +90,10 @@ lib/
       data/            仓库（行 → 聚合）、会话仓库、演示种子
       presentation/    睡眠盘、评分环、阶段图、详情弹层、声音卡、助眠音效弹层
 test/                  领域计算与页面测试
+docs/
+  architecture.md      分层约定、provider 表、路由规则、schema 与迁移决策
+  verification-log.md  **逐版验收记录（含未验证清单），按时间倒序**——README 里不再保留
+  superpowers/         设计规格（specs/）与实现计划（plans/）
 ```
 
 ## 当前实现范围
@@ -319,9 +323,9 @@ Kotlin 侧**没有任何单元测试**（本仓库没有 Kotlin 测试设施）�
 | 夜间录音 / 鼾声梦话检测 | **录音已接入（v3.9，plan B），但真机整夜后台存活未验证；鼾声/梦话检测仍没有**。会话期间按振幅切片、一条片段一个 WAV 落进 `SoundClips`；详情页声音卡可回放、可**手动**标注为打鼾 / 梦话 / 杂音。**没有任何自动识别 / 转写 / 结论**——这是刻意的（M3 第 3 条），不是待办；是鼾声还是梦话由用户自己听、自己标。**未验证**：真机整夜后台存活（锁屏后 Dart isolate 是否持续收到 PCM、片段是否持续落盘——**这是整条路的前提**）、七个切片阈值在真实样本上的表现、界面目视核对。另：**白噪音播放期间不录音**（那段是真的覆盖缺口） |
 | 白噪音的后台播放 / 锁屏控制 | 未接入。会话白噪音在**收起页面后仍继续响**（播放器提到 app 级），但退到后台或锁屏后声音会停，界面已如实标注 |
 | 助眠音效素材的可商用授权 | **未落实（发布阻塞项）**。5 条录音来自爱给网（aigei.com），使用方 2026-10-03 裁定为「尚未确认、仅供个人试用」。代码、`pubspec.yaml`、README 与规格均已如实标注，规格 §10 第 3 条**不关闭**。发布前必须确认授权、换素材或退回合成 |
-| 小米手环数据导入 | **未接入，导入按钮仍禁用**。**可行性判定已出（v3.15，2026-10-13）**：小米手环 9 走**经典蓝牙 SPP**（真机实测，见「验证记录」v3.15），Flutter 的 BLE 插件碰不到它，自写 Dart 协议栈判定为不值得。推荐路径是经 Gadgetbridge 转发（不碰小米账号），其次是申请小米官方开放平台权限。见[小米手环接入可行性设计](docs/superpowers/specs/2026-10-13-xiaomi-band-sleep-integration-design.md)。**仍未做**：GATT 枚举（试了三轮没做成，见规格 §3.2）、Gadgetbridge 实际解码验证、官方平台权限申请——**没有任何一条路径被真机跑通过** |
+| 小米手环数据导入 | **未接入，导入按钮仍禁用**。**可行性已判定，并实测到了连接层（v3.15–v3.16，2026-10-13）**：小米手环 9 走**经典蓝牙 SPP**（三条独立证据），Flutter 的 BLE 插件碰不到它，自写 Dart 协议栈判定为不值得；**Gadgetbridge 已用日志里提取的密钥配对成功**（RFCOMM 连接 + 认证通过），所以「自己用」这条路是通的。见[验证记录](docs/verification-log.md) v3.15 / v3.16 与[可行性设计](docs/superpowers/specs/2026-10-13-xiaomi-band-sleep-integration-design.md)。**仍未做**：**Gadgetbridge 解不解得出睡眠阶段——最要紧的一条，未验证**；GATT 枚举（三轮未成，规格 §3.2）；官方平台权限申请。**没有任何一条路径被真机跑通到「拿到数据」** |
 | AI 洞察服务 | **部分接入（v3.7）**。已能查余额（**仅 DeepSeek**）、做连通性测试、在睡眠详情里重新生成一晚的模型总结并落库；API Key 存**系统钥匙串**（v3.7 起，重启后仍在，设置页有「清除密钥」）。**仍未做**：Claude 的对话与余额（Messages API 形状不同且无 key 可实测）、余额的持久化与历史曲线、**发送前「将要发送哪些数据」的逐项确认界面**（规格 M4 第 3 条的后半句）。OpenAI 的对话路径与 DeepSeek 同一份代码，但**没有 key 实测过**（见[验证记录](docs/verification-log.md)） |
-| **Android 平台** | **平台目录已生成（v3.11，2026-10-12）**：`android/` 由 `flutter create --platforms=android .`（Flutter 3.47.5）产出，清单里补了 `RECEIVE_BOOT_COMPLETED` 与 `ScheduledNotificationReceiver` / `ScheduledNotificationBootReceiver` 两个 receiver，gradle 开了 core library desugaring。**「提醒不会因为重启而失效」这条现在成立**（此前是「开关看着有效、实际不响」）。**真机安装启动已在 v3.12 跑通**（MI 9 / API 30），**界面层的系统栏与安全区已在 v3.13 适配**（两条系统栏透明、页面背景铺到物理边缘，见「验证记录」v3.13）。**仍未做**：通知真的投递、前台录音在 Android 上录得下来——**一律未验证**。见下方「Android 上的已知缺口」 |
+| **Android 平台** | **平台目录已生成（v3.11，2026-10-12）**：`android/` 由 `flutter create --platforms=android .`（Flutter 3.47.5）产出，清单里补了 `RECEIVE_BOOT_COMPLETED` 与 `ScheduledNotificationReceiver` / `ScheduledNotificationBootReceiver` 两个 receiver，gradle 开了 core library desugaring。**「提醒不会因为重启而失效」这条现在成立**（此前是「开关看着有效、实际不响」）。**真机安装启动已在 v3.12 跑通**（MI 9 / API 30），**界面层的系统栏与安全区已在 v3.13 适配**（两条系统栏透明、页面背景铺到物理边缘，见[验证记录](docs/verification-log.md) v3.13）。**仍未做**：通知真的投递、前台录音在 Android 上录得下来——**一律未验证**。见下方「Android 上的已知缺口」 |
 | Android 上的已知缺口（v3.11 起逐条列出，**不得视为已完成**） | ① **后台 / 锁屏录音**：清单里声明了 `FOREGROUND_SERVICE` 与 `FOREGROUND_SERVICE_MICROPHONE`，但**没有前台服务实现**——退到后台或锁屏后录音仍然停止。**声明了不等于能用**。② **「去系统设置」在 Android 上是死按钮**：`app_settings.dart` 对非 iOS/macOS 退回 `app-settings:`，Android 没有等价 scheme，点了没反应（麦克风权限被拒时那一行）。③ **`android:allowBackup` 未改**：备份开着意味着数据库与录音片段可能被上传到用户自己的 Google Drive，而应用承诺「不会上传」。三个处置方案见规格 §5.4，**待使用方裁定**。④ **发布阻塞**：applicationId 仍是占位 `com.example.night_sleep`；release 构建用 debug 签名（模板默认）；`FOREGROUND_SERVICE_MICROPHONE` 在没有对应服务前不应带着上架（Google Play 有单独用途申报） |
 | ~~启动图标是 Flutter 默认 logo~~ | **v3.11 已修**：`tool/generate_app_icons.dart` 现在同时产出 Android 的传统位图（API < 26）与自适应图标（API ≥ 26，两层 + 声明文件）。见上方「Android 启动图标」。 |
 
@@ -553,55 +557,4 @@ snake_case）。两者是两个独立的商店身份，不要求一致；待项�
 （获取可用模型、连通性测试、查询余额、生成洞察），**全部由用户点击触发**，全部只发结构化
 睡眠字段（**不含用户备注**），密钥只进请求头、不落日志不落盘；导出仍是把文件交给系统分享
 面板、**去向由你选择**，应用自己不发起传输。
-
-## 验证记录
-
-**本节只留最近一版。** 逐版的实测结果与**未验证清单**在
-[`docs/verification-log.md`](docs/verification-log.md)（按时间倒序，最新在最上面）——
-README 是「怎么跑、能干什么」，那份文档才是「验到了哪一步、还有什么没验」。
-
-**v3.16（2026-10-13：小米手环 9 接上 Gadgetbridge——连接与认证打通，阶段待验）——Windows 11 / Flutter 3.47.5 / Android SDK 36：**
-
-真机同上：Xiaomi MI 9（`cepheus`，adb serial `e0e60672`），**Android 11（API 30）/ MIUI 12.5.6 / arm64-v8a**。
-设备：小米手环 9 NFC。
-
-**本轮仍是调研 + 真机实测，Dart 代码一行未改**，因此**没有复跑** `flutter analyze` / `flutter test`
-（上一次是 v3.13 的 609/609）。判据全部是 `adb shell` 与 logcat 的原始输出。
-
-- **跑过的（真机）**：
-  - **Gadgetbridge 0.95.1 装上了**：从 Codeberg 官方 release 直链下载（21 MB，中途断过一次、断点续传补齐），
-    验签通过（`CN=APKSignKey, OU=Gadgetbridge, O=Freeyourgadget`，SHA-256
-    `01cce9316fcb77ea02c6dea81fde9f3176469202c0cea0514c0e03cb969bc7be`），zip 完整性 OK。
-  - **配对 → RFCOMM 连接 → 认证，全部成功**：
-    `BOND_BONDING → BOND_BONDED`；`BtBRQueue(0): Connected to RFCOMM socket for Xiaomi Smart Band 9 9EEF`；
-    `XiaomiAuthService: Authenticated, further communications are encrypted`；`XiaomiSupport: onAuthSuccess`。
-    **密钥取对了，而且「手环 9 走经典蓝牙」这条现在有三条独立证据**（SDP 记录、官方 App 只发
-    `CLASSICAL-CONNECTED`、Gadgetbridge 自己的 `BtBRQueue`）。Gadgetbridge 用的是
-    `XiaomiSupport` + `MiBand9Coordinator`，不是老款 Mi Band 那套。
-  - **四个坑，判据与处置见规格 §3.3**：① MIUI 的 `force-stop` 压不住小米运动健康——
-    它有个 `com.mi.health:device` 子进程会被反复拉起，最终用 `pm disable-user` 停用（`enabled=3`、进程归零）；
-    ② **手环不与手机配对时不广播**，从系统蓝牙删掉它之后 Gadgetbridge 就再也扫不到，
-    **必须在手环上主动进「连接新手机」模式**（设置 → 系统操作）才会重新广播；
-    ③ **扫描列表里混着家电极易选错**——`midea`（美的，广播厂商 ID `1704` = `0x06A8`）被当成手环长按后，
-    Gadgetbridge 拿老款 `MiBandSupport` 去连，`NullPointerException: DeviceInfo.isMili1()`、
-    派发线程死亡、`GATT_VALUE_NOT_ALLOWED` 断开（**是选错设备，不是缺陷**）；
-    ④ 密钥用 `adb shell input text` 从文件直输，避免手抄 32 位出错。
-  - **Health Connect 这条对本机是死的**：GMS / Play 商店 / GSF **全部被禁用**
-    （`enabled=2`，GMS 零进程），而 Android 11 上的 HC 依赖 Google Play 服务，装上也跑不起来。
-- **没跑过的**：
-  - **Gadgetbridge 解不解得出睡眠阶段——最要紧的一条，仍未验证。** 连接与认证已通，
-    但**它解不解得出深睡/REM、解出来准不准，一概未知**。数据库在 `/data/data/…`
-    （无 root 读不了，`Permission denied`），要等它导出到外部目录；
-    而且手环里**此刻有没有睡眠数据本身也不确定**（这台手环今晚才与手机配对）。
-    **这一条直接决定这条路走不走得下去。**
-  - **小米云 API 未实测**；**官方开放平台未申请**；**打开 GMS 再试 Health Connect 没做**；
-    **手环数据与手机录音的时钟对齐没碰**。
-  - 完整清单见[可行性设计](docs/superpowers/specs/2026-10-13-xiaomi-band-sleep-integration-design.md) §九。
-- **本轮新增的结论（写进规格 §6.1）**：「自己用」与「给别人用」是**两个卡点完全不同的问题**。
-  ② Gadgetbridge 只可能是「自己用」的方案；要能分发，只剩 ③ 云端登录（有合规风险）
-  或 ⑤ Health Connect（覆盖不了国行用户）——**没有第三条**。
-  好消息是两条路在应用里长得一样（都是「导入睡眠数据」那一屏），**领域侧共用，先做自己用不白做**。
-  另外 Health Connect 的可行性有一条**代码级证据**：小米运动健康的 dex 里有
-  `HealthConnectApi` / `HealthConnectSyncDao` / `PLATFORM_TO_SDK_SLEEP_STAGE_TYPE` / `STAGE_TYPE_AWAKE`
-  ——**有一张阶段映射表，说明它在写阶段**（但这是代码证据，不是实测）。
 

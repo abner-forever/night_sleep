@@ -17,10 +17,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 新增或修改能力后，同步更新该规格（偏差表 / 测试矩阵）与 `README.md`（实现范围），
 版本变更记入 `CHANGELOG.md`。
 
-**验收记录分两处**（v3.14 拆的，理由见 [`docs/verification-log.md`](docs/verification-log.md) 开头）：
-本轮实跑结果与**未验证项**写进 `README.md` 的「验证记录」，同时把**被顶下来的上一版**
-挪进 `docs/verification-log.md`（按时间倒序）。**「未验证」那一半不许省**——它是规格书
-「不得把没做过的事写成已完成」那条红线的凭据。
+**验收记录只有一处**：本轮实跑结果与**未验证项**一律写进
+[`docs/verification-log.md`](docs/verification-log.md)（按时间倒序，最新在最上面）。
+**`README.md` 里不再保留任何一版**——连指针式的一段都不留（v3.17 起；v3.14 曾拆成
+「README 留最近一版 + 更早的进 docs」两处，2026-10-13 使用方要求**全部搬走**）。
+**「未验证」那一半不许省**——它是规格书「不得把没做过的事写成已完成」那条红线的凭据。
 
 新的设计规格落 `docs/superpowers/specs/`，新的实现计划落 `docs/superpowers/plans/`，
 文件名一律 `YYYY-MM-DD-<topic>.md`。规格是活文档：创建时定日期，之后原地更新，不新开文件，
