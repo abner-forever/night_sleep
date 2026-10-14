@@ -41,6 +41,139 @@
 **尚未定案**的未验证项——我们的读数与系统自带 `com.miui.compass` 差 **43°**。当前的罗盘状态
 以 v3.12 条目为准，上面两条只是 2026-10-02 那个时点的历史。
 
+**v3.24（2026-10-14：Android 构建的跨盘 Kotlin 缓存失败——定位并固化绕行）——Windows 11 / Flutter 3.47.5 / Android SDK 36：**
+
+使用方报「启动报错」。失败在 `flutter run -d e0e60672` 的 `assembleDebug` 阶段：
+`FAILURE: Build completed with 6 failures.`，每个 Kotlin 插件各一条
+
+```
+Could not close incremental caches in …/build/<plugin>/kotlin/compileDebugKotlin/cacheable/caches-jvm/jvm/kotlin: …tab
+```
+
+**成因是跨盘，不是旧文猜的「杀软占句柄」。** 本机 pub 缓存在 `C:`、工程在 `D:`，而增量编译缓存存的是
+源码根的**绝对路径**，两个盘建不出公共根。判据是紧跟在报错下面、**最容易被截断掉的那几层**：
+
+```
+Suppressed: java.lang.IllegalArgumentException: this and base files have different roots:
+  C:\Users\…\Pub\Cache\…\flutter_timezone-…\android\src\main\kotlin\… and D:\…\night_sleep\android
+```
+
+改了什么、为什么这次进了仓库，见 [`CHANGELOG.md`](../CHANGELOG.md) 3.24 与 README「构建 Android 的
+网络前提」（那一节同时订正了两处错说法）。
+
+- **跑过的（本机构建 + 真机，判据都是命令行）**：
+  - **先清场**：失败构建留下的三个进程（gradle daemon / kotlin daemon / wrapper 客户端）会攥着
+    工程锁让新构建干等，`android/gradlew.bat --stop` —— `--stop` 之后三个都退干净了。
+  - `flutter build apk --debug -P kotlin.incremental=false -P kotlin.compiler.execution.strategy=in-process`
+    —— **51.7s 成功**（此前 6 failures）。
+  - `flutter clean` 之后 `flutter build apk --debug`（**不带任何参数**）—— **57.1s 成功**。
+    **必须 clean 才作数**：前一次构建用的就是这两个值，不 clean 的话 Gradle 会判成 UP-TO-DATE，
+    等于什么都没验证。
+  - `flutter run -d e0e60672`（**不带任何参数**）—— 32s 内 `Syncing files to device MI 9` +
+    `A Dart VM Service on MI 9 is available at: http://127.0.0.1:7089/…`。
+  - **真机**：`adb install -r -g` 后进程正常、logcat 无 `FATAL` / `AndroidRuntime`；截图确认首页
+    渲染正常（演示数据横幅、7h26m、三个阶段显示 `—` 并注明「没有睡眠阶段数据」）。
+  - 顺带确认 **3.47.5 的 `flutter build` / `flutter run` 确实有 `-P, --android-project-arg`**，
+    旧文「`flutter build apk` 传不了 `-P`」不成立（`--help` 与实跑各验一次）。
+
+- **未验证的（不许当成验过）**：
+  - **`kotlin.incremental=false` 单独一条够不够**——实测的是它与 `in-process` 的组合，没拆开试。
+  - **单盘机器与 CI 上的表现**：按推断那两行可以整体删掉（已注在文件里），但**没有那样的机器可试**，
+    所以 README 里也没写成「一定可删」。
+  - `dart format` / `flutter analyze` / `flutter test` **一律没跑**：本轮不含任何 Dart 代码改动，
+    跑了也证明不了这个改动。上一次全量仍是 v3.23 的 628 通过 / 1 失败（失败的是未跟踪的模板桩）。
+  - **热重载没试**：验证用的那个 `flutter run` 是后台跑起来看日志的，没有 stdin 可敲 `r`，确认启动
+    后即停掉。所以「能跑起来」验过了，「改一行能不能热重载」没验。
+
+**真机上被动过的东西**：重装过一次 debug APK（`adb install -r -g` —— 这台 MIUI 的运行时权限只能靠
+`-g`，`pm grant` 无效）。设备侧设置（`stay_on_while_plugged_in` 等）**没有改动**。
+
+**v3.23（2026-10-14：滚轮照 iOS 闹钟重做交互——循环 / 行距 36 / 选中底色）——Windows 11 / Flutter 3.47.5：**
+
+使用方提的三件事：**时刻能循环**（「到底了就无法滚动了，体验不好」）、**行距小一点**、
+**给当前值一个底色**（参考 iOS 闹钟）。改了什么、为什么这么改，见 [`CHANGELOG.md`](../CHANGELOG.md)
+3.23 与规格 §8 偏差 #53 / #54 / #55，本文只记跑了什么、没跑什么。
+
+- **跑过的（本机离线，没有上真机、没有真手指）**：
+  - `dart format`、`flutter analyze` —— 只有 1 条**既有**问题（未跟踪的模板桩
+    `test/widget_test.dart` 引用不存在的 `MyApp`，**没有动它**）。
+  - `flutter test` —— **628 通过 / 1 失败**；失败的就是那个模板桩。基线 624，本轮 +4 条。
+  - **新增 4 条**（`test/wheel_picker_test.dart`）：小时滚过 23 绕回 00 且分钟列不被冲掉、
+    从 00 往回滚绕到 23:59 一侧、选中底色的几何与颜色、日期列不循环。
+  - **变异验证（两次，都是拿真东西换，不是编一个假的）**：
+    ① 把循环列的 `childCount: null` 报成有限的 `_length` → **两条绕回用例变红**，症状正是
+    「滚到底就停住」（`23:50` / `00:00` 原样不动）；
+    ② 换回 HEAD 的原实现 → 三条多列一致性用例变红（沿用 v3.22 那次的做法）。
+  - **离屏渲染目视检查**：写了一个临时 golden 测试（`flutter test --update-goldens`）把弹层
+    渲染成 PNG 再肉眼看——浅色主题的时间选择器、深色主题的日期选择器各一张。看完即删
+    （临时测试与 `test/goldens/` 都不留在仓库里）。看到的三件事：底色压在正中间那一行、
+    宽度贴合数字（没有横贯整个弹层）、三列对齐。**测试环境用的是方块占位字体**，所以那两张图
+    只能验几何、验不了字形与真实字宽（见「未验证」）。
+  - **甩动行程实测**（循环列特有的风险：有界时末端会夹住，无限行程下没人夹）：一个 400px 的
+    一划，在 600 / 1000 / 2500 / 6000 px·s⁻¹ 下分别停在第 **13 / 17 / 38 / 60** 格
+    （起点 12:00，含拖动本身的 11 格）。读数与「Flutter 那套 physics 一行没改、只是末端不再
+    截断」对得上——**没有出现「甩一下就飞很远」的新病**。
+  - **顺手订正一条自己的错误假设**：第一版测试辅助函数按「起手会有 20px 被吃掉」给位移补了
+    半格，结果落点全偏——实测 `tester.drag` 的整段位移都会进到滚动里（44px 行距拖 88px 恰好
+    落在第 2 格；补半格变成 154px 则停在 3.5 格）。已改成整数倍行距，并把这条写进用例注释。
+
+- **未验证的（不许当成验过）**：
+  - **真手指没碰过。** 全部用例走的是 `tester.drag` / `tester.fling` 合成手势。真机上「循环列
+    连着甩好几圈」的观感、以及**触感反馈**（每过一格一次 `AppHaptics.select()`）在连续循环时
+    会不会密到发麻，**没测**。
+  - **行距 36 是拍的值，没在真机上标定。** 依据只有两条：使用方要「小一点」，以及 iOS 系统
+    闹钟自己约 43pt（所以 36 比 iOS 更紧）。滚起来累不累、字会不会显得挤，得真机上看。
+  - **底色的对比度没量过。** 用的是令牌里的 `accentSoft`（浅色 `rgba(0,122,255,.12)`、深色
+    `.20`），与标签条选中态同一支；在浅色玻璃面板与**会话页那个不走 `AppTokens` 的夜间弹层**
+    上各自是什么观感，**只有浅色 + 深色两张离屏图**，而且那两张图里的字是方块（上面那条）。
+  - **循环列的读屏语义没查。** 无限行程意味着内部下标会一直增长/变负，`ListWheelChildLoopingListDelegate`
+    与 `childCount: null` 会给 `IndexedSemantics` 一个越界/负的下标；屏幕阅读器把小时念成什么
+    **没人听过**。
+  - **日期选择器的 `now` 注入只在测试里用过**；跨年运行、或系统时间被改到五年窗口之外时三个列
+    的表现仍然**没测**（沿用 v3.22 那条）。
+  - `integration_test/` 没跑（要 `flutter drive`）；README 说的「界面截图巡检」也没跑——本轮
+    的图是离屏渲染的，不是真机截图。
+
+**v3.22（2026-10-14：修滚轮选择器「选完分钟把小时弹回去」）——Windows 11 / Flutter 3.47.5：**
+
+使用方报的缺陷：**先滚小时、再滚分钟，点「完成」小时回到原值；只滚小时是对的**。改了什么、
+为什么这么改，见 [`CHANGELOG.md`](../CHANGELOG.md) 3.22，本文只记跑了什么、没跑什么。
+
+- **跑过的（本机离线，没有上真机、没有真手指）**：
+  - `dart format lib/core/widgets/wheel_picker.dart test/wheel_picker_test.dart` —— 1 个文件有改动。
+  - `flutter analyze` —— **只有 1 条，且是既有问题**：未跟踪的模板桩 `test/widget_test.dart`
+    引用不存在的 `MyApp`（`flutter create` 留下的，与本次改动无关，**没有动它**）。
+  - `flutter test` —— **624 通过 / 1 失败**；失败的那一条就是上面那个模板桩（加载期编译失败）。
+    其余用例全绿，含 `reminder_settings_test.dart` 里那条靠拖滚轮 + 点「取消」的既有用例。
+  - **新增 4 条**（`test/wheel_picker_test.dart`）：先滚小时再滚分钟、先滚分钟再滚小时、
+    只滚小时、先滚年再滚月（含日列行数断言）。搭台刻意照着真实调用点的形状——`value` 是局部
+    变量、靠 `onChanged` 回写；把 picker 包进会重建的宿主会把病灶遮掉，用例就成了空跑。
+  - **变异验证（用的是 HEAD 的原实现，不是随手编的「假变异」）**：`git show HEAD:` 把原
+    `wheel_picker.dart` 换回来跑同一套用例 —— **三条核心用例全红，症状与使用方所报逐字一致**
+    （`23:03` / `21:00` / `2026-02-28`），而「只滚小时」那条**仍然绿**，正好对上「只选小时是对的」。
+    这一步筛掉了一个自欺的中间版本：第一版变异是「在原实现里保留 build 时常量」，它**没有变红**——
+    因为 `_select` 自己 `setState` 会重建 widget、闭包随之刷新，而原实现的病根恰恰是
+    「picker 是 `StatelessWidget`、父层送不进新值、永不重建」。**假变异比没有变异更危险**：
+    它会让一条空跑的用例看起来被验证过。
+  - **修日期选择器时浮出来的第二个问题**：日列随月份收窄（31 行 → 28 行）会让
+    `WheelColumn.didUpdateWidget` 里的 `jumpToItem` **同步**回调 `onSelectedItemChanged`，
+    于是在 build 期间又喊一次 `onChanged` → `setState() called during build`，用例当场炸。
+    处理办法是「值没变就不回调」（见 CHANGELOG 3.22 取舍 2），不是把断言绕开。
+
+- **未验证的（不许当成验过）**：
+  - **真手指没碰过。** 四条用例走的都是 `tester.drag`（合成手势、松手速度为零）。真机上
+    **带惯性的甩动**之后再点「完成」会走到哪一格、松手那一瞬的吸附与 `jumpToItem` 会不会互相
+    较劲，**没测**。
+  - **弹层打开期间父层 `setState` 的那些组合没覆盖。** 回顾页补录那一处 `onChanged` 里是
+    `setState`（会顺带重算 `_window` 与「睡眠时长是否合理」的提示），会话页那处是普通局部变量。
+    两条形态各写了一条用例，但**真机上整条链路（含时长提示实时变化）没人走过**。
+  - **日期轮盘「日列收窄」在真机上没人肉眼看过。** 断言的是 `ListWheelChildBuilderDelegate`
+    的行数，不是渲染结果；滚动位置在收窄之后落得对不对（会不会视觉上跳一下）只能靠肉眼，
+    而这一步没做。
+  - **`AppDatePicker` 的五年窗口（今天 ±2 年）没验**：跨年运行、或系统时间被改到窗口外时
+    三个列各自是什么表现，**没测**（`_adopt` 用今天补缺项的那条分支只有单测覆盖）。
+  - `integration_test/` 没跑（要 `flutter drive`），真机上的截图巡检也没有。
+
 **v3.20–v3.21（2026-10-14：把 v3.19 那两条查出来的问题修掉）——Windows 11 / Flutter 3.47.5：**
 
 承接 v3.19 的实测，这一轮改了两处代码：**平台静音时不再谎报「录音中」**（v3.20）、

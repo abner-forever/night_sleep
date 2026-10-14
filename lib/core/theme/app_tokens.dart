@@ -217,6 +217,13 @@ abstract final class AppRadii {
   /// Floating tab bar (`border-radius: 34px`).
   static const double tabBar = 34;
 
+  /// 滚轮选中行底色的圆角（v3.23 新增，**非原型**）。
+  ///
+  /// 原型在选中行上下画的是 `wheel-selection-rail` 两条 1px 线（见规格 §8 偏差
+  /// #15），使用方要的是 iOS 闹钟那种**底色**横条，所以有了这个值。比 `panel`
+  /// 小：它套的是一条 36px 高的横条，16 会圆到只剩 4px 直边，看着像药丸。
+  static const double wheelHighlight = 12;
+
   static const double pill = 999;
 }
 

@@ -108,6 +108,11 @@ docs/
 - **设计令牌只有一份**（`app_tokens.dart` 的 `AppTokens` 主题扩展），颜色 / 圆角 / 动效曲线一律
   从它取。玻璃材质、iOS 开关 / 分段控件 / 列表组、底部弹层、滚轮选择器、自绘描边图标集
   （原型图标逐字用原 SVG path）。
+- **滚轮选择器**（`core/widgets/wheel_picker.dart`）：**时刻**（入睡 / 起床 / 提醒 / 闹钟）的小时
+  与分钟**首尾相接**——23 再往上就是 00，不会卡在两头；**日期不循环**（「2024 年再往前」没有
+  意义，循环还会滚出 13 月、2 月 31 日这种格子）。行距 36px（原型 44px，按使用方要求收紧：
+  同样一段手指行程能滚过更多格），选中行压一条圆角底色（`accentSoft`，iOS 闹钟那种）；原型
+  那两条 1px `wheel-selection-rail` 细线仍然不画。
 - **顶部渐变**：一级页面滚动超过 12px 后，顶部浮出 144px 的 `blur(14px)` 渐变带，带顶到
   **屏幕物理顶端**（状态栏那段也参与模糊），320ms 淡入上移；宽屏和弹层打开时自动停用。
   `ImageFilter` 没有内置的 saturate 构造器，这里用一层极淡的 accent 叠加（`alpha 0.04`）
@@ -504,9 +509,22 @@ Could not download arm64_v8a_debug-….jar (io.flutter:arm64_v8a_debug:…):
 另外两条同批踩到的：**绕过 Flutter CLI 直接 `gradlew assembleRelease` 会失败**，报
 `GeneratedPluginRegistrant.java: 找不到符号 …integration_test`——那个注册文件由 CLI 生成且**按构建
 模式过滤**（release 排除 dev 依赖），绕过 CLI 就复用了上次 debug 留下的旧文件；解法是先跑一次
-`flutter build apk --release` 让它把注册文件生成对。而 `flutter build apk` **又传不了
-`-Pkotlin.incremental=false`**，会撞上 `Could not close incremental caches … .tab`（疑杀软占句柄）。
-**两条路互为补充，缺一不可**。
+`flutter build apk --release` 让它把注册文件生成对。这条路仍然要走——`-I cn-mirrors.gradle`
+（第 ② 条）只能从 `gradlew` 传，Flutter CLI 没有对应参数。
+
+**另一条同批踩到的、2026-10-14 订正了成因**：`Could not close incremental caches … .tab` 是**跨盘**
+造成的，不是「杀软占句柄」（旧版 README 的猜测是错的）。本机 pub 缓存在 `C:`、工程在 `D:`，而
+Kotlin 增量编译缓存存的是源码根的**绝对路径**，两个盘建不出公共根，于是每个 Kotlin 插件各报一条，
+构建以 `6 failures` 结束。报错栈里真正说明问题的那行被截断在下面几层——
+
+```
+Suppressed: java.lang.IllegalArgumentException: this and base files have different roots:
+  C:\Users\…\Pub\Cache\…\<plugin>-x.y.z\android\src\main\kotlin\… and D:\…\night_sleep\android
+```
+
+绕过办法是关掉增量编译，已固化进 `android/gradle.properties`。顺带订正：**3.47.5 的 `flutter build`
+与 `flutter run` 是能传 `-P` 的**（`-P, --android-project-arg`），旧版 README 说「`flutter build apk`
+传不了 `-P`」不成立。
 
 **④ NDK 是硬需求，且它自己也走 `dl.google.com`**——本工程间接依赖 `jni`（经
 `path_provider_android`），那个包带 CMake 原生构建，所以模板里的
@@ -550,7 +568,10 @@ curl -L -o p35.zip https://mirrors.cloud.tencent.com/AndroidSDK/platform-35_r02.
 > 编辑器的 Gradle 同步会**静默吃掉**这些下载失败——它只在右下角转圈，不报错。
 > 所以「Android Studio 里点一下就好了」在这里不成立，要看上面的缓存计数。
 > 顺带：这一整套 `dl.google.com` 的下载（CI 里也会遇到）**只有本机这个网络才需要绕过**，
-> 干净的 CI 环境直连即可——**所以解法都写在文档里、一行都没有进仓库**。
+> 干净的 CI 环境直连即可——**所以这几条解法都写在文档里、一行都没有进仓库**。
+> 唯一的例外见上面那条跨盘引起的 Kotlin 增量编译问题：它**每次 `flutter run` 都必然复现**，
+> 不像这些下载只是一次性前置，所以那两行固化进了 `android/gradle.properties`。代价是单盘
+> 机器和 CI 上白白关掉 Kotlin 增量编译——那边可以删掉那两行（文件里注了哪两条）。
 
 ## 界面截图巡检
 

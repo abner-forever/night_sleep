@@ -3,6 +3,138 @@
 本文件记录「夜深」项目规格的版本变更。规格正文见
 [docs/superpowers/specs/2026-09-28-night-sleep-design.md](docs/superpowers/specs/2026-09-28-night-sleep-design.md)。
 
+## 3.24（2026-10-14）
+
+**修掉 Android 构建里每次 `flutter run` 都必然复现的那个失败：Kotlin 增量编译缓存跨盘。**
+
+失败长这样——`FAILURE: Build completed with 6 failures.`，每个 Kotlin 插件各一条：
+
+```
+Could not close incremental caches in …/build/<plugin>/kotlin/compileDebugKotlin/cacheable/caches-jvm/jvm/kotlin: …tab
+```
+
+本机 pub 缓存在 `C:`、工程在 `D:`，而增量编译缓存存的是源码根的**绝对路径**，两个盘建不出公共根。
+**报错栈里真正说明问题的那行被截断在下面几层**——`Suppressed: … this and base files have different
+roots: C:\…\Pub\Cache\… and D:\…\night_sleep\android`——所以旧版 README 把它猜成了「杀软占句柄」，
+且据此推出一条错误结论（「`flutter build apk` 传不了 `-P`」）。两条这次一并订正。
+
+### 改了什么
+
+| 文件 | 改什么 |
+| --- | --- |
+| `android/gradle.properties` | 新增 `kotlin.incremental=false` 与 `kotlin.compiler.execution.strategy=in-process`，各带成因与「什么情况下可整体删掉」的注释 |
+| `README.md` | 「构建 Android 的网络前提」订正两处错说法：成因是跨盘不是杀软；3.47.5 的 `flutter build` / `flutter run` **能**传 `-P, --android-project-arg` |
+
+### 一个刻意的取舍
+
+**这两行进了仓库**，与该节「解法都写在文档里、一行都没有进仓库」的既有政策相悖，是有意开的口子：
+那批 `dl.google.com` 下载只是一次性前置，而这一个**每次 `flutter run` 都必然复现**。代价是单盘机器
+和 CI 上白白关掉 Kotlin 增量编译，所以注释里写明了那一段可以整体删掉。
+
+### 验证
+
+`flutter clean` 之后**完全不带参数**重建（必须 clean——前一次构建用的就是这两个值，不 clean 的话
+Gradle 会判成 UP-TO-DATE，等于什么都没验证）：`flutter build apk --debug` → **57.1s 成功**（此前
+6 failures）；再 `flutter run -d e0e60672` → 32s 内出现 `Syncing files to device MI 9` 与
+`A Dart VM Service on MI 9 is available at: …`，真机（MI 9 / Android 11 / MIUI 12.5.6）装上并渲染
+正常、logcat 无 FATAL。本次改动**不含任何 Dart 代码**，故 `dart format` / `flutter analyze` /
+`flutter test` 与它无关、未跑。
+
+**没验证的**：`kotlin.incremental=false` 单独一条够不够（实测的是两条的组合）；单盘机器与 CI 上的
+表现（按推断是可删的，但没有机器可试）。未验证项见 [`docs/verification-log.md`](docs/verification-log.md)。
+
+## 3.23（2026-10-14）
+
+**滚轮照着 iOS 闹钟重做交互：时刻列首尾相接、行距收紧到 36px、选中行压一条底色。**
+
+使用方提了三件事（原话）：**「小时分钟可以循环展示吗，现在到底了就无法滚动了，体验不好」**、
+**「1-2-3 之间的间距可以小一点，这样好滚一点」**、**「当前时间的高亮可以加一个背景色，整体参考
+iOS 闹钟时间选择器的交互」**。
+
+三件都落在 `WheelColumn` / `_WheelShell` 上，三个调用点（回顾页补录、睡眠设置页、会话页起床
+闹钟）与两个选择器（时间 / 日期）一起受益。
+
+### 改了什么
+
+| 文件 | 改什么 |
+| --- | --- |
+| `lib/core/widgets/wheel_picker.dart` | `WheelColumn` 新增 `looping`；`itemExtent` 44 → **36**；循环列的下标不再夹在 `[0, n)` 内（`_wrap` 取值、`_nearest` 归位）；`onChanged` 对外仍只报一圈之内的下标。`_WheelShell` 里加选中底色（`Stack` 的底层，宽度贴合数字） |
+| `lib/core/theme/app_tokens.dart` | 新增 `AppRadii.wheelHighlight = 12`（非原型，给底色横条用） |
+| `AppTimePicker` / `AppDatePicker` | 时刻两列 `looping: true`；日期三列不循环 |
+| `test/wheel_picker_test.dart` | 4 条 → 8 条（两条绕回、一条底色、一条「日期不循环」） |
+| 规格 / README | §2 基准表那行改写、§8 加偏差 **#53 / #54 / #55**、§9 矩阵扩写；README「设计系统与外观」补一条滚轮交互；`CLAUDE.md` 偏差条数 53 → 56 |
+
+### 四个刻意的取舍
+
+1. **无限滚动落在 `childCount: null` 上，不是自己拼三段列表。** 视口据此把上下都当成无边界
+   （`_minEstimatedScrollExtent` 是 `-∞`），两头都能滚；自己复制几份再悄悄归位也能做，但那要
+   在滚动通知里做一次看不见的跳转，正好会踩上一条「build 期间 setState」。
+2. **循环列的对外下标不越界。** 内部的 `_active` 会一直增长/变负（列首尾相接之后本来就「没有
+   头尾」，硬夹回一圈反而要多做一次归位跳转），但 `onChanged` 报出去的永远是 `0..23` / `0..59`，
+   `AppTimePicker` 那一层不必知道循环这回事。父层换值归位时取**最近的同值格子**：否则从 23 到
+   0 值一样，用户看到的却是整圈飞转。
+3. **日期不循环。** 「2024 年再往前」没有意义；而且只有循环列才画得出 13 月、2 月 31 日这类格子
+   ——那是 #4 一族（没有的东西不许编）的红线。iOS 自己的日期轮盘也不循环。
+4. **行距比 iOS 还紧。** iOS 系统闹钟自己的行距约 43pt，36 是使用方在这一版上明确要的密度，
+   不是「照 iOS 抄」。底色同理：用令牌里的 `accentSoft`（标签条选中态同一支），不写死色值。
+
+### 验证
+
+`dart format`、`flutter analyze`（1 条**既有**问题：未跟踪的模板桩 `test/widget_test.dart`）、
+`flutter test` **628 通过 / 1 失败**（失败的就是那个模板桩）。新增 4 条并做了两次变异验证：
+把循环列的 `childCount` 报成有限 → 两条绕回用例变红（症状正是「滚到底就停住」）；换回 HEAD 的
+原实现 → 三条多列一致性用例变红。
+
+**离屏渲染目视过一遍**（临时 golden 测试 `--update-goldens` 落 PNG，看完即删）：浅色时间选择器
+与深色日期选择器各一张，确认底色压在正中间那一行、宽度贴合数字而没有横贯弹层、三列对齐。
+另外实测了循环列的甩动行程：400px 的一划在 600 / 1000 / 2500 / 6000 px·s⁻¹ 下分别是
+13 / 17 / 38 / 60 格（含拖动本身的 11 格）——**与有界时是同一套 physics，一行没改**，区别只是
+末端不再截断。未验证项见 [`docs/verification-log.md`](docs/verification-log.md)。
+
+## 3.22（2026-10-14）
+
+**时间选择器不再「选完分钟把小时弹回去」——滚轮各列的当前值改由 picker 自己持有。**
+
+使用方报的症状很具体：**先滚小时、再滚分钟，点「完成」，小时回到原来的值；只滚小时反倒是对的**。
+
+根因不在滚动，在父子之间那条**单行道**。`showAppSheet` 的 `pageBuilder` 拿到的是调用点构造好的
+那一个 `child` 实例，弹层一打开，父层再 `setState` 也送不进来；而 `AppTimePicker` 是
+`StatelessWidget`，两列 `onChanged` 闭包里的 `hour` / `minute` 是**上一次 build 解析出的常量**。
+滚小时那次把草稿改对了（`08:00`），但 widget 不重建，接着滚分钟仍用旧的小时拼值（`23:30`）——
+点「完成」提交的就是 `23:30`。只滚小时看不出问题，因为那一格没有被第二列覆盖。
+三个调用点（回顾页补录、睡眠设置页、会话页起床闹钟）都是这个形状。
+
+同一个缺陷在 `AppDatePicker` 上也在（先滚年再滚月，年被冲掉），一并修掉。
+
+### 改了什么
+
+| 文件 | 改什么 |
+| --- | --- |
+| `lib/core/widgets/wheel_picker.dart` | `AppTimePicker` / `AppDatePicker` 从 `StatelessWidget` 改为 `StatefulWidget`：`value` 降级为**初始值**，时分 / 年月日由 state 持有，各列的 `onChanged` 一律在**调用时**从 state 读另一列，`_select` 里值没变就直接返回 |
+| `test/wheel_picker_test.dart` | 新增 4 条回归用例（见下） |
+| 规格 §9 | 加一行测试矩阵（滚轮的多列一致性） |
+
+### 三个刻意的取舍
+
+1. **修在组件里，不修在调用点。** 调用点想推新值也推不进来——弹层捕获 `child` 是
+   `showAppSheet` 的既定行为，要它们各自套一层 `StatefulBuilder` 等于三个地方各修一次，
+   下一个调用者还会重新踩。「多列必须一致」这条不变量本来就属于 picker 自己。
+2. **值没变就不出声。** `WheelColumn.didUpdateWidget` 里的 `jumpToItem`（列的行数变了、
+   或父层换了值时会走到）会让 `ListWheelScrollView` **同步**回调 `onSelectedItemChanged`——
+   等于在 build 期间又喊一次 `onChanged`，照单全收就是 `setState() called during build`。
+   日列随月份收窄（31 行 → 28 行）时这条路径必然命中，是修日期选择器时才浮出来的。
+3. **日列跟着年月重新生成。** 选完 1 月 31 日再滚到 2 月：草稿早就被截成 28 日了，轮子上
+   却还列着 31 天。同一个根因（值不重建），顺手一起正过来。
+
+### 验证
+
+`dart format`（2 个文件，1 个改动）、`flutter analyze`（1 条**既有**问题：未跟踪的模板桩
+`test/widget_test.dart` 引用不存在的 `MyApp`，与本次改动无关）、`flutter test` **624 通过 /
+1 失败**（失败的就是那个模板桩）。新增 4 条：先滚小时再滚分钟、先滚分钟再滚小时、只滚小时、
+先滚年再滚月（含日列行数）。**变异验证**：把 HEAD 的原实现换回来跑，三条核心用例全红且症状
+逐字复现（`23:03` / `21:00` / `2026-02-28`），「只滚小时」那条仍然绿——与使用方描述完全一致。
+细节与**未验证项**见 [`docs/verification-log.md`](docs/verification-log.md)。
+
 ## 3.21（2026-10-14）
 
 **「删除记录」真的删掉录音了——此前它只删数据库里的行，音频留在盘上。**
