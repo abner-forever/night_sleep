@@ -32,6 +32,16 @@
 没有氛围渐变。所以每个 push 页面都走 `core/widgets/subpage.dart` 的 `Subpage`。
 底部弹层同理，材质祖先由 `AppSheet` 提供。
 
+**一处例外：会话页**（`/sleep/session`）。它照样是 `/` 的子路由，但**不适合 `Subpage`**——那一页
+常暗、背景是整屏夜景而不是 `Atmosphere`，共享的返回胶囊与文字颜色都取不到对的值。所以它自套
+`Theme(AppTheme.dark())` + 透明 `Scaffold`，把 `Subpage` 提供的那四样（背景 / `Material` 祖先 /
+`SafeArea` / 限宽）自己实现了一遍。
+
+**2026-10-14 起它的呈现是个「从底部升起的整屏面板」**：这条路由改成了 `pageBuilder` +
+`CustomTransitionPage(opaque: false)`，竖向转场，面板顶部标题行整行可下拉滑走。仍然是路由而不是
+`AppSheet` 那种 dialog——理由（`context.go('/')` 不会 pop dialog 路由）写在 `app.dart` 的注释与
+规格偏差 #56 里。`Subpage` 那条规则管不到它，但它仍受「路由什么都继承不到」这条约束。
+
 **开屏页挂在 `AppScaffold` 的 `Stack` 最上层，不是路由**（`splash_screen.dart`）。冷启动约
 1.6 秒，`_splashFinished` 是 State 字段而非 provider——`AppScaffold` 是 `/` 的 builder，push
 子页时 State 被复用，来回跳转不会让它重播。收起条件是「时间轴播完 **且** `settings` 已读到

@@ -41,6 +41,54 @@
 **尚未定案**的未验证项——我们的读数与系统自带 `com.miui.compass` 差 **43°**。当前的罗盘状态
 以 v3.12 条目为准，上面两条只是 2026-10-02 那个时点的历史。
 
+**v3.25（2026-10-14：会话页改成「从底部升起的整屏面板」）——Windows 11 / Flutter 3.47.5 / 本机单元与 widget 测试：**
+
+使用方要「底部弹出展示、点收起回到底部消失」。改法是 `/sleep/session` 这条路由换转场
+（`pageBuilder` + `CustomTransitionPage(opaque: false)`，竖向 `SlideTransition`）、标题行整行可下拉、
+下拉时露出一层模糊压暗的首页。**这一页整屏占满、顶部不留缝**，所以夜景、常暗主题、系统栏与那套
+「按可用高度算的一屏放下」的排版一个字都没改。
+
+**跑过的：**
+
+- `dart format .` → `Formatted 163 files (0 changed)`
+- `flutter analyze` → `No issues found!`
+- `flutter test` → **637/637 通过**（本轮新增 `test/session_sheet_test.dart` 9 条）
+- 新用例的**先红验证**：把 `app.dart` 里的 `pageBuilder` 换回 `builder:`，同一份 9 条**全部变红**
+- 回归三件套（`session_setup_page_test.dart` / `sleep_session_page_test.dart` / `pages_widget_test.dart`）
+  在后端路由改动前后都绿；其中两条走真实 `NightSleepApp` 的用例是唯一覆盖 `app.dart` 路由注册的
+  widget 用例
+- **变异验证（结果为否定）**：方案把「漏写 `key: state.pageKey`」列为最高危、预期「草稿被清、
+  计时器重起」。实际去掉 `key` 之后 46 条会话用例**一条没红**——`Page.canUpdate` 比对的是
+  `other.key == key`，`null == null` 为真，在没有第二个无 key 页面竞争时路由照样复用。
+  `key` 保留（防将来出现无 key 兄弟页时配对错乱），但**这条没有测试钉住**。
+
+**未验证（本轮必须说清的五条）：**
+
+1. **下拉的手感、回弹曲线、遮罩的观感——一次都没在真机上看过。** 自动测试钉的是几何与结构
+   （面板顶边：升起半程在屏幕下方、结束后为 0；静止时铺满整屏；下拉过阈值后会话页从树上消失；
+   拖动中系统栏仍是深色），**「拉的时候好不好看、跟不跟手」它答不上来**。要真机或模拟器手走一遍。
+2. **`opaque: false` 的绘制开销没量过。** 这一页是设计上要挂**整夜**的一屏，非不透明意味着 `/`
+   那条路由整夜参与绘制。预期代价很小（`_ModalScope` 已给每棵路由子树包了 `RepaintBoundary`，
+   `NightBackdrop` 自己也有一层，所以应当只是每帧多一次合成），但**没有实测**——没开
+   `--profile` 量过 raster/UI 帧耗时，也没开 "Highlight repaints" 看过首页图层是否每帧重绘。
+   **退路**（确实变重时给 `AppShell` 的 `Stack` 外层补显式 `RepaintBoundary`）因此也还没试过。
+3. **iOS / macOS 左缘右滑返回会消失。** 自绘 `transitionsBuilder` 顶掉了
+   `CupertinoPageTransitionsBuilder` 自带的边缘手势。这是预期内的（与竖向面板一致），但**没在
+   iOS 真机上确认过观感**，也没有自动测试能钉。
+4. **`integration_test/app_screens_test.dart` 的截图巡检一轮都没跑**（要 `flutter drive` + 真机，
+   本轮没跑）。所以「会话页两态在新转场下长什么样」**没有任何截图证据**；`session-swipe` 这一步
+   （按住下拉、停住供宿主机截图）也**没有加**——加一条自己跑不了的步骤，等于往巡检脚本里塞没人验过
+   的东西。
+5. **手势竞技场只在 widget 测试里验过，没在真机上核对。** 结论「从标题行起手拖动不会滚动列表、
+   从标题行以外照常滚动」是从框架源码推出来的，并由 `test/session_setup_page_test.dart` 那条
+   矮屏可滚用例间接守着；但**矮屏上标题行滚出视野之后就没有拖拽区了**，这一点以及「用户会习惯性
+   从内容区往下拉（那是滚列表）」在真机上的实际感受都没验。
+
+**另记一条本轮撞到的既有隐患（不是本轮引入的）：** `lib/app/app.dart` 里那条 `GoRouter` 是**模块顶层
+`final`，即进程级单例**，路由栈会跨 widget 用例累积——不加清理时，同一个测试文件里第三个用例能同时
+找到三个会话页（单独跑那一条却是绿的）。本轮在新测试文件的夹具里用 `go('/')` 先把栈收回根；
+**既有测试文件没有这个问题只是因为它们都恰好把页面 pop 掉了，不是因为它们做了防护。**
+
 **v3.24（2026-10-14：Android 构建的跨盘 Kotlin 缓存失败——定位并固化绕行）——Windows 11 / Flutter 3.47.5 / Android SDK 36：**
 
 使用方报「启动报错」。失败在 `flutter run -d e0e60672` 的 `assembleDebug` 阶段：

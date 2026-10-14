@@ -17,6 +17,14 @@ import '../theme/app_tokens.dart';
 /// permanently above zero and retire the fade for good.
 final openSheetCount = ValueNotifier<int>(0);
 
+/// 面板下滑关闭的两个判据：甩动速度够快，或者位移超过面板高度的这个比例。
+///
+/// **顶部常量而不是 [_SheetHostState] 的私有字段**：会话页那个整屏面板
+/// （`sleep_session_page.dart` 的下拉关闭）要用同一份。两份拷贝会漂，而
+/// `.claude/skills/flutter-pitfalls/SKILL.md` 已经把这两个数写成了项目级知识。
+const double kPanelDismissVelocity = 700.0;
+const double kPanelDismissFraction = 0.28;
+
 /// Opens a bottom sheet styled like the prototype's `.sheet-panel`.
 ///
 /// Built on [showGeneralDialog] rather than [showModalBottomSheet] for two
@@ -90,8 +98,6 @@ class _SheetHostState extends State<_SheetHost> {
   double _dragOffset = 0;
   double _panelHeight = 0;
 
-  static const _velocityThreshold = 700.0;
-
   @override
   void initState() {
     super.initState();
@@ -129,8 +135,9 @@ class _SheetHostState extends State<_SheetHost> {
 
   void _onDragEnd(double velocity) {
     if (!widget.isDismissible) return;
-    final flung = velocity > _velocityThreshold;
-    final pulled = _panelHeight > 0 && _dragOffset > _panelHeight * 0.28;
+    final flung = velocity > kPanelDismissVelocity;
+    final pulled =
+        _panelHeight > 0 && _dragOffset > _panelHeight * kPanelDismissFraction;
     if (flung || pulled) {
       Navigator.of(context).pop();
       return;

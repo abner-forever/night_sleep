@@ -96,9 +96,41 @@ final _router = GoRouter(
           builder: (context, state) => const LogNewPage(),
         ),
         // 会话页与设置子页同一层级：推入后覆盖标签外壳，全屏。
+        //
+        // 2026-10-14 起它**从底部升起**（不再走平台默认的推入转场），并可从顶部
+        // 标题行下拉滑走——呈现上是一个整屏面板（使用方要的「底部弹出」）。
+        //
+        // **没有换成 `showAppSheet` 那种 dialog**：这一页里有 `context.go('/')`
+        // 与 `context.push('/log/new')`，而 `go` 不会 pop 一个 dialog 路由，结束或
+        // 丢弃会话会**在一个仍然可见的弹层底下**导航。保住这条 go_router 路由，
+        // `go` / `push` / `canPop` 就全部照常。
         GoRoute(
           path: 'sleep/session',
-          builder: (context, state) => const SleepSessionPage(),
+          pageBuilder: (context, state) => CustomTransitionPage<void>(
+            // **`key` 不能省。** `Navigator` 按 `Page.key` 与已有路由配对；缺了它，
+            // 每次重建都会当成新路由把这一页重挂一遍——草稿被清、计时器重起。
+            key: state.pageKey,
+            // 非不透明：往下拉时底下露出的要是**真的首页**。
+            // 蒙层不用另做——`ModalRoute` 无条件建一层 `ModalBarrier`，它吃指针，
+            // 所以「不点蒙层关闭」是白送的，设 `barrierDismissible` 反而会多一种。
+            opaque: false,
+            transitionDuration: AppDurations.standard,
+            reverseTransitionDuration: AppDurations.standard,
+            transitionsBuilder: (context, animation, secondary, child) =>
+                SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, 1),
+                end: Offset.zero,
+              ).animate(
+                CurvedAnimation(
+                  parent: animation,
+                  curve: AppMotion.standardCurve,
+                ),
+              ),
+              child: child,
+            ),
+            child: const SleepSessionPage(),
+          ),
         ),
       ],
     ),

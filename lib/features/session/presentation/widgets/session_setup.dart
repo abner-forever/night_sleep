@@ -19,8 +19,8 @@ import '../../../sleep/presentation/widgets/noise_controls.dart';
 import '../night_scene.dart';
 import '../night_style.dart';
 import '../sheets/night_noise_sheet.dart';
-import 'collapse_pill.dart';
 import 'night_scene_picker.dart';
+import 'session_header.dart';
 import 'sleep_moon_mark.dart';
 
 /// 「入睡前」态：原型 `SleepView` 的 `!active` 分支。
@@ -44,6 +44,8 @@ class SessionSetupBody extends ConsumerStatefulWidget {
     required this.onAlarmToggled,
     required this.onWakeTimePicked,
     required this.onCollapse,
+    required this.onHeaderDragUpdate,
+    required this.onHeaderDragEnd,
     required this.onStart,
     required this.scrollController,
   });
@@ -64,6 +66,11 @@ class SessionSetupBody extends ConsumerStatefulWidget {
 
   final VoidCallback onWakeTimePicked;
   final VoidCallback onCollapse;
+
+  /// 标题行上的下拉（由页面执行位移与松手判定，这一屏只负责把事件递出去）。
+  final ValueChanged<double> onHeaderDragUpdate;
+  final ValueChanged<double> onHeaderDragEnd;
+
   final VoidCallback onStart;
   final ScrollController scrollController;
 
@@ -204,30 +211,13 @@ class _SessionSetupBodyState extends ConsumerState<SessionSetupBody> {
     );
   }
 
+  /// 顶部标签行。壳与「睡眠模式」那段都在 [SessionHeader] 里，两态共用一份——
+  /// 因为**下拉关闭的手势就挂在整行上**（见 `session_header.dart`）。
   Widget _header() {
-    return SizedBox(
-      height: 40,
-      child: Row(
-        children: [
-          CollapsePill(onTap: widget.onCollapse),
-          const Expanded(
-            child: Center(
-              child: Text(
-                '睡眠模式',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.4,
-                  color: NightStyle.kickerInk,
-                ),
-              ),
-            ),
-          ),
-          // 右侧留一块与「收起」等宽的空白，标题才真的落在整行正中
-          // （原型用 `.sleep-header-spacer` 达到同一效果）。
-          const SizedBox(width: 56),
-        ],
-      ),
+    return SessionHeader.setup(
+      onCollapse: widget.onCollapse,
+      onDragUpdate: widget.onHeaderDragUpdate,
+      onDragEnd: widget.onHeaderDragEnd,
     );
   }
 

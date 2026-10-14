@@ -3,6 +3,57 @@
 本文件记录「夜深」项目规格的版本变更。规格正文见
 [docs/superpowers/specs/2026-09-28-night-sleep-design.md](docs/superpowers/specs/2026-09-28-night-sleep-design.md)。
 
+## 3.25（2026-10-14）
+
+**会话页的呈现方式从「推入式全屏页」改成「从底部升起的整屏面板」**——从底部升起，点「收起」或把顶部
+标题行往下拉，面板滑走消失。
+
+使用方原话是「点击开始入睡打开的这个睡眠页面，改成底部弹出展示，点击收起回到底部消失可以吗」。
+四个决定当场拍板：**整屏升起、顶部不留缝**（视觉零改动）；**两态都走这个呈现**；关闭方式只有
+「收起」与下拉（**不**点蒙层）；**下拉区是标题行整行**，且往下拉时后面露出的是首页。
+
+### 改了什么
+
+| 文件 | 改什么 |
+| --- | --- |
+| `lib/app/app.dart` | `/sleep/session` 由 `builder:` 换成 `pageBuilder:` + `CustomTransitionPage(opaque: false)`，竖向 `SlideTransition`（`AppDurations.standard` / `AppMotion.standardCurve`） |
+| `lib/features/session/presentation/widgets/session_header.dart` | **新文件**：两态的标题行合并成一个「壳 + 中段」组件，下拉手势挂在**整行**上 |
+| `lib/features/session/presentation/sleep_session_page.dart` | 跟手位移（`Transform.translate` + `AnimationController.unbounded`）、松手判定、`_collapseCurrentState` 按态分派、下拉时露出的模糊压暗层；删掉 `_StatusHeader` / `_PulseDot`（搬进新文件） |
+| `lib/features/session/presentation/widgets/session_setup.dart` | `_header()` 换成 `SessionHeader.setup(...)`；**排版算式一个字没动** |
+| `lib/core/widgets/app_sheet.dart` | 阈值提成公开常量 `kPanelDismissVelocity` / `kPanelDismissFraction`，与底部弹层共用一份 |
+| `test/session_sheet_test.dart` | **新文件**，9 条 |
+
+规格侧：总规格偏差表**新增 #56**，并原地更新 #24 / #28 / §2.4 页面表 / §9 测试矩阵；
+会话规格 §四那一句「推入式全屏页」一并改写。
+
+### 三个刻意的取舍
+
+**① 保住 go_router 路由，没有换成 `showAppSheet`。** 这一页里有 `context.go('/')`（结束与丢弃
+两条路径）和 `context.push('/log/new')`，而 **`go` 不会 pop 一个 dialog 路由**——结束会话会变成
+「在一个仍然可见的弹层底下」导航到首页。保住路由还让两个测试夹具一个字都不用改（它们是按初始路由
+挂载的）。
+
+**② 标题行留在滚动视图里，没有提出来钉在顶部。** 提出来会让 `spaceBetween` 的间隙从 2 个变成 1 个、
+hero 整体上移半个余量，`test/session_setup_page_test.dart` 那条「430×800 时 hero ≥ 210」当场红。
+手势挂在那一行上就够——手势竞技场是**先 accept 的赢**，而标题行的竖直识别器比 `Scrollable` 的更深、
+先入队。
+
+**③ 补了一层模糊压暗的遮罩。** 方案里原本只写了跟手位移。没有它，往下拉时露出的首页是原样亮的，
+而使用方选中的正是「模糊压暗」那一支。遮罩不随面板位移（跟着滑会像被拖进来），顺带让系统栏在
+拖动全程保持深色。
+
+### 验证
+
+`dart format .` 无改动 / `flutter analyze` 无问题 / `flutter test` **637/637 通过**（新增 9 条）。
+新用例做过**先红验证**：把 `pageBuilder` 换回 `builder:`，九条全红。
+
+### 一个当天就被推翻的预判
+
+方案把「漏写 `key: state.pageKey`」列为最高危，说漏了会「草稿被清、计时器重起」。**变异验证没有
+复现**：去掉 `key` 之后 46 条会话用例一条没红——`Page.canUpdate` 比的是 `other.key == key`，
+`null == null` 为真，在没有第二个无 key 页面竞争时路由照样复用。`key` 仍然加上（将来真出现无 key
+的兄弟页时会配对错乱），但**这一条没有测试钉住**，已如实记入验证记录的未验证项。
+
 ## 3.24（2026-10-14）
 
 **修掉 Android 构建里每次 `flutter run` 都必然复现的那个失败：Kotlin 增量编译缓存跨盘。**

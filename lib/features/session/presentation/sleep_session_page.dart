@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -26,11 +27,11 @@ import '../../sleep/domain/sleep_session.dart';
 import 'night_scene.dart';
 import 'night_style.dart';
 import 'sheets/quality_rating_sheet.dart';
-import 'widgets/collapse_pill.dart';
 import 'widgets/hold_to_finish_button.dart';
 import 'widgets/night_backdrop.dart';
 import 'widgets/night_scene_picker.dart';
 import 'widgets/session_events_card.dart';
+import 'widgets/session_header.dart';
 import 'widgets/session_setup.dart';
 import 'widgets/sleep_moon_mark.dart';
 
@@ -68,12 +69,22 @@ class SleepSessionPage extends ConsumerStatefulWidget {
   ConsumerState<SleepSessionPage> createState() => _SleepSessionPageState();
 }
 
-class _SleepSessionPageState extends ConsumerState<SleepSessionPage> {
+class _SleepSessionPageState extends ConsumerState<SleepSessionPage>
+    with SingleTickerProviderStateMixin {
   Timer? _timer;
   late DateTime _now = widget.now ?? DateTime.now();
 
   /// 页面滚动位置。
   final ScrollController _scroll = ScrollController();
+
+  /// 标题行下拉的跟手位移（逻辑像素，正数向下）。
+  ///
+  /// **`unbounded`**：它不驱动动画进度，只是被当「当前位移」读写——下拉时直接赋值，
+  /// 松手回弹时 `animateTo(0)`。范围不设上界，往下拉多少就是多少。
+  late final AnimationController _drag = AnimationController.unbounded(
+    vsync: this,
+    value: 0,
+  );
 
   // ── 入睡前的草稿 ────────────────────────────────────────────────────────
   //
@@ -117,6 +128,7 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage> {
   void dispose() {
     _timer?.cancel();
     _scroll.dispose();
+    _drag.dispose();
     super.dispose();
   }
 
@@ -158,7 +170,9 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage> {
                               setState(() => _draftScene = picked),
                           onAlarmToggled: _toggleAlarmDraft,
                           onWakeTimePicked: _pickWakeTimeDraft,
-                          onCollapse: _collapseSetup,
+                          onCollapse: _collapseCurrentState,
+                          onHeaderDragUpdate: _onHeaderDragUpdate,
+                          onHeaderDragEnd: _onHeaderDragEnd,
                           onStart: _beginSleep,
                           scrollController: _scroll,
                         )
@@ -173,6 +187,9 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage> {
                           onFinishHint: () => ref
                               .read(toastProvider.notifier)
                               .show('按住不放，填充条扫满才结束。'),
+                          onCollapse: _collapseCurrentState,
+                          onHeaderDragUpdate: _onHeaderDragUpdate,
+                          onHeaderDragEnd: _onHeaderDragEnd,
                           scrollController: _scroll,
                         ),
                 ),
@@ -190,8 +207,93 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage> {
     // 预设：那个预设把导航栏写成不透明黑，进这一页会重新压出一条黑带。
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: appSystemUiOverlayStyle(Brightness.dark),
-      child: page,
+      child: Stack(
+        children: [
+          // 面板往下一动，露出来的那一层：**模糊 + 压暗**，跟底部弹层的蒙层同一套观感
+          // （`app_sheet.dart` 的 `_SheetHost`，模糊半径也照它）。
+          //
+          // **它不随面板位移**——跟着一起滑的话看起来像是被拖进来的。它留在原地，
+          // 面板从它前面滑开。
+          //
+          // 静止时遮罩的 `Opacity` 是 0，会跳过整棵子树的绘制，所以这一夜挂着它不花钱；
+          // 代价只发生在手指压着往下拉的这几帧。**这也让系统栏在拖动过程中保持深色**：
+          // `AnnotatedRegion` 因此仍覆盖屏幕顶端（换成把它塞进 `Transform` 就会在拖到
+          // 一个状态栏高度时翻回应用主题的样式——顶端露出的已是首页，那正是要它压暗的原因）。
+          _dragScrim(),
+          AnimatedBuilder(
+            animation: _drag,
+            // **必须带 `child:`**：不带的话每一帧都会重建整棵页面（含夜景与列表）。
+            builder: (context, child) => Transform.translate(
+              offset: Offset(0, _drag.value),
+              child: child,
+            ),
+            child: page,
+          ),
+        ],
+      ),
     );
+  }
+
+  /// 下拉时露出的遮罩，浓度跟着手指走：拉到「够呛要关」那条线时刚好全浓。
+  Widget _dragScrim() {
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: AnimatedBuilder(
+          animation: _drag,
+          builder: (context, _) => Opacity(
+            opacity: (_drag.value /
+                    (MediaQuery.sizeOf(context).height * kPanelDismissFraction))
+                .clamp(0.0, 1.0),
+            child: BackdropFilter(
+              filter: ui.ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+              // 用夜色那一份而不是 `AppTokens.overlayScrim`：这一页常暗，而
+              // `AppTokens` 在这一层取到的是**应用主题**的值（浅色主题下会偏淡）。
+              child: const ColoredBox(color: NightStyle.scrim),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 标题行跟手下拉。**手势只挂在标题行上**——面板主体是两个滚动视图，整面板级的
+  /// 竖直手势会和它们抢（同 `app_sheet.dart` 里 `_SheetHandle` 那条注释）。
+  void _onHeaderDragUpdate(double dy) {
+    _drag.stop();
+    _drag.value = (_drag.value + dy).clamp(0.0, double.infinity);
+  }
+
+  /// 松手：甩得够快、或拉得够远就滑走，否则弹回去。
+  ///
+  /// 两个阈值与底部弹层**同一份**（[kPanelDismissVelocity] / [kPanelDismissFraction]）；
+  /// 面板就是整屏，所以「面板高度」取屏幕高度。
+  void _onHeaderDragEnd(double velocity) {
+    final flung = velocity > kPanelDismissVelocity;
+    final pulled =
+        _drag.value > MediaQuery.sizeOf(context).height * kPanelDismissFraction;
+    if (flung || pulled) {
+      // **不复位 `_drag.value`**：路由的退出动画接着从这里往下滑走；复位会让面板
+      // 先跳回顶部再下滑，是个明显的闪跳（`app_sheet.dart` 的 `_onDragEnd` 同样不复位）。
+      unawaited(_collapseCurrentState());
+      return;
+    }
+    _drag.animateTo(
+      0,
+      duration: AppDurations.standard,
+      curve: AppMotion.standardCurve,
+    );
+  }
+
+  /// 收起：**按当前态分派**，胶囊与下拉共用这一条。
+  ///
+  /// 两态的收尾刻意不同：入睡前要停掉试听、什么都不写库（偏差 #37），进行中则会话
+  /// 继续跑、白噪音继续响（偏差 #28）。下拉要是自己另写一套，就会悄悄改掉其中一个。
+  Future<void> _collapseCurrentState() async {
+    if (ref.read(activeSessionProvider).valueOrNull == null) {
+      await _collapseSetup();
+    } else {
+      _collapse(context);
+    }
   }
 
   /// 「开始睡眠」：把草稿一次写全，从这一刻开始计时。
@@ -367,6 +469,9 @@ class _SessionBody extends StatelessWidget {
     required this.onSceneChanged,
     required this.onFinish,
     required this.onFinishHint,
+    required this.onCollapse,
+    required this.onHeaderDragUpdate,
+    required this.onHeaderDragEnd,
     required this.scrollController,
   });
 
@@ -376,6 +481,9 @@ class _SessionBody extends StatelessWidget {
   final ValueChanged<NightScene> onSceneChanged;
   final VoidCallback onFinish;
   final VoidCallback onFinishHint;
+  final VoidCallback onCollapse;
+  final ValueChanged<double> onHeaderDragUpdate;
+  final ValueChanged<double> onHeaderDragEnd;
   final ScrollController scrollController;
 
   @override
@@ -384,7 +492,11 @@ class _SessionBody extends StatelessWidget {
       controller: scrollController,
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
       children: [
-        _StatusHeader(onCollapse: () => _collapse(context)),
+        SessionHeader.live(
+          onCollapse: onCollapse,
+          onDragUpdate: onHeaderDragUpdate,
+          onDragEnd: onHeaderDragEnd,
+        ),
         const SizedBox(height: 4),
         _TimerBlock(session: session, now: now),
         const SizedBox(height: 12),
@@ -395,103 +507,6 @@ class _SessionBody extends StatelessWidget {
         // 结束按钮在事件卡下方：它是这一页唯一的出口，也是拇指最顺的位置。
         HoldToFinishButton(onFinish: onFinish, onHint: onFinishHint),
       ],
-    );
-  }
-}
-
-/// 顶部一行：左边「收起」，右边居中的状态点与「睡眠进行中」。
-///
-/// **「收起」是我们相对原型多留的**：原型的激活态是个占满全屏的模态，没有任何出口，
-/// 而我们收起之后会话继续跑（首页显示「正在睡眠」卡）。照搬模态等于砍掉这条既有
-/// 能力（规格偏差 #28）。
-class _StatusHeader extends StatelessWidget {
-  const _StatusHeader({required this.onCollapse});
-
-  final VoidCallback onCollapse;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 40,
-      child: Row(
-        children: [
-          CollapsePill(onTap: onCollapse),
-          const Expanded(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _PulseDot(),
-                SizedBox(width: 8),
-                Text(
-                  '睡眠进行中',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.3,
-                    color: NightStyle.statusText,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // 右侧留一块空白，与左侧「收起」胶囊的 minWidth 等宽，中间的
-          // 「睡眠进行中」才真的落在整行正中——少了这块占位，Expanded 里的
-          // 标题会整体偏左（原型用 `.sleep-header-spacer` 达到同一效果）。
-          const SizedBox(width: 56),
-        ],
-      ),
-    );
-  }
-}
-
-/// `.sleep-live-status > span:first-child`：2.2 秒一轮的呼吸圆点。
-class _PulseDot extends StatefulWidget {
-  const _PulseDot();
-
-  @override
-  State<_PulseDot> createState() => _PulseDotState();
-}
-
-class _PulseDotState extends State<_PulseDot>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _pulse = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 2200),
-  );
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (NightStyle.reduceMotion(context)) {
-      _pulse.stop();
-    } else if (!_pulse.isAnimating) {
-      _pulse.repeat(reverse: true);
-    }
-  }
-
-  @override
-  void dispose() {
-    _pulse.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _pulse,
-      builder: (context, child) => Opacity(
-        // `sleepPulse { 50% { opacity: .45 } }`
-        opacity: 1 - 0.55 * Curves.easeInOut.transform(_pulse.value),
-        child: child,
-      ),
-      child: const DecoratedBox(
-        decoration: BoxDecoration(
-          color: NightStyle.statusDot,
-          shape: BoxShape.circle,
-          boxShadow: [BoxShadow(color: NightStyle.statusDot, blurRadius: 12)],
-        ),
-        child: SizedBox(width: 6, height: 6),
-      ),
     );
   }
 }
