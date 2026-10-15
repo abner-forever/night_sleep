@@ -157,7 +157,7 @@ List<AmplitudeSample> ──segmentClips(ClipParams)──▶ List<ClipRange>
 | --- | --- |
 | iOS | `Info.plist`：`NSMicrophoneUsageDescription` + `UIBackgroundModes: [audio]` |
 | macOS | `Info.plist`：`NSMicrophoneUsageDescription`；`DebugProfile.entitlements` 与 `Release.entitlements` 都加 `com.apple.security.device.audio-input` |
-| Android | **部分落地（v3.11，2026-10-12）**：平台目录已生成，manifest 声明了 `FOREGROUND_SERVICE` 与 `FOREGROUND_SERVICE_MICROPHONE`。**但前台服务本身仍未实现**——退到后台或锁屏后录音仍然停止，「声明了不等于能用」。`RECORD_AUDIO` **应用侧不声明**：实测 `record_android` 2.2.0 的 manifest 已自带并会在构建时合并（当初这一行写的「要补 RECORD_AUDIO」是没核过插件的推断，已订正）。详见 [安卓平台接入设计](2026-10-12-android-platform-design.md) §5.1 |
+| Android | **已落地（v3.26，2026-10-14）**：平台目录 v3.11 生成，manifest 声明了 `FOREGROUND_SERVICE` 与 `FOREGROUND_SERVICE_MICROPHONE`；**v3.26 补上了服务本体** `NightRecordingService`（`foregroundServiceType="microphone"` + `NightAudioServiceHandler` + Dart 侧 `night_audio_service.dart`）——退到后台或锁屏后录音**在代码上**不再停。⚠️ **真机未验证**：服务是否真能挡住系统的端口静音（v3.19 实测的 `setRecordSilenced`），只有装到机器上跑一整夜才知道。`RECORD_AUDIO` **应用侧不声明**：实测 `record_android` 2.2.0 的 manifest 已自带并会在构建时合并（当初这一行写的「要补 RECORD_AUDIO」是没核过插件的推断，已订正）。详见 [安卓平台接入设计](2026-10-12-android-platform-design.md) §5.1 |
 
 用途文案（本次由使用方确认）：
 
@@ -320,11 +320,14 @@ List<AmplitudeSample> ──segmentClips(ClipParams)──▶ List<ClipRange>
 ### 这条**不**解决什么（不许写成解决）
 
 - **它只是把假话改成真话，不让整夜录音变成能录。** 真正让 Android 上录得下来的东西是
-  前台服务（`FOREGROUND_SERVICE_MICROPHONE`），那件事**还没做**——清单里只有声明，
-  `dumpsys activity services` 至今是空的。见 README「未实现」表。**阈值与状态都不修这个根因。**
+  前台服务（`FOREGROUND_SERVICE_MICROPHONE`）。本节写于 v3.20，当时那件事**还没做**
+  （清单里只有声明，`dumpsys activity services` 是空的）。**v3.26 补上了服务本体**
+  （`NightRecordingService`，见 [安卓平台接入设计](2026-10-12-android-platform-design.md) §5.1），
+  但**它挡不挡得住那次静音真机未验证**，而本节这条状态（`silenced`）本身就是那次静音的兜底
+  说辞——**阈值与状态都不修那个根因**，服务也还没被证明修好了它。
 - **也没把「这一夜麦克风是死的」写进记录。** 第二天打开那条睡眠记录，看到的仍然是
   「0 条声音事件」，与「一夜真的没出声」长得一模一样。要区分它们得给 `sleep_records`
-  加一列（或另存一段录音覆盖情况），那是 schema v7 的事，不在本轮。
+  加一列（或另存一段录音覆盖情况），那是 schema v8 的事，不在本轮（**v7 已被 v3.26 的 `sound_clips.auto_analysis` 用掉**，见[片段自动分析设计](2026-10-14-night-clip-auto-analysis-design.md) §四）。
 
 ### 回归方法
 

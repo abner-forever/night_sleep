@@ -32,7 +32,7 @@
 | 不做的事 | 为什么这一轮不做 | 留在界面上的是什么 |
 | --- | --- | --- |
 | ~~**罗盘传感器**~~ **（v3.12 已做，见 §5.3）** | 当时的判断原文留档：「要新写一条 Kotlin `SensorManager` 通道，并把 iOS 侧那套算法（磁北参考系、重力投影去倾斜、按屏幕朝向折算「手机顶部方位」）在 Android 上重新推导一遍。这不叫「接线」，叫**新做一遍罗盘**，且必须真机校准验证」——**这个判断是对的**，v3.12 确实是新做了一遍（`CompassStreamHandler.kt`）。 | 罗盘页当时如实显示不可用，且文案写死成「请使用支持罗盘的 iPhone 打开此页面」——**在 Android 上那是一句错话**（把用户往另一台设备上赶）。**v3.12 已修**，见 §5.3 |
-| **后台 / 锁屏录音的前台服务** | 需要 Kotlin 前台服务 + 通知渠道 + 与 `record` 插件的采集线程接线。整夜存活**只能真机验证**，本轮无设备 | 会话页录音指示的三种状态照旧。**退到后台或锁屏后录音停止**——与 iOS 侧「锁屏后 Dart isolate 是否持续收到 PCM」同属未验证项，Android 侧还要再多一个前台服务 |
+| ~~**后台 / 锁屏录音的前台服务**~~ **（v3.26 已做，见 §5.1）** | 需要 Kotlin 前台服务 + 通知渠道 + 与 `record` 插件的采集线程接线。当时的判断原文留档：「整夜存活**只能真机验证**，本轮无设备」。**v3.26 做了服务本身**——接线用的是依赖注入的 `NightAudioService` 接缝，采集线程一行没动（PCM 仍由 `record` 插件交给 Dart isolate）；**整夜存活仍然只能真机验证** | 会话页录音指示的三种状态照旧。**退到后台或锁屏后录音停止**——**v3.26 起代码上应该不成立了，但真机未验证**（见 §5.1） |
 | **「去系统设置」在 Android 上真正跳转** | 现有实现走 `url_launcher` 的 URL scheme（`app-settings:` / `x-apple.systempreferences:`），**Android 没有等价的 scheme**，要跳到「应用详情页」得新写平台通道或引入依赖 | 麦克风权限被拒时那一行「去系统设置」**在 Android 上点了没反应**。见 §5.2 |
 | **真机 / 模拟器验收** | 本机没有 Android 设备，也没有跑起来的模拟器；本轮只做**构建 + 静态分析 + 测试** | 一切「装上去之后会怎样」的结论都标注为未验证 |
 
@@ -97,7 +97,7 @@ Flutter 3.47.5 的模板带来的是 **AGP 9.1.0 / Kotlin 2.4.0 / Gradle 9.3.1 /
 | `RECORD_AUDIO` | **不加** | 已核对：`record_android` 2.2.0 的 manifest 里**有** `RECORD_AUDIO`。**上游规格与 README 都写着「要补 `RECORD_AUDIO`」——那是平台目录还不存在时写的，没人核过插件。本轮实测后订正**：它由插件合并，应用侧不必重复声明 |
 | `INTERNET` | **加——而且是差点漏掉的一条** | **Flutter 模板只在 `src/debug/` 与 `src/profile/` 两个变体清单里带它**（注释写明是给 hot reload 用的），**main 里没有**。所以「拿模板逐行比对」这种查法**发现不了**它。而本应用真的联网：洞察服务的获取可用模型 / 连通性测试 / 查询余额 / 生成洞察（`insight_service.dart`、`model_catalog.dart` 的 `package:http`）。也**没有任何插件会合并它**——本工程全部带 Android 实现的插件的 manifest 都读过，无一含 INTERNET。**漏掉的后果只在 release 包里发作**：debug 因为变体清单里有这条而一切正常，release 里所有洞察请求都以 `SocketException` 失败，开发期完全看不出来。这一条是独立审查提出的，本轮已核并落地 |
 | `FOREGROUND_SERVICE`<br>`FOREGROUND_SERVICE_MICROPHONE` | **加** | 插件都不带。**但这一条要单独说清楚**，见 §5.1——**声明了不等于后台录音能用** |
-| `<service android:foregroundServiceType="microphone">` | **不加** | 本轮没有这个服务的实现。**声明一个指向不存在类的 `<service>` 会直接编译失败**；声明一个空壳服务则是「界面上写着有、实际启动就崩」——总规格禁止的正是这种事 |
+| `<service android:foregroundServiceType="microphone">` | **不加**（**v3.26 已改**：加了，见 §5.1） | 本轮没有这个服务的实现。**声明一个指向不存在类的 `<service>` 会直接编译失败**；声明一个空壳服务则是「界面上写着有、实际启动就崩」——总规格禁止的正是这种事 |
 | `android:label` | **「夜深」** | 与 iOS `CFBundleDisplayName`、macOS `CFBundleDisplayName`、Web `manifest.json` 的 `name` 四端一致 |
 | `android:enableOnBackInvokedCallback` | 模板默认 | 不主动改，避免引入未验证的返回手势行为变更 |
 
@@ -105,8 +105,28 @@ Flutter 3.47.5 的模板带来的是 **AGP 9.1.0 / Kotlin 2.4.0 / Gradle 9.3.1 /
 
 ### 5.1 声明了前台服务权限，但后台录音仍然不能用
 
-`FOREGROUND_SERVICE` 与 `FOREGROUND_SERVICE_MICROPHONE` 是**为下一轮的前台服务预备的**。
-本轮**声明了权限、没有服务**。因此：
+> **v3.26（2026-10-14）更新：服务已实现**，本节的原判已不成立的部分一律以这段为准。
+>
+> 落地的四个文件：`NightRecordingService.kt`（服务本体）、`NightAudioServiceHandler.kt`
+> （`night_sleep/recording_service` 通道 + `AppVisibility`）、`MainActivity.kt`（接线、
+> 引擎销毁时撤服务）、`lib/core/platform/night_audio_service.dart`（Dart 封装），
+> 采集端 `RecordNightRecorder` 按依赖注入接上。
+>
+> 三个刻意的取舍：**起服务必须在应用可见时**（targetSdk ≥ 31 后台起会抛
+> `ForegroundServiceStartNotAllowedException`；≥ 34 还在创建服务那一刻校验
+> `RECORD_AUDIO`），所以 handler 里先判 `AppVisibility`，不可见就回 `notForeground`，
+> 让界面如实说「应用不在前台 · 暂时无法开始录音」，而不是先写「录音中」再等 60 秒翻成
+> 「被系统静音」；**`START_NOT_STICKY`**（进程被杀后系统拉起来的空壳没有任何东西在录音，
+> 通知栏不该出现一条「正在录制」）；**通知渠道第一次真要起服务时才建**
+> （没录过音的用户不该看见一条他还没用过的功能），`IMPORTANCE_LOW`。
+>
+> ⚠️ **真机未验证**：服务在场是否真能挡住 `AudioFlinger` 的 `setRecordSilenced`，
+> 只有装到机器上跑一整夜才知道——机制的两头（官方文档、v3.19 实测）都有证据，中间那一步
+> 从没在设备上跑过。**发布前**：`FOREGROUND_SERVICE_MICROPHONE` 现在真要用了，
+> 上架时必须连同服务的**用途申报**一起提交（Google Play 单独审核项）。
+
+`FOREGROUND_SERVICE` 与 `FOREGROUND_SERVICE_MICROPHONE` 当时是**为下一轮的前台服务预备的**。
+本轮（2026-10-12）**声明了权限、没有服务**。因此：
 
 - **前台录音可用**（会话页开着时录得下来），这靠 `RECORD_AUDIO` + 运行时授权，与前台服务无关；
 - **退到后台 / 锁屏后录音停止**——与 iOS 侧那个未验证项同类，且 Android 侧还多欠一个前台服务；
