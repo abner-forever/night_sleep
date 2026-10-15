@@ -77,7 +77,7 @@ lib/
                        (noise_session.dart)、启动提醒重排、通知权限闸口
   core/
     config/            构建开关（演示数据）
-    database/          Drift schema v6 与迁移
+    database/          Drift schema v7 与迁移
     platform/          触觉反馈、就寝/起床提醒与会话闹钟调度、系统栏
     theme/             设计令牌与 ThemeData
     widgets/           玻璃材质、iOS 控件、弹层、二级页外壳、滚轮、图标、图表基础件
@@ -426,8 +426,8 @@ macOS 7 张 + Android 15 张与 1 个自适应声明文件**。**改图标就改
 
 ### 数据与迁移
 
-SQLite（Drift）schema **v6**，含阶段、声音片段、洞察、会话（`ActiveSessions` 单行表）四张表与
-v1→v2→v3→v4→v5→v6 迁移；外键级联删除；仓库用 3 条批量查询组装聚合。
+SQLite（Drift）schema **v7**，含阶段、声音片段、洞察、会话（`ActiveSessions` 单行表）四张表与
+v1→v2→v3→v4→v5→v6→v7 迁移；外键级联删除；仓库用 3 条批量查询组装聚合。
 
 - **v3** 修了一个会伤到现场的缺陷：给 `Insights.recordId` 补上 `ON DELETE CASCADE` 外键（此前没有，
   `deleteDemoData` 会留下孤儿洞察行，重装演示数据时主键冲突，异常还被静默吞掉）。迁移**先清孤儿
@@ -438,6 +438,9 @@ v1→v2→v3→v4→v5→v6 迁移；外键级联删除；仓库用 3 条批量�
 - **v6** 给 `active_sessions` 加 `clip_journal`、给 `sound_clips` 加 `waveform_envelope` /
   `labeled_at_utc` 三列可空列（夜间录音，**只 `addColumn`、不重建表**；两条下界不同——
   `sound_clips` 两列 `from >= 2 && from < 6`，`active_sessions` 一列 `from >= 4 && from < 6`）。
+- **v7** 给 `sound_clips` 加 `auto_analysis` 可空列（片段自动分析写回的判定依据与区间，
+  **同样只 `addColumn`**；下界 `from >= 2 && from < 7`——`sound_clips` 从 v2 建表后再没重建过，
+  停在 v2–v6 的库都缺它，而 `from < 2` 那支的 `createTable` 用的是当前定义、已经带着它了）。
 
 ## 未实现（不得视为已完成）
 
