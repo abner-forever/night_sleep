@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:night_sleep/core/platform/night_audio_service.dart';
 import 'package:night_sleep/features/sleep/data/clip_store.dart';
 import 'package:night_sleep/features/sleep/data/night_recorder.dart';
 import 'package:night_sleep/features/sleep/domain/clip_journal.dart';
@@ -22,6 +23,11 @@ Uint8List _pcm({required int milliseconds, required int amplitude}) {
 
 /// 假采集端：测试自己往里推 PCM，不碰任何平台通道。
 class _FakePcmInput implements PcmInput {
+  _FakePcmInput({List<String>? log}) : log = log ?? [];
+
+  /// 与假前台服务共用一条流水，用来断言**谁先谁后**。
+  final List<String> log;
+
   final _pcm = StreamController<Uint8List>.broadcast();
   final _interruptions = StreamController<String>.broadcast();
 
@@ -40,6 +46,7 @@ class _FakePcmInput implements PcmInput {
 
   @override
   Future<Stream<Uint8List>> startStream() async {
+    log.add('pcm.startStream');
     if (startError case final error?) throw error;
     started = true;
     return _pcm.stream;
@@ -47,6 +54,7 @@ class _FakePcmInput implements PcmInput {
 
   @override
   Future<void> stop() async {
+    log.add('pcm.stop');
     stopCount++;
   }
 
@@ -60,19 +68,51 @@ class _FakePcmInput implements PcmInput {
   Stream<String> get interruptions => _interruptions.stream;
 }
 
+/// 假前台服务：**只记流水、只回一个预先设定的结果**，一次平台通道都不碰。
+class _FakeNightAudioService implements NightAudioService {
+  _FakeNightAudioService({List<String>? log}) : log = log ?? [];
+
+  final List<String> log;
+
+  /// 下一次 [start] 要回的结果码。默认 `started`——Android 上正常的那一条。
+  NightAudioServiceResult result = NightAudioServiceResult.started;
+
+  int startCount = 0;
+  int stopCount = 0;
+
+  @override
+  Future<NightAudioServiceResult> start() async {
+    log.add('service.start');
+    startCount++;
+    return result;
+  }
+
+  @override
+  Future<void> stop() async {
+    log.add('service.stop');
+    stopCount++;
+  }
+}
+
 void main() {
   late Directory tempDir;
   late _FakePcmInput input;
+  late _FakeNightAudioService service;
+  late List<String> log;
   late ClipFileStore files;
   late RecordNightRecorder recorder;
 
   setUp(() async {
     tempDir = await Directory.systemTemp.createTemp('night_recorder');
-    input = _FakePcmInput();
+    // 采集端与前台服务共用一条流水，断言「谁先谁后」时读的只有这一条。
+    log = <String>[];
+    input = _FakePcmInput(log: log);
+    service = _FakeNightAudioService(log: log);
     files = ClipFileStore(baseDirectory: () async => tempDir);
     recorder = RecordNightRecorder(
       files: files,
       input: input,
+      audioService: service,
       // 固定时钟：片段的墙上时刻要能对得上，不然断言只能写成「约等于现在」。
       clock: () => DateTime.utc(2026, 10, 3, 23),
     );
@@ -298,6 +338,91 @@ void main() {
       await recorder.stop();
       expect(recorder.status.value.state, NightRecordingState.idle,
           reason: '会话都结束了还说"麦克风被静音"，是在说一件已经不成立的事');
+    });
+  });
+
+  /// 前台服务（Android 上「退到后台 / 锁屏后还能不能录」的唯一凭据）。
+  ///
+  /// **接线顺序是硬约束**，两个方向都有各自的失败形态：起的时候反了会漏一段真实的
+  /// 空窗（收到的是数字静音、不报错），停的时候反了会把完好的尾巴抹黑成 `silenced`。
+  /// 这里的用例就是钉住这两条顺序，以及三个结果码各自的处置。
+  group('前台服务', () {
+    test('start() 里服务先于开流', () async {
+      await recorder.start();
+
+      expect(log, ['service.start', 'pcm.startStream'],
+          reason: '反了的话，麦克风已经在采而这半秒里没人保着它——收上来的是一格全零');
+      expect(service.startCount, 1);
+    });
+
+    test('stop() 里先停流、后撤服务', () async {
+      await recorder.start();
+      log.clear();
+
+      await recorder.stop();
+
+      expect(log, ['pcm.stop', 'service.stop'],
+          reason: '反了的话，撤服务到真的停流之间那半秒会被记成一格全零');
+    });
+
+    test('notForeground：不开流，状态是 stopped 并带上那句说明', () async {
+      service.result = NightAudioServiceResult.notForeground;
+
+      await expectLater(recorder.start(), throwsA(isA<StateError>()));
+
+      expect(input.started, isFalse, reason: '不去开一个注定收到静音的麦克风');
+      expect(log, ['service.start'], reason: '连流都没碰过');
+      expect(recorder.status.value.state, NightRecordingState.stopped);
+      expect(recorder.status.value.reason, kNotForegroundReason);
+      expect(recorder.status.value.isRecording, isFalse);
+    });
+
+    test('missingPermission：同样不开流，但说的是另一句', () async {
+      service.result = NightAudioServiceResult.missingPermission;
+
+      await expectLater(recorder.start(), throwsA(isA<StateError>()));
+
+      expect(input.started, isFalse);
+      expect(recorder.status.value.state, NightRecordingState.stopped);
+      expect(recorder.status.value.reason, kMissingForegroundPermissionReason);
+      // 两句必须分得开：一句是「此刻不行，回到前台再说」，另一句是「这个包不行，
+      // 去更新」。合成一句，用户就分不清该等还是该升级。
+      expect(kMissingForegroundPermissionReason, isNot(kNotForegroundReason));
+    });
+
+    test('unsupported / failed：照旧开流', () async {
+      // iOS 根本没有这条通道；平台侧偶发失败时应用也还在前台。两种都不许把录音拦下来。
+      for (final result in const [
+        NightAudioServiceResult.unsupported,
+        NightAudioServiceResult.failed,
+      ]) {
+        service.result = result;
+        await recorder.start();
+
+        expect(input.started, isTrue, reason: '$result 不该拦住开流');
+        expect(recorder.status.value.state, NightRecordingState.recording);
+
+        await recorder.stop();
+      }
+    });
+
+    test('服务起来了、流却没起来时，把服务撤掉再抛', () async {
+      input.startError = StateError('麦克风被占用');
+
+      await expectLater(recorder.start(), throwsA(isA<StateError>()));
+
+      expect(log, ['service.start', 'pcm.startStream', 'service.stop'],
+          reason: '留着服务就是通知栏上一条「正在录制」，而一个采样都没采');
+      expect(recorder.status.value.state, NightRecordingState.stopped);
+      expect(recorder.status.value.reason, contains('麦克风被占用'));
+    });
+
+    test('服务没起来时什么也不用撤', () async {
+      service.result = NightAudioServiceResult.notForeground;
+
+      await expectLater(recorder.start(), throwsA(isA<StateError>()));
+
+      expect(service.stopCount, 0);
     });
   });
 }

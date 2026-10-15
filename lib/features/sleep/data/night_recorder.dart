@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:record/record.dart';
 
+import '../../../core/platform/night_audio_service.dart';
 import '../domain/clip_journal.dart';
 import '../domain/clip_segmentation.dart';
 import 'clip_store.dart';
@@ -74,6 +75,30 @@ const kRecordBytesPerSample = 2;
 /// 不同设备上会切出不同的片段。
 const kAmplitudeWindow = Duration(milliseconds: 100);
 
+/// **采集源试过 `UNPROCESSED`，2026-10-15 当晚就回退了——记在这里免得有人再试一遍。**
+///
+/// 想法本来是对的：`record` 插件在 Android 上默认走
+/// `MediaRecorder.AudioSource.DEFAULT`，厂商（MIUI 尤其）会在这条路上叠自己的处理
+/// （高通、降噪、AGC），正是上面那段注释要挡的东西；而 `autoGain: false` 这类开关
+/// **只是不去主动打开**处理，保证不了厂商的处理不在。Android 也确实为「我要未经处理
+/// 的音频」提供了 `UNPROCESSED`。
+///
+/// **但它在这台 MI 9（MIUI 12.5.6 / API 30）上会静默地录不到东西。** 判据是
+/// `logcat` 里这一行：
+///
+/// ```
+/// AudioRecord: set(): inputSource 9, sampleRate 16000, ... com.example.night_sleep
+/// ```
+///
+/// `inputSource 9` 就是 `UNPROCESSED`——**源打开成功了**（没抛异常，所以「打不开就
+/// 退回默认源」那条路根本不会触发），然后以它录了 66 秒，**一个片段都没产生**。
+///
+/// **教训不是「别换源」，是「只在异常上做回退不够」。** 设备的失败模式有两种：
+/// 打不开（抛异常）与**打开了、不报错、但交静音**。后者要靠
+/// [kSilentMicRun] 那种「收了一段时间逐样本全零」的实测判据才认得出，而那时人已经
+/// 醒了一夜。所以这里**刻意不指定采集源**，就用插件的默认值。
+/// 完整经过见 [验证记录](../../../../docs/verification-log.md) v3.28。
+
 /// 连续这么多**逐样本全零**的振幅格之后，认定麦克风没有在收音。
 ///
 /// **与切片那七个参数一样是拍的**，待真机标定。判据取「每一个采样都正好是 0」而不是
@@ -91,6 +116,23 @@ const kSilentMicRun = Duration(seconds: 60);
 /// portId:<本应用的录音端口>, silenced 1`，见 `docs/verification-log.md` v3.19）；
 /// 在其他平台上，同样的「逐样本全零」只说明输入设备没有在收音，措辞仍然成立。
 const kSilencedMicReason = '麦克风被系统静音 · 现在录不到声音';
+
+/// 应用不在前台、起不了前台服务时给用户看的那句话。
+///
+/// 这条路的典型来法是**白噪音倒计时到点，而那时应用已经在后台 / 锁屏**：Dart 的
+/// `Timer.periodic` 只要进程还活着就照常到点，醒来就去起前台服务，而 Android 12+
+/// 后台起前台服务直接抛异常、API 30 上不抛但麦克风照样是静音的。
+///
+/// 所以**不进入录音态、也不去开一个注定收到静音的麦克风**——界面如实写这一句，
+/// 而不是先写「录音中」再等 60 秒翻成「麦克风被系统静音」。
+const kNotForegroundReason = '应用不在前台 · 暂时无法开始录音';
+
+/// 应用缺少后台录音所需权限时给用户看的那句话。
+///
+/// **措辞刻意指向应用，不是指向设备。** 走到这里说明「装着的这个包」与「这段代码」
+/// 对不上（清单里少声明，或麦克风权限此刻不在手里），而**不是**这台机器不行——
+/// 与 `compass.dart` 那条「平台未实现 ≠ 设备不行」的红线同一口径。
+const kMissingForegroundPermissionReason = '当前版本缺少后台录音权限 · 请更新应用';
 
 /// 采集端的缝。
 ///
@@ -154,10 +196,12 @@ class RecordNightRecorder implements NightRecorder {
   RecordNightRecorder({
     required ClipFileStore files,
     required PcmInput input,
+    NightAudioService audioService = const NoopNightAudioService(),
     ClipParams params = const ClipParams(),
     DateTime Function() clock = DateTime.now,
   })  : _files = files,
         _input = input,
+        _audioService = audioService,
         _params = params,
         _clock = clock;
 
@@ -170,6 +214,14 @@ class RecordNightRecorder implements NightRecorder {
 
   final ClipFileStore _files;
   final PcmInput _input;
+
+  /// 前台服务开关，见 `lib/core/platform/night_audio_service.dart`。
+  ///
+  /// **默认值是空实现**（返回 `unsupported`，一切照旧）：`test/night_recorder_test.dart`
+  /// 里那些直接 `new` 本类的用例一行都不用改，也不会因此碰真平台通道。
+  /// 真实接线在 [nightRecorderProvider]，那里注入 `MethodChannelNightAudioService`。
+  final NightAudioService _audioService;
+
   final ClipParams _params;
   final DateTime Function() _clock;
 
@@ -235,10 +287,42 @@ class RecordNightRecorder implements NightRecorder {
     if (_running) return;
     _reset();
 
+    // **先起前台服务、后开流。** 顺序反了会有一段真实的空窗：`startStream()` 已经
+    // 返回、麦克风已经在采，但前台服务还没起——这半秒里平台按「应用不在前台」的规则
+    // 静音录音端口，交上来的是一格全零（**不报错**），它会跟着流一路记进状态里。
+    final service = await _audioService.start();
+    switch (service) {
+      case NightAudioServiceResult.started:
+      case NightAudioServiceResult.unsupported:
+      case NightAudioServiceResult.failed:
+        // 后两种照旧往下走：iOS 根本没有这条通道，平台侧偶发失败时应用也还在前台，
+        // 录音本来就能录。**不能因为拿不到前台服务就把流拦下来。**
+        break;
+      case NightAudioServiceResult.notForeground:
+        // 应用此刻不可见：系统不许这么起服务，就算硬起，麦克风也是静音的。
+        // **不进入录音态、不开流**，如实说出原因。
+        _status.value = const NightRecordingStatus(
+          NightRecordingState.stopped,
+          reason: kNotForegroundReason,
+        );
+        throw StateError(kNotForegroundReason);
+      case NightAudioServiceResult.missingPermission:
+        _status.value = const NightRecordingStatus(
+          NightRecordingState.stopped,
+          reason: kMissingForegroundPermissionReason,
+        );
+        throw StateError(kMissingForegroundPermissionReason);
+    }
+
     final Stream<Uint8List> stream;
     try {
       stream = await _input.startStream();
     } catch (error) {
+      // 服务已经起来了、流却没起来：**把服务撤掉再抛**。留着的话通知栏会挂一条
+      // 「正在录制」，而实际上一个采样都不采——一个控件声称它并不具备的状态。
+      if (service == NightAudioServiceResult.started) {
+        await _stopServiceQuietly();
+      }
       _status.value = NightRecordingStatus(
         NightRecordingState.stopped,
         reason: '无法开始录音：$error',
@@ -273,6 +357,10 @@ class RecordNightRecorder implements NightRecorder {
       // 停不下来不该把已经录到的片段连累掉——下面照样把尾巴收尾、照样落盘。
       debugPrint('停止录音时出错：$error');
     }
+    // **先停流、后撤服务。** 反了的话，从撤服务到真的停流之间麦克风已经不被保着，
+    // 收尾那半秒会被记成一格全零——而 `_flush()` 就排在下面，它可能在把尾巴定案
+    // 之前先把状态翻成 `silenced`，一段原本完好的录音被自己抹黑。
+    await _stopServiceQuietly();
 
     await _flush();
     // `silenced` 也要落回 idle：它是"在录但收不到声音"，主动停下来之后那个状态
@@ -300,12 +388,26 @@ class RecordNightRecorder implements NightRecorder {
     } catch (_) {
       // 已经被抢走了，停不掉是正常的。
     }
+    // 与 `stop()` 同一顺序：先停流、后撤服务。
+    await _stopServiceQuietly();
     await _flush();
     // **已经录到的片段不丢**，只是不再往下录了。
     _status.value = NightRecordingStatus(
       NightRecordingState.stopped,
       reason: reason,
     );
+  }
+
+  /// 撤掉前台服务，**永不抛**。
+  ///
+  /// 收尾这一段（停流 → 撤服务 → `_flush()`）绝不能因为平台侧的失败而中断：
+  /// `_flush()` 决定的是「已经录到的片段还在不在」，那是整晚录音里最不能丢的东西。
+  Future<void> _stopServiceQuietly() async {
+    try {
+      await _audioService.stop();
+    } catch (error) {
+      debugPrint('撤前台服务时出错：$error');
+    }
   }
 
   @override
@@ -582,6 +684,8 @@ class RecordPcmInput implements PcmInput {
   @override
   Future<Stream<Uint8List>> startStream() async {
     await _listenForInterruptions();
+    // **不要在这里指定 `androidConfig.audioSource`。** 试过 `UNPROCESSED`，
+    // 这台机器上它会静默地什么也不录——理由见上面那段注释。
     return _recorder.startStream(
       const RecordConfig(
         encoder: AudioEncoder.pcm16bits,
@@ -637,6 +741,7 @@ final nightRecorderProvider = Provider<NightRecorder>((ref) {
   final recorder = RecordNightRecorder(
     files: ref.watch(clipFileStoreProvider),
     input: ref.watch(pcmInputProvider),
+    audioService: ref.watch(nightAudioServiceProvider),
   );
   ref.onDispose(() => unawaited(recorder.dispose()));
   return recorder;
