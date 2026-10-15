@@ -4,7 +4,14 @@
 /// fabricates snore or sleep-talk events, and a transcript or analysis is
 /// nullable because recognition may be unavailable or may have failed. The UI
 /// must render the missing case rather than filling it in.
+///
+/// **2026-10-14 起多了一层：机器的判断（[SoundClip.autoAnalysis]）。** 它仍然
+/// 不伪造任何东西——那是从**实测声学特征**算出来的启发式结果，没把握会弃权。它
+/// 与人的标注**分列存放**，理由见 [SoundClip.autoAnalysis] 的文档：混在一列里就
+/// 再也分不清「用户听过说是打鼾」与「机器猜是打鼾」。
 library;
+
+import 'clip_analysis.dart';
 
 enum SoundEventKind {
   snore('snore', '打鼾'),
@@ -60,6 +67,7 @@ class SoundClip {
     this.source = 'recording',
     this.waveformEnvelope,
     this.labeledAtUtc,
+    this.autoAnalysis,
   });
 
   final String id;
@@ -97,13 +105,39 @@ class SoundClip {
   /// 都是 [SoundEventKind.noise]。
   final DateTime? labeledAtUtc;
 
+  /// 机器跑完声学分析之后的判断；`null` = 从没分析过。
+  ///
+  /// **它为什么不写进 [kind]**：`kind` 在库里是「人做的判断」，界面上的三态
+  /// （人标过 / 机器有把握 / 待标注）全靠它们是否为空来分。合成一列之后，
+  /// 「用户听过说是打鼾」与「机器测出来像打鼾」就再也没法区分了——而那正是
+  /// 这一整块最不能丢的区分。
+  ///
+  /// [AutoAnalysis.verdict] 为 `null` 表示机器**看过但弃权**，与本字段整体为
+  /// `null`（没分析过）不同。
+  final AutoAnalysis? autoAnalysis;
+
   bool get hasPlayableAudio => localUri != null;
 
   bool get isLabeled => labeledAtUtc != null;
 
-  /// 卡片上显示的那个词。**未标注不显示「杂音」**——那会把一个中性的占位值
-  /// 说成一个已经做过的判断。
-  String get labelText => isLabeled ? kind.label : '待标注';
+  /// 机器给了一个够格的判断（不是弃权、也不是没分析过）。
+  bool get hasAutoVerdict => autoAnalysis?.verdict != null;
+
+  /// 卡片上显示的那个词。**优先级：人标的 > 机器判的 > 待标注。**
+  ///
+  /// 机器判出来的那个词**必须带「自动」**：读者要一眼看得出这是机器测出来的，
+  /// 不是谁听过的。
+  ///
+  /// **「自动 · 杂音」与「待标注」是两件事，别合并。** 「待标注」= 机器弃权（没把握，
+  /// 或那段根本没录到声音）；「自动 · 杂音」= 机器按窗口扫过整段、没找到够格的鼾声或
+  /// 人声事件。后者是一个**搜索结果**，前者是**没有结论**——`AutoLabel.noise`
+  /// 的文档里写了它凭什么敢下这个结论。
+  String get labelText {
+    if (isLabeled) return kind.label;
+    final verdict = autoAnalysis?.verdict;
+    if (verdict != null) return '自动 · ${verdict.label.label}';
+    return '待标注';
+  }
 
   Duration get duration => Duration(milliseconds: durationMs);
 

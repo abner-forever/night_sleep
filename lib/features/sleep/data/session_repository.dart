@@ -112,7 +112,12 @@ class SessionRepository {
   ///
   /// 调用方必须先过 [validateSessionDuration]。这里再挡一道，因为「静默写出
   /// 一条 71 小时的睡眠记录」是这个功能最坏的失败形态。
-  Future<void> finish(
+  /// 返回新记录行的 id。
+  ///
+  /// **返回它而不是让调用方自己算**：id 是 `endAt.microsecondsSinceEpoch`，调用方
+  /// 重算一次就多一处会对不上的地方——而结束会话之后紧接着就要拿这个 id 去触发
+  /// 那一晚的片段分析（见 `sleep_session_page._finish`）。
+  Future<String> finish(
       {required DateTime now, required SleepQuality? quality}) async {
     final session = await load();
     if (session == null) {
@@ -166,6 +171,7 @@ class SessionRepository {
       await _db.insertClips(clips);
       await _db.deleteActiveSession();
     });
+    return id;
   }
 
   /// 丢弃这次会话。不写任何记录——「忘了结束、放了三天」的会话走这里。

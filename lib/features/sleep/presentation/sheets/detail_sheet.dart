@@ -19,6 +19,7 @@ import '../../../../core/widgets/confirm_dialog.dart';
 import '../../../settings/data/insight_credentials.dart';
 import '../../../settings/data/insight_service.dart';
 import '../../../settings/data/model_catalog.dart';
+import '../../data/clip_analyzer.dart';
 import '../../data/clip_pruning.dart';
 import '../../data/clip_store.dart';
 import '../../data/sleep_repository.dart';
@@ -64,6 +65,42 @@ class _DetailSheetState extends ConsumerState<DetailSheet> {
   late SleepEntry _entry = widget.entry;
 
   bool _generating = false;
+
+  /// 正在重跑这一晚的声音分析。
+  bool _analysingSounds = false;
+
+  /// 重新分析这一晚的片段。
+  ///
+  /// **与「重新生成」（AI 洞察）是两件事**：这一个在本机跑声学特征，不联网、不花
+  /// API 钱。入口的措辞与位置都要让这件事一眼看得出来，别让人以为点一下要计费。
+  ///
+  /// 分析写回的是 `sound_clips`，而那张表有变更流（`clipsProvider`），所以这里
+  /// 重新读一次条目就能看到新的自动标注。
+  Future<void> _reanalyseSounds() async {
+    if (_analysingSounds) return;
+    setState(() => _analysingSounds = true);
+    try {
+      await ref.read(clipAnalyzerProvider).analyseRecord(_entry.id);
+      final refreshed = await ref.read(sleepRepositoryProvider).loadAll();
+      SleepEntry? updated;
+      for (final candidate in refreshed) {
+        if (candidate.id == _entry.id) {
+          updated = candidate;
+          break;
+        }
+      }
+      if (!mounted) return;
+      final refreshedEntry = updated;
+      if (refreshedEntry != null) {
+        setState(() => _entry = refreshedEntry);
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ref.read(toastProvider.notifier).show('分析失败：$error');
+    } finally {
+      if (mounted) setState(() => _analysingSounds = false);
+    }
+  }
 
   /// 生成失败的原因，显示在区块内。失败**不写库、不覆盖**已有洞察——
   /// 一次网络抖动不该把用户手里的结论抹掉（偏差 #47）。
@@ -391,16 +428,46 @@ class _DetailSheetState extends ConsumerState<DetailSheet> {
 
             // ── Sound events ───────────────────────────────────────────────
             const SizedBox(height: 16),
-            Text(
-              entry.hasSoundEvents
-                  ? '声音记录 · ${entry.soundClips.length}条'
-                  : '声音记录 · 无片段',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 1.14,
-                color: tokens.textMuted,
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    entry.hasSoundEvents
+                        ? '声音记录 · ${entry.soundClips.length}条'
+                        : '声音记录 · 无片段',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 1.14,
+                      color: tokens.textMuted,
+                    ),
+                  ),
+                ),
+                // **与下面那个「重新生成」是两件事，措辞必须能分开。**
+                // 这一个在本机跑声学特征：不联网、不花 API 钱、随时可以重跑。
+                // 它只在真有片段可分析时出现——没录到东西时点它没有任何意义。
+                if (entry.hasSoundEvents)
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _analysingSounds ? null : _reanalyseSounds,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 2,
+                      ),
+                      child: Text(
+                        _analysingSounds ? '分析中…' : '重新分析',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: _analysingSounds
+                              ? tokens.textMuted
+                              : tokens.accent,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 12),
             if (!entry.hasSoundEvents)

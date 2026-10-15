@@ -13,6 +13,7 @@ import 'package:night_sleep/core/database/app_database.dart'
         SoundClipsCompanion;
 import 'package:night_sleep/core/theme/app_theme.dart';
 import 'package:night_sleep/features/sleep/data/sleep_repository.dart';
+import 'package:night_sleep/features/sleep/domain/clip_analysis.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_entry.dart';
 import 'package:night_sleep/features/sleep/domain/sound_event.dart';
 import 'package:night_sleep/features/sleep/presentation/sheets/sound_card.dart';
@@ -83,6 +84,7 @@ SoundClip _clip({
   List<double>? envelope,
   DateTime? labeledAtUtc,
   int durationMs = 3000,
+  AutoAnalysis? autoAnalysis,
 }) {
   return SoundClip(
     id: id,
@@ -92,6 +94,28 @@ SoundClip _clip({
     localUri: localUri,
     waveformEnvelope: envelope,
     labeledAtUtc: labeledAtUtc,
+    autoAnalysis: autoAnalysis,
+  );
+}
+
+/// 一条「机器判出来了」的记录。
+AutoAnalysis _auto(
+  AutoLabel? label, {
+  String basis = '低频能量 66% · 谱质心 390 Hz · 周期性 0.95',
+  int startMs = 0,
+  int durationMs = 0,
+}) {
+  return AutoAnalysis(
+    verdict: label == null
+        ? null
+        : AutoVerdict(
+            label: label,
+            margin: 0.5,
+            basis: basis,
+            startMs: startMs,
+            durationMs: durationMs,
+          ),
+    analyzedAtUtc: DateTime.utc(2026, 10, 14, 8),
   );
 }
 
@@ -206,6 +230,118 @@ void main() {
 
       expect(find.text('打鼾'), findsWidgets);
       expect(find.text('待标注'), findsNothing);
+    });
+  });
+
+  group('机器判断：三态', () {
+    testWidgets('机器有把握时标题写「自动 · 疑似打鼾」，且不再说「待标注」', (tester) async {
+      await pumpCard(tester, _clip(autoAnalysis: _auto(AutoLabel.snore)));
+
+      expect(find.text('自动 · 疑似打鼾'), findsOneWidget);
+      expect(find.text('待标注'), findsNothing);
+      // 「打鼾」只能作为「自动 · 疑似打鼾」的一部分出现，**不能**单独出现——
+      // 单独出现就等于把机器的猜测说成一个人的判断。三选一的 chip 上那个「打鼾」
+      // 是选项文案，所以这里数的是标题那一处。
+      expect(find.text('打鼾'), findsOneWidget);
+    });
+
+    testWidgets('机器弃权（看过但没把握）仍然显示「待标注」', (tester) async {
+      // 变异：把 `labelText` 里「机器没把握」那一支改成回退到 kind.label，
+      // 本用例变红——那一晚的片段会全部显示成「杂音」，一个没做过的判断。
+      await pumpCard(tester, _clip(autoAnalysis: _auto(null)));
+
+      expect(find.text('待标注'), findsOneWidget);
+    });
+
+    testWidgets('从没分析过也显示「待标注」——与机器弃权在界面上同样诚实', (tester) async {
+      await pumpCard(tester, _clip());
+
+      expect(find.text('待标注'), findsOneWidget);
+    });
+
+    testWidgets('人标的永远压过机器判断', (tester) async {
+      await pumpCard(
+        tester,
+        _clip(
+          kind: SoundEventKind.talk,
+          labeledAtUtc: DateTime.utc(2026, 10, 4, 8),
+          autoAnalysis: _auto(AutoLabel.snore),
+        ),
+      );
+
+      expect(find.text('梦话'), findsWidgets);
+      expect(find.textContaining('自动'), findsNothing);
+    });
+
+    testWidgets('展开后给出实测依据，而不是一个「把握」', (tester) async {
+      await pumpCard(
+        tester,
+        _clip(
+          autoAnalysis: _auto(AutoLabel.snore, basis: '低频能量 66% · 谱质心 390 Hz'),
+        ),
+      );
+
+      expect(find.text('自动判断依据'), findsOneWidget);
+      expect(find.text('低频能量 66% · 谱质心 390 Hz'), findsOneWidget);
+      // 没有标注数据就估不出概率；界面上不许出现一个编出来的「置信度」。
+      expect(find.textContaining('置信'), findsNothing);
+      expect(find.textContaining('把握度'), findsNothing);
+    });
+
+    testWidgets('机器判「杂音」时说「自动 · 杂音」，不与「待标注」混为一谈', (tester) async {
+      // 两者都是「没测到鼾声也没测到人声」，但一个是**搜过之后的结论**，
+      // 一个是**没有结论**。混成一句话就把机器的搜索结果抹掉了。
+      await pumpCard(tester, _clip(autoAnalysis: _auto(AutoLabel.noise)));
+
+      expect(find.text('自动 · 杂音'), findsOneWidget);
+      expect(find.text('待标注'), findsNothing);
+    });
+
+    testWidgets('判出来的是有起止的一段时，把那一对秒数摆出来', (tester) async {
+      // 一段里先后混着几种声音是常事。只给一个词等于把「哪几秒」吞掉了，
+      // 用户就没法直接跳到那几秒去核对。
+      await pumpCard(
+        tester,
+        _clip(
+          durationMs: 11800,
+          autoAnalysis: _auto(AutoLabel.snore, startMs: 300, durationMs: 6300),
+        ),
+      );
+
+      expect(find.text('第 0.3–6.6 秒'), findsOneWidget);
+    });
+
+    testWidgets('「杂音」没有事件可指，就不摆秒数', (tester) async {
+      await pumpCard(
+        tester,
+        _clip(durationMs: 10300, autoAnalysis: _auto(AutoLabel.noise)),
+      );
+
+      expect(find.textContaining('秒', findRichText: false), findsNothing);
+    });
+
+    testWidgets('用户改标之后，机器判断退出显示但记录仍在库里', (tester) async {
+      await seedClip('c-1', kind: 'noise');
+      await database.updateClipAutoAnalysis(
+        'c-1',
+        payload: _auto(AutoLabel.snore).encode(),
+        status: 'analysed',
+      );
+
+      await pumpCard(tester, _clip(autoAnalysis: _auto(AutoLabel.snore)));
+      expect(find.text('自动 · 疑似打鼾'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('clip-label-noise')));
+      await tester.pumpAndSettle();
+
+      // 显示层让位于人：标题变成「杂音」，不再提「自动」。
+      expect(find.textContaining('自动'), findsNothing);
+
+      // 但机器当初那条判断仍留在库里——它是一条「机器看到的是这个」的记录，
+      // 不该因为人改了口就被抹掉。
+      final rows = await database.allRecordingClips();
+      expect(rows.single.autoAnalysis, isNotNull);
+      expect(rows.single.kind, 'noise');
     });
   });
 

@@ -22,6 +22,7 @@ import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_basics.dart';
 import '../../../core/widgets/app_sheet.dart';
 import '../../../core/widgets/wheel_picker.dart';
+import '../../sleep/data/clip_analyzer.dart';
 import '../../sleep/data/session_repository.dart';
 import '../../sleep/domain/sleep_session.dart';
 import 'night_scene.dart';
@@ -419,8 +420,9 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage>
         .stopForSessionEnd();
     if (!mounted) return;
 
+    final String recordId;
     try {
-      await ref
+      recordId = await ref
           .read(sessionRepositoryProvider)
           .finish(now: now, quality: quality);
     } catch (error) {
@@ -428,6 +430,14 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage>
       ref.read(toastProvider.notifier).show('保存失败：$error');
       return;
     }
+
+    // 把这一晚的片段交给自动分析。**不 await**：读磁盘、跑 FFT，一晚几十上百段
+    // 可能要好几秒，不能让它拦着页面收尾。分析完会写回 `sound_clips`，而
+    // `sleepEntriesProvider` 订阅着那张表，详情页自然就看到了。
+    //
+    // 半路被杀也不要紧：下次冷启动的补跑会把没分析完的片段捡回来
+    // （`ClipAnalyzer.analysePending`）。
+    unawaited(ref.read(clipAnalyzerProvider).analyseRecord(recordId));
 
     // 记录已经落库，下面全是收尾。收尾一步都不许抛出去——一旦抛了，用户就被
     // 撂在一个没有会话、也没有任何反馈的页面上。见 [teardownSession]。

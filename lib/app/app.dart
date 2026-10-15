@@ -25,6 +25,7 @@ import '../features/settings/presentation/settings_page.dart';
 import '../features/settings/presentation/sleep_import_page.dart';
 import '../features/settings/presentation/sleep_settings_page.dart';
 import '../features/session/presentation/sleep_session_page.dart';
+import '../features/sleep/data/clip_analyzer.dart';
 import '../features/sleep/data/clip_pruning.dart';
 import '../features/sleep/data/clip_store.dart';
 import '../features/sleep/presentation/sheets/noise_sheet.dart';
@@ -205,7 +206,7 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
       unawaited(
         ref.read(nightRecordingControllerProvider.notifier).syncWithSession(),
       );
-      unawaited(_pruneRecordings());
+      unawaited(_pruneRecordings().then((_) => _analysePendingClips()));
     });
   }
 
@@ -223,6 +224,23 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
       await deleteOrphanRecordings(database: database, files: files);
     } catch (error) {
       debugPrint('清理录音失败：$error');
+    }
+  }
+
+  /// 把还没被机器看过的片段补上分析。
+  ///
+  /// **排在清理之后**，两个理由：清理会删掉超期音频，先分析再删等于白算一遍；
+  /// 而且清理过后剩下的那些才是真的有文件可读的。
+  ///
+  /// 它是**为「装上新版本之前就已经录好的片段」准备的**：用户不需要做任何事。
+  /// 也是会话结束时那次分析没跑完的兜底（页面被关、进程被杀）。
+  ///
+  /// 同样不挡启动：串行跑、每段之间让出事件循环，失败只记一行日志。
+  Future<void> _analysePendingClips() async {
+    try {
+      await ref.read(clipAnalyzerProvider).analysePending();
+    } catch (error) {
+      debugPrint('补跑片段分析失败：$error');
     }
   }
 

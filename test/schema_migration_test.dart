@@ -932,6 +932,174 @@ void main() {
       await expectV6ColumnsUsable(db);
     });
   });
+
+  /// 写出一份 v6 的库：一条片段行（带 v6 那三列的值）+ 一条会话行。
+  Future<void> writeV6Database() async {
+    final v6 = _V6Database(NativeDatabase(file));
+    try {
+      await v6.customStatement(
+        "INSERT INTO sleep_records (id, start_at_utc, end_at_utc, time_zone_id, "
+        "quality, notes, tags_json, source, flagged_snore, flagged_talk, "
+        "flagged_restless, flagged_nightmare, created_at, updated_at) "
+        "VALUES ('r1', 1759000000, 1759026000, 'Asia/Shanghai', 4, '', '[]', "
+        "'session', 0, 0, 0, 0, 1759000000, 1759000000)",
+      );
+      await v6.customStatement(
+        "INSERT INTO sound_clips (id, record_id, kind, started_at_utc, "
+        "duration_ms, local_uri, transcript, analysis, analysis_status, source, "
+        "waveform_envelope, labeled_at_utc) "
+        "VALUES ('c1', 'r1', 'snore', 1759000100, 4200, "
+        "'/tmp/clips/c1.wav', NULL, NULL, 'pending', 'recording', "
+        "'[0.1,0.9]', 1759000200)",
+      );
+    } finally {
+      await v6.close();
+    }
+  }
+
+  group('v6 → v7', () {
+    test('夹具确实是 v6，而升级后停在当前版本', () async {
+      await writeV6Database();
+      final v6 = _V6Database(NativeDatabase(file));
+      expect(await userVersion(v6), 6);
+      await v6.customStatement('SELECT 1');
+      await v6.close();
+
+      final db = openCurrent();
+      addTearDown(db.close);
+      await db.allRecords(); // 触发迁移
+      expect(await userVersion(db), db.schemaVersion);
+    });
+
+    test('既有片段行一个字段不差，auto_analysis 读出来是空的', () async {
+      await writeV6Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+
+      final clip = (await db.allRecordingClips()).single;
+      expect(clip.id, 'c1');
+      expect(clip.kind, 'snore', reason: '加列把既有片段行弄丢了');
+      expect(clip.waveformEnvelope, '[0.1,0.9]', reason: 'v6 的列被迁移弄丢了');
+      expect(clip.labeledAtUtc, isNotNull);
+      // 新列必须可空，且既有行读出来为空——**「从没分析过」这条语义全靠它**，
+      // 非空的话升级上来的应用会凭空多出一堆「机器判断」。
+      expect(clip.autoAnalysis, isNull);
+    });
+
+    test('迁移后可以写入并读回 auto_analysis', () async {
+      await writeV6Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+      await db.allRecords(); // 触发迁移
+
+      await db.updateClipAutoAnalysis(
+        'c1',
+        payload: '{"kind":"snore","margin":0.5,"basis":"低频能量 66%",'
+            '"atUtc":"2026-10-14T08:00:00.000Z"}',
+        status: 'analysed',
+      );
+
+      final clip = (await db.allRecordingClips()).single;
+      expect(clip.autoAnalysis, contains('"snore"'));
+      expect(clip.analysisStatus, 'analysed');
+      // **写机器判断不许动 `kind`**：它是人标的（这里是 'snore'，但那是人标的
+      // 意思），机器判断另存一列正是为了让这两件事分得开。
+      expect(clip.kind, 'snore');
+    });
+
+    test('弃权也落库，且与「从没分析过」分得开', () async {
+      await writeV6Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+      await db.allRecords();
+
+      await db.updateClipAutoAnalysis(
+        'c1',
+        payload: '{"kind":null,"margin":null,"basis":null,'
+            '"atUtc":"2026-10-14T08:00:00.000Z"}',
+        status: 'analysed',
+      );
+
+      final clip = (await db.allRecordingClips()).single;
+      expect(clip.autoAnalysis, isNotNull, reason: '机器看过了，这件事本身要留下');
+      expect(clip.autoAnalysis, contains('"kind":null'));
+    });
+  });
+
+  group('旧库直升 v7', () {
+    /// 迁移之后 `auto_analysis` 必须真的能用：写进去、读回来。
+    /// 只断言「能打开」是不够的——缺列时 drift 的报错发生在第一次碰它的那一刻。
+    Future<void> expectV7ColumnUsable(AppDatabase db) async {
+      await db.saveRecord(
+        SleepRecordsCompanion.insert(
+          id: 'r-new',
+          startAtUtc: DateTime.utc(2026, 10, 3, 22),
+          endAtUtc: DateTime.utc(2026, 10, 4, 6),
+          createdAt: DateTime.utc(2026, 10, 3, 22),
+          updatedAt: DateTime.utc(2026, 10, 3, 22),
+        ),
+      );
+      await db.insertClips([
+        SoundClipsCompanion.insert(
+          id: 'c-new',
+          recordId: 'r-new',
+          kind: 'noise',
+          startedAtUtc: DateTime.utc(2026, 10, 4, 1),
+          durationMs: 3000,
+        ),
+      ]);
+      await db.updateClipAutoAnalysis(
+        'c-new',
+        payload: '{"kind":"voice","margin":0.4,"basis":"x",'
+            '"atUtc":"2026-10-14T08:00:00.000Z"}',
+        status: 'analysed',
+      );
+
+      final clip =
+          (await db.allRecordingClips()).firstWhere((row) => row.id == 'c-new');
+      expect(clip.autoAnalysis, contains('"voice"'));
+      expect(clip.analysisStatus, 'analysed');
+    }
+
+    // **下界写成 `from >= 2` 的理由**：`sound_clips` 从 v2 建表之后再没被重建过，
+    // 停在 v2–v6 的库都缺 `auto_analysis`。下面四条各覆盖一个下界，少一条就是
+    // 一类用户升上来之后那一列不存在——v6 那次就是写成 `from >= 5` 而漏了 v4。
+    test('v1 升上来：sound_clips 是新建的，列已经在里面，不重复加', () async {
+      await writeV1Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+      await db.allRecords(); // 触发迁移
+
+      await expectV7ColumnUsable(db);
+    });
+
+    test('v3 升上来：列补上了', () async {
+      await writeV3Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+      await db.allRecords();
+
+      await expectV7ColumnUsable(db);
+    });
+
+    test('v4 升上来：列补上了', () async {
+      await writeV4Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+      await db.activeSession();
+
+      await expectV7ColumnUsable(db);
+    });
+
+    test('v5 升上来：列补上了', () async {
+      await writeV5Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+      await db.activeSession();
+
+      await expectV7ColumnUsable(db);
+    });
+  });
 }
 
 /// 2026-09-26 23:30 → 2026-09-27 07:00 in UTC, so the fixture does not depend on
@@ -1278,6 +1446,120 @@ class _V4Database extends AppDatabase {
               noise_id TEXT,
               noise_volume REAL NOT NULL DEFAULT 0.5,
               created_at INTEGER NOT NULL,
+              PRIMARY KEY (id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE app_settings (
+              id TEXT NOT NULL,
+              theme_mode TEXT NOT NULL DEFAULT 'system',
+              sleep_goal_minutes INTEGER NOT NULL DEFAULT 480,
+              bedtime_reminder_enabled INTEGER NOT NULL DEFAULT 0,
+              bedtime_reminder_minutes INTEGER,
+              wake_reminder_enabled INTEGER NOT NULL DEFAULT 0,
+              wake_reminder_minutes INTEGER,
+              sound_recording_enabled INTEGER NOT NULL DEFAULT 0,
+              onboarded INTEGER NOT NULL DEFAULT 0,
+              insight_provider TEXT,
+              insight_model TEXT,
+              PRIMARY KEY (id)
+            )
+          ''');
+        },
+      );
+}
+
+/// The schema as it shipped in v6: v5 plus `clip_journal` / `waveform_envelope` /
+/// `labeled_at_utc`.
+///
+/// 与上面几份夹具同一条理由，**用裸 DDL 把形态冻住**：`auto_analysis` 一落进表类，
+/// 用表类写的夹具就会悄悄开始代表 v7，v6→v7 那几条断言会在迁移代码一行没跑的情况下
+/// 全绿——而真实用户升上来时那一列根本不存在。
+class _V6Database extends AppDatabase {
+  _V6Database(super.executor);
+
+  @override
+  int get schemaVersion => 6;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) async {
+          await customStatement('''
+            CREATE TABLE sleep_records (
+              id TEXT NOT NULL,
+              start_at_utc INTEGER NOT NULL,
+              end_at_utc INTEGER NOT NULL,
+              time_zone_id TEXT NOT NULL DEFAULT 'UTC',
+              quality INTEGER,
+              notes TEXT NOT NULL DEFAULT '',
+              tags_json TEXT NOT NULL DEFAULT '[]',
+              source TEXT NOT NULL DEFAULT 'manual',
+              flagged_snore INTEGER NOT NULL DEFAULT 0,
+              flagged_talk INTEGER NOT NULL DEFAULT 0,
+              flagged_restless INTEGER NOT NULL DEFAULT 0,
+              flagged_nightmare INTEGER NOT NULL DEFAULT 0,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL,
+              PRIMARY KEY (id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE sleep_stage_segments (
+              id TEXT NOT NULL,
+              record_id TEXT NOT NULL
+                REFERENCES sleep_records (id) ON DELETE CASCADE,
+              stage TEXT NOT NULL,
+              start_at_utc INTEGER NOT NULL,
+              end_at_utc INTEGER NOT NULL,
+              source TEXT NOT NULL DEFAULT 'import',
+              PRIMARY KEY (id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE sound_clips (
+              id TEXT NOT NULL,
+              record_id TEXT NOT NULL
+                REFERENCES sleep_records (id) ON DELETE CASCADE,
+              kind TEXT NOT NULL,
+              started_at_utc INTEGER NOT NULL,
+              duration_ms INTEGER NOT NULL,
+              local_uri TEXT,
+              transcript TEXT,
+              analysis TEXT,
+              analysis_status TEXT NOT NULL DEFAULT 'pending',
+              source TEXT NOT NULL DEFAULT 'recording',
+              waveform_envelope TEXT,
+              labeled_at_utc INTEGER,
+              PRIMARY KEY (id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE insights (
+              id TEXT NOT NULL,
+              record_id TEXT
+                REFERENCES sleep_records (id) ON DELETE CASCADE,
+              kind TEXT NOT NULL DEFAULT 'record_summary',
+              content TEXT,
+              provider TEXT,
+              model TEXT,
+              score INTEGER,
+              generated_at_utc INTEGER NOT NULL,
+              status TEXT NOT NULL DEFAULT 'unavailable',
+              PRIMARY KEY (id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE active_sessions (
+              id TEXT NOT NULL,
+              start_at_utc INTEGER NOT NULL,
+              time_zone_id TEXT NOT NULL DEFAULT 'UTC',
+              wake_minutes INTEGER NOT NULL,
+              alarm_enabled INTEGER NOT NULL DEFAULT 0,
+              noise_id TEXT,
+              noise_volume REAL NOT NULL DEFAULT 0.5,
+              scene_id TEXT,
+              created_at INTEGER NOT NULL,
+              clip_journal TEXT,
               PRIMARY KEY (id)
             )
           ''');

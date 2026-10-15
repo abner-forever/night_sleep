@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 // `SleepStageSegments` → `SleepStageSegment`). The prefix keeps the two layers
 // unambiguous at the boundary where they meet.
 import '../../../core/database/app_database.dart' as db;
+import '../domain/clip_analysis.dart';
 import '../domain/sleep_entry.dart';
 import '../domain/sleep_insight.dart';
 import '../domain/sleep_quality.dart';
@@ -100,6 +101,9 @@ class SleepRepository {
                   ? SoundClip.demoWaveformEnvelope(clip.id, kind)
                   : _decodeEnvelope(clip.waveformEnvelope),
               labeledAtUtc: clip.labeledAtUtc?.toUtc(),
+              // 机器判断：读不到或读坏了就是 null（当作从没分析过）。
+              // **不拿它去填 `kind`**——两者的区别正是界面三态的依据。
+              autoAnalysis: AutoAnalysis.decode(clip.autoAnalysis),
             ),
       ],
       insight: insightRow == null

@@ -166,3 +166,82 @@ class WavWriter {
     }
   }
 }
+
+/// 一段解出来的 PCM16 音频。
+class Pcm16Audio {
+  const Pcm16Audio({required this.samples, required this.sampleRate});
+
+  /// 归一化到 `[−1, 1]` 的采样点。
+  final Float64List samples;
+
+  /// 采样率（Hz），来自文件头——**不是**假定 16000，否则将来换采样率会静默算错频率。
+  final int sampleRate;
+
+  bool get isEmpty => samples.isEmpty;
+
+  Duration get duration =>
+      Duration(microseconds: samples.length * 1000000 ~/ sampleRate);
+}
+
+/// 解一个 PCM16 的 WAV——也就是 [WavWriter] / [pcm16WavHeader] 写出来的那种。
+///
+/// **读不出来的返回 `null`，不抛异常。** 调用方（片段分析）面对的是一个可能被中途
+/// 杀掉、被裁剪、或者干脆不是 WAV 的文件目录，一段坏文件不该让整晚的分析全军覆没。
+/// 这与 `sleep_repository.dart` 里 `_decodeEnvelope` 的口径一致：**宁可如实说读不到，
+/// 也不要猜一个形状**。
+///
+/// 只接受 [pcm16WavHeader] 写出的那种头（PCM、16-bit）。别的位深不在这里兼容：
+/// 本应用**只**产出这一种格式，为读得懂别人家的文件而写的分支没有被任何真实数据
+/// 走过，正是本仓最不想要的那种代码。
+Pcm16Audio? parsePcm16Wav(Uint8List bytes) {
+  if (bytes.length < kWavHeaderBytes) return null;
+
+  final view = ByteData.view(bytes.buffer, bytes.offsetInBytes);
+  if (!_hasAscii(view, 0, 'RIFF') || !_hasAscii(view, 8, 'WAVE')) return null;
+  if (!_hasAscii(view, 12, 'fmt ') || !_hasAscii(view, 36, 'data')) return null;
+
+  final audioFormat = view.getUint16(20, Endian.little);
+  final channels = view.getUint16(22, Endian.little);
+  final sampleRate = view.getUint32(24, Endian.little);
+  final bitsPerSample = view.getUint16(34, Endian.little);
+  if (audioFormat != 1 || bitsPerSample != 16) return null;
+  if (channels < 1 || sampleRate < 1) return null;
+
+  // 头里声明的长度**可能大于**文件实际长度（写到一半被杀），也可能故意是 0 占位
+  // （见 `WavWriter.open`）。两头都夹一次，取真正存在的那些字节。
+  final declared = view.getUint32(40, Endian.little);
+  final available = bytes.length - kWavHeaderBytes;
+  final dataBytes = declared < available ? declared : available;
+  if (dataBytes <= 0) {
+    return Pcm16Audio(samples: Float64List(0), sampleRate: sampleRate);
+  }
+
+  final frameCount = dataBytes ~/ (2 * channels);
+  final samples = Float64List(frameCount);
+  var offset = kWavHeaderBytes;
+  for (var i = 0; i < frameCount; i++) {
+    // 多声道只取第一声道：采集端固定单声道，这里不为一条从没走过的路径编混音。
+    samples[i] = view.getInt16(offset, Endian.little) / 32768.0;
+    offset += 2 * channels;
+  }
+  return Pcm16Audio(samples: samples, sampleRate: sampleRate);
+}
+
+/// 读并解一个 WAV 文件。文件不存在 / 读不动 / 不是 WAV 一律返回 `null`。
+Future<Pcm16Audio?> readWavFile(String path) async {
+  try {
+    final bytes = await File(path).readAsBytes();
+    return parsePcm16Wav(bytes);
+  } on FileSystemException {
+    return null;
+  }
+}
+
+/// [view] 从 [offset] 起是否正好是 ASCII [value]。
+bool _hasAscii(ByteData view, int offset, String value) {
+  if (view.lengthInBytes < offset + value.length) return false;
+  for (var i = 0; i < value.length; i++) {
+    if (view.getUint8(offset + i) != value.codeUnitAt(i)) return false;
+  }
+  return true;
+}

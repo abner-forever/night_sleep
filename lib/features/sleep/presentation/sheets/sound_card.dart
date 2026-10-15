@@ -10,6 +10,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/app_tokens.dart';
 import '../../../../core/widgets/app_icons.dart';
 import '../../data/sleep_repository.dart' show sleepEntriesProvider;
+import '../../domain/clip_analysis.dart';
 import '../../domain/sound_event.dart';
 import '../widgets/stage_style.dart';
 
@@ -285,8 +286,47 @@ class _SoundCardState extends ConsumerState<SoundCard> {
 
   bool get _isLabeled => _labeledKind != null || _clip.isLabeled;
 
-  /// 卡片标题。未标注一律「待标注」——不把中性的占位 kind 说成一个做过的判断。
-  String get _labelText => _isLabeled ? _kind.label : '待标注';
+  /// 机器给的判断（弃权与「没分析过」都是 `null`）。
+  ///
+  /// **人标的优先**：用户标过之后，机器当初猜的是什么都不再显示。那条记录仍然
+  /// 留在库里（它是「机器当时看到的是这个」），只是不再参与这张卡的说法。
+  AutoLabel? get _autoLabel =>
+      _isLabeled ? null : _clip.autoAnalysis?.verdict?.label;
+
+  String? get _autoBasis =>
+      _isLabeled ? null : _clip.autoAnalysis?.verdict?.basis;
+
+  /// 机器判出来的那个事件**在片段的哪一段上**（「第 3.2 秒起 · 持续 4.0 秒」）。
+  ///
+  /// 一段里混着几种声音是常事，只给一个标签等于把「哪几秒」这件事吞掉了。有了它，
+  /// 用户可以直接跳到那几秒去核对，也不用因为后 8 秒是翻身声就否掉前 3 秒的鼾声。
+  /// 「杂音」没有事件可指，返回 `null`。
+  String? get _autoSpan =>
+      _isLabeled ? null : _clip.autoAnalysis?.verdict?.event?.spanLabel;
+
+  /// 取色与取图标用的 kind。三态：人标的 > 机器判的 > 中性占位。
+  ///
+  /// 「疑似人声」借 `talk` 的图标与颜色——它说的是「像人声」，不是「梦话」，
+  /// 但用中性的波形图标会浪费掉机器已经给出的信息。**标题里的「自动 · 疑似」
+  /// 才是那句话的准头所在**，图标只是个提示。
+  ///
+  /// 机器的「杂音」与未标注**取同一个中性图标**：两者在「没测到鼾声也没测到人声」
+  /// 这一点上是一样的，差别在有没有下结论，而那是标题的事，不是图标的事。
+  SoundEventKind get _displayKind {
+    if (_isLabeled) return _kind;
+    return switch (_autoLabel) {
+      AutoLabel.snore => SoundEventKind.snore,
+      AutoLabel.voice => SoundEventKind.talk,
+      AutoLabel.noise => SoundEventKind.noise,
+      null => _kind,
+    };
+  }
+
+  /// 卡片标题。三态，见 [SoundClip.labelText]。
+  ///
+  /// 未标注、机器也没把握时一律「待标注」——不把中性的占位 kind 说成一个做过的判断。
+  /// **机器判出来的词必定带「自动」**：读者要一眼看出这是测出来的，不是谁听过的。
+  String get _labelText => _isLabeled ? _kind.label : _clip.labelText;
 
   void _togglePlayback() {
     if (!_playable) return;
@@ -330,7 +370,7 @@ class _SoundCardState extends ConsumerState<SoundCard> {
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
     final clip = _clip;
-    final color = soundEventColor(tokens, _kind);
+    final color = soundEventColor(tokens, _displayKind);
 
     // 谁在播由控制器裁决；进度也从它回传，波形轨道与时间标签都靠这个。
     final playback = ref.watch(clipPlaybackProvider);
@@ -370,13 +410,16 @@ class _SoundCardState extends ConsumerState<SoundCard> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     alignment: Alignment.center,
-                    // 未标注用一个中性的声音图标，不借任何一种已标注的图标——
-                    // 那会让人以为这段已经被判断过了。
-                    child: !_isLabeled
-                        ? AppIcons.wave(size: 18, color: color)
-                        : _kind == SoundEventKind.snore
+                    // **没人判断过**（既没标过、机器也没把握）才用中性的声音图标，
+                    // 不借任何一种判断的图标——那会让人以为这段已经被看过了。
+                    //
+                    // 机器判过的**确实**被判断过了（虽然只是测出来的），所以可以
+                    // 用对应的图标；「自动」二字在标题里承担提醒的责任。
+                    child: _isLabeled || _autoLabel != null
+                        ? _displayKind == SoundEventKind.snore
                             ? AppIcons.snore(size: 18, color: color)
-                            : AppIcons.bubble(size: 18, color: color),
+                            : AppIcons.bubble(size: 18, color: color)
+                        : AppIcons.wave(size: 18, color: color),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -521,6 +564,12 @@ class _SoundCardState extends ConsumerState<SoundCard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // 机器给的依据摆在最上面：那几个数是**测出来的**，读者可以据此
+                  // 自己判断机器说的对不对，而不是只能接受一个标签。
+                  if (_autoBasis case final basis?) ...[
+                    _AutoBasisRow(basis: basis, span: _autoSpan),
+                    const SizedBox(height: 14),
+                  ],
                   _LabelChooser(
                     selected: _isLabeled ? _kind : null,
                     onSelect: _label,
@@ -773,6 +822,67 @@ class _WaveformTrack extends StatelessWidget {
     // A floor keeps the quietest bar visible rather than collapsing to a dot.
     return (_neutralBarHeight * 0.45 + _maxBarHeight * amplitude * 0.72)
         .clamp(4.0, _maxBarHeight);
+  }
+}
+
+/// 机器判定所依据的实测特征。
+///
+/// 这一行是「自动标注」这件事的**可反驳性**所在：它不显示任何「把握」或概率
+/// （那要靠标注数据才估得出来，没有就是编的），只把量出来的几个数摆出来。
+/// 用户看一眼就知道机器凭什么这么说，也就能否掉它。
+class _AutoBasisRow extends StatelessWidget {
+  const _AutoBasisRow({required this.basis, this.span});
+
+  final String basis;
+
+  /// 判出来的事件在片段里的位置；「杂音」没有事件，为 `null`。
+  final String? span;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppTokens.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: tokens.bgMuted,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '自动判断依据',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.96,
+              color: tokens.textMuted,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            basis,
+            style: TextStyle(
+                fontSize: 13, height: 1.5, color: tokens.textSecondary),
+          ),
+          if (span case final span?) ...[
+            const SizedBox(height: 4),
+            Text(
+              span,
+              style: TextStyle(
+                  fontSize: 13, height: 1.5, color: tokens.textSecondary),
+            ),
+          ],
+          const SizedBox(height: 6),
+          Text(
+            '这是机器按声学特征测出来的，不是结论。你可以直接改成自己听到的。',
+            style:
+                TextStyle(fontSize: 12, height: 1.5, color: tokens.textMuted),
+          ),
+        ],
+      ),
+    );
   }
 }
 

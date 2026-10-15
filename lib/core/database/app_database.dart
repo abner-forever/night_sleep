@@ -88,6 +88,19 @@ class SoundClips extends Table {
   /// 都是 `'noise'`。界面据此把未标注的片段显示成「待标注」而不是「杂音」。
   DateTimeColumn get labeledAtUtc => dateTime().nullable()();
 
+  /// 机器跑完声学分析后的判断，存 JSON：`{kind, margin, basis, atUtc}`。
+  ///
+  /// **它不写 [kind]。** `kind` 只由人写（见 `sound_event.dart` 文件头与规格 M3），
+  /// 机器判断另存一列，界面以「自动」标明来源——两者混在一列里，就再也分不清
+  /// 「用户听过说是打鼾」和「机器猜是打鼾」。
+  ///
+  /// `kind` 为 `null` 表示**机器看过但没把握**（弃权），这与整列为 `null`（从没分析过）
+  /// 是两件事，必须分得开——同 [labeledAtUtc] 那条理由。
+  ///
+  /// 存 JSON 而不是拆成四列，是照 [waveformEnvelope] 与 `active_sessions.clip_journal`
+  /// 的既有惯例：这几个字段永远一起读、一起写，且没有任何按它们检索的查询。
+  TextColumn get autoAnalysis => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -215,7 +228,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -296,6 +309,12 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from >= 4 && from < 6) {
             await m.addColumn(activeSessions, activeSessions.clipJournal);
+          }
+          // v7 同样只加一列可空列。下界照 v6 那条的理由：`sound_clips` 从 v2 建表之后
+          // 再没被重建过，停在 v2–v6 的库都缺这一列；而 `from < 2` 那一支的
+          // `createTable` 用的是当前定义，已经带着它了，再加就是 `duplicate column name`。
+          if (from >= 2 && from < 7) {
+            await m.addColumn(soundClips, soundClips.autoAnalysis);
           }
         },
         beforeOpen: (details) async {
@@ -410,6 +429,40 @@ class AppDatabase extends _$AppDatabase {
         labeledAtUtc: Value(labeledAtUtc),
       ),
     );
+  }
+
+  /// 机器分析完一段之后写回。`autoAnalysis` 与 `analysisStatus` 必须一起写：
+  /// 只写其一，界面就没法把「机器看过、没把握」（payload 里 `kind` 为 null）
+  /// 与「从没分析过」（整列为 null、状态还是 pending）分开。
+  ///
+  /// **它不碰 [SoundClips.kind]，也不碰 [SoundClips.labeledAtUtc]。** 用户标过的
+  /// 那一段，机器照样可以写下自己的看法——那是一条「机器当初猜的是这个」的记录，
+  /// 只是界面上永远让位于人标的那个词。
+  Future<void> updateClipAutoAnalysis(
+    String clipId, {
+    required String? payload,
+    required String status,
+  }) async {
+    await (update(soundClips)..where((table) => table.id.equals(clipId))).write(
+      SoundClipsCompanion(
+        autoAnalysis: Value(payload),
+        analysisStatus: Value(status),
+      ),
+    );
+  }
+
+  /// 还没被机器看过的真实录音片段（含文件路径）。
+  ///
+  /// 冷启动补跑靠它：装上新版本之后，**用户手机上已经录好的那些片段**会被自动补上
+  /// 分析，不需要他做任何事。演示数据不在此列（`source = 'demo'`），它们的
+  /// `kind` / `labeledAtUtc` 本来就是示例数据的一部分。
+  Future<List<SoundClip>> clipsAwaitingAnalysis() {
+    return (select(soundClips)
+          ..where((table) =>
+              table.source.equals('recording') &
+              table.analysisStatus.equals('pending') &
+              table.localUri.isNotNull()))
+        .get();
   }
 
   /// 全部真实录音的片段（不含演示数据），供保留期限清理与占用统计用。

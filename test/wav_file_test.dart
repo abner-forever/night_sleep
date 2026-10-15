@@ -313,6 +313,68 @@ void main() {
       expect(ring.slice(0, 4), isEmpty);
     });
   });
+
+  group('parsePcm16Wav', () {
+    /// 按采集端的格式（16 kHz 单声道 PCM16）拼一个完整 WAV。
+    Uint8List wavOf(List<int> samples, {int rate = 16000}) {
+      final data = Uint8List(samples.length * 2);
+      final view = ByteData.view(data.buffer);
+      for (var i = 0; i < samples.length; i++) {
+        view.setInt16(i * 2, samples[i], Endian.little);
+      }
+      return Uint8List.fromList([
+        ...pcm16WavHeader(
+          sampleRate: rate,
+          channels: 1,
+          dataBytes: data.length,
+        ),
+        ...data,
+      ]);
+    }
+
+    test('写出去再读回来，采样一个不差、采样率来自文件头', () {
+      // 变异：把 `parsePcm16Wav` 里的偏移 44 改成 43，本用例变红。
+      final audio = parsePcm16Wav(wavOf([0, 1000, -1000, 32767, -32768]))!;
+      expect(audio.sampleRate, 16000);
+      expect(audio.samples, hasLength(5));
+      expect(audio.samples[1], closeTo(1000 / 32768, 1e-9));
+      expect(audio.samples[3], closeTo(32767 / 32768, 1e-9));
+      expect(audio.samples[4], closeTo(-1.0, 1e-9));
+    });
+
+    test('采样率是读出来的，不是写死的 16000', () {
+      final audio = parsePcm16Wav(wavOf([0, 0], rate: 48000))!;
+      expect(audio.sampleRate, 48000, reason: '写死 16000 的话，换个采样率就会把频率全部算错一倍');
+    });
+
+    test('时长由采样数与采样率算出来', () {
+      final audio = parsePcm16Wav(wavOf(List.filled(16000, 0)))!;
+      expect(audio.duration, const Duration(seconds: 1));
+    });
+
+    test('不是 WAV 的字节返回 null，不抛', () {
+      // 变异：把 `_hasAscii(view, 0, 'RIFF')` 那道判断删掉，本用例变红。
+      expect(parsePcm16Wav(Uint8List.fromList(List.filled(200, 7))), isNull);
+    });
+
+    test('太短的输入返回 null', () {
+      expect(parsePcm16Wav(Uint8List(10)), isNull);
+    });
+
+    test('头声明比实际长时按实际算——写到一半被杀的文件不该读出垃圾', () {
+      final full = wavOf(List.filled(100, 5));
+      final truncated = Uint8List.sublistView(full, 0, 44 + 40);
+      final audio = parsePcm16Wav(truncated)!;
+      expect(audio.samples, hasLength(20));
+    });
+
+    test('占位长度 0 的文件读成空，不读成垃圾', () {
+      // `WavWriter.open` 先写 `dataBytes: 0` 占位。中途被杀留下的就是这种文件，
+      // 它按设计是一个**合法的空 WAV**。
+      final audio = parsePcm16Wav(wavOf(const []))!;
+      expect(audio.isEmpty, isTrue);
+    });
+  });
 }
 
 /// 从 [bytes] 的 [offset] 读一个小端 uint32（测试用，故意不共用实现）。
