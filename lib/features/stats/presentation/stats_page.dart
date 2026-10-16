@@ -8,15 +8,16 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_basics.dart';
 import '../../../core/widgets/app_icons.dart';
-import '../../../core/widgets/glass_surface.dart';
+import '../../../core/widgets/hero_surface.dart';
 import '../../../core/widgets/ios_controls.dart';
+import '../../../core/widgets/quiet_surface.dart';
 import '../../sleep/data/sleep_repository.dart';
 import '../../sleep/domain/sleep_entry.dart';
 import '../../sleep/domain/sleep_statistics.dart';
 import '../../sleep/presentation/sheets/detail_sheet.dart';
 import '../../sleep/presentation/widgets/stage_style.dart';
 
-/// Statistics — duration trend, score and sound summary for a chosen window.
+/// 统计页——所选周期内的时长趋势、评分与声音汇总。
 class StatsPage extends ConsumerStatefulWidget {
   const StatsPage({super.key});
 
@@ -87,7 +88,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            '全部数据',
+                            '查看所有数据',
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
@@ -154,7 +155,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
   }
 }
 
-/// The daily-duration bar chart with the 7-hour target line.
+/// 每日时长柱状图与 7 小时目标线——这一页的 hero 卡（规格 §2.3「冷净」）。
 class _DurationChartCard extends StatelessWidget {
   const _DurationChartCard({
     required this.stats,
@@ -176,9 +177,37 @@ class _DurationChartCard extends StatelessWidget {
     final showDayLabels = stats.period.days <= 14;
     final barGap = stats.period.days > 14 ? 3.0 : 8.0;
 
-    return GlassSurface(
+    return HeroSurface(
       borderRadius: BorderRadius.circular(AppRadii.card),
       padding: const EdgeInsets.all(20),
+      // 规格 §2.3：描边 = `accent` 12% 混 `glassBorder`。
+      borderColor: colorMix(tokens.accent, 0.12, tokens.glassBorder),
+      // 底色 = 线性 180deg（`accentSoft` 30% → 45% 处透明）叠 `materialStrong`。
+      // `HeroSurface` 只接一个 `Gradient`，所以那两层先压平成一条渐变：顶端是叠完的
+      // 颜色，45% 处落到 `materialStrong` 本身（再往下由末色延伸），与两层叠出来等价。
+      gradient: LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          // `color-mix(accent-soft 30%, transparent)` 先按不透明度缩一遍 alpha，
+          // 再叠到实底上——两步不能合成一步（`colorMix` 的文档里写了为什么）。
+          Color.alphaBlend(
+            colorMix(tokens.accentSoft, 0.30, Colors.transparent),
+            tokens.materialStrong,
+          ),
+          tokens.materialStrong,
+        ],
+        stops: const [0.0, 0.45],
+      ),
+      // 规格给的是原型里的阴影字面量（`0 8px 26px rgba(36,53,91,.075)`）。
+      shadow: const [
+        BoxShadow(
+          color: Color(0x1324355B),
+          blurRadius: 26,
+          offset: Offset(0, 8),
+        ),
+      ],
+      // 这一张**不带角光晕**：规格 §2.3 只给了描边、底色、阴影三样。
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -501,7 +530,7 @@ class _Bar extends StatelessWidget {
   }
 }
 
-/// Average score for the window, with the prototype's disclaimer.
+/// 该周期的平均评分与原型那句免责声明——评分 hero 卡（规格 §2.4）。
 class _ScoreCard extends StatelessWidget {
   const _ScoreCard({required this.stats});
 
@@ -511,14 +540,44 @@ class _ScoreCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
     final average = stats.averageScore!;
+    final dark = tokens == AppTokens.dark;
 
-    return Container(
+    // 底：`accentSoft` 38% 混 `materialStrong`；深色那一套规格给的是字面量
+    // `rgba(32,32,38,.9)`（比 `materialStrong` 更实、更暗）。
+    final base = dark
+        ? const Color(0xE6202026)
+        : colorMix(tokens.accentSoft, 0.38, tokens.materialStrong);
+
+    return HeroSurface(
+      borderRadius: BorderRadius.circular(AppRadii.panel),
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: tokens.accentSoft,
-        borderRadius: BorderRadius.circular(AppRadii.panel),
-        border: Border.all(color: tokens.accent.withValues(alpha: 0.19)),
+      // 描边 = `accentViolet` 18% 混 `glassBorder`。
+      borderColor: colorMix(tokens.accentViolet, 0.18, tokens.glassBorder),
+      // 底色 = 径向 `circle at 90% 8%`（`accentViolet` 18% → 42% 处透明）叠在上面那个底上。
+      // 两层同样先压平成一条渐变。`radius` 是**短板长的几分之几**，而原型的 `circle`
+      // 默认按 farthest-corner 铺开：这一张约 358×204，角到角 ≈ 372，按短板折回来就是 1.8。
+      gradient: RadialGradient(
+        center: const Alignment(0.8, -0.84), // 90% / 8%
+        radius: 1.8,
+        colors: [
+          Color.alphaBlend(
+            dark
+                ? const Color(0x2E7869DC)
+                : tokens.accentViolet.withValues(alpha: 0.18),
+            base,
+          ),
+          base,
+        ],
+        stops: const [0.0, 0.42],
       ),
+      // `0 8px 24px rgba(69,70,153,.08)`——原型里给死的字面量。
+      shadow: const [
+        BoxShadow(
+          color: Color(0x14454699),
+          blurRadius: 24,
+          offset: Offset(0, 8),
+        ),
+      ],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -590,22 +649,28 @@ class _SummaryGrid extends StatelessWidget {
       (
         '平均时长',
         '${stats.averageHours!.toStringAsFixed(1)}h',
-        AppIcons.moon(size: 20, color: tokens.textMuted, strokeWidth: 1.5)
+        AppIcons.moon(size: 20, color: tokens.textMuted, strokeWidth: 1.5),
+        null,
       ),
       (
         '充足天数',
         '${stats.goodNights}/${stats.count}天',
-        AppIcons.check(size: 20, color: tokens.textMuted, strokeWidth: 1.5)
+        AppIcons.check(size: 20, color: tokens.textMuted, strokeWidth: 1.5),
+        // 「达标」是本轮新加的那个语义色唯一的用途（规格 §3.2）。四张卡里
+        // 只有这一张是判断，另外三张是描述——平均时长与两个夜数没有好坏可言。
+        tokens.good,
       ),
       (
         '打鼾夜数',
         '${stats.snoreNights}次',
-        AppIcons.snore(size: 20, color: tokens.textMuted, strokeWidth: 1.5)
+        AppIcons.snore(size: 20, color: tokens.textMuted, strokeWidth: 1.5),
+        null,
       ),
       (
         '梦话夜数',
         '${stats.talkNights}次',
-        AppIcons.bubble(size: 20, color: tokens.textMuted, strokeWidth: 1.5)
+        AppIcons.bubble(size: 20, color: tokens.textMuted, strokeWidth: 1.5),
+        null,
       ),
     ];
 
@@ -634,12 +699,14 @@ class _SummaryGrid extends StatelessWidget {
 class _SummaryCard extends StatelessWidget {
   const _SummaryCard({required this.data});
 
-  final (String, String, Widget) data;
+  /// 标签 / 数值 / 图标 / 数值的颜色（`null` 表示用 `textPrimary`）。
+  final (String, String, Widget, Color?) data;
 
   @override
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
-    return GlassSurface(
+    // 原型把这一族划给「安静实体」（`.stats-metric-card`）：功能卡不参与氛围。
+    return QuietSurface(
       borderRadius: BorderRadius.circular(AppRadii.panel),
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -654,6 +721,7 @@ class _SummaryCard extends StatelessWidget {
               size: 24,
               weight: FontWeight.w700,
               letterSpacing: -0.48,
+              color: data.$4 ?? tokens.textPrimary,
             ),
           ),
           const SizedBox(height: 2),
@@ -665,7 +733,7 @@ class _SummaryCard extends StatelessWidget {
   }
 }
 
-/// Sleep-talk transcripts collected across the window.
+/// 该周期内收拢到的梦话转录。
 class _TranscriptCard extends StatelessWidget {
   const _TranscriptCard({required this.stats});
 
@@ -676,7 +744,8 @@ class _TranscriptCard extends StatelessWidget {
     final tokens = AppTokens.of(context);
     final count = stats.transcripts.length;
 
-    return GlassSurface(
+    // 与四项汇总卡同一条：功能卡用安静实体面。
+    return QuietSurface(
       borderRadius: BorderRadius.circular(AppRadii.panel),
       padding: const EdgeInsets.all(16),
       child: Column(

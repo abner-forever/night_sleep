@@ -50,6 +50,7 @@ class AppearanceSettingsPage extends ConsumerWidget {
       children: [
         const SectionHeader('显示模式'),
         IosListGroup(
+          quiet: true,
           children: [
             IosListItem(
               // 这一行本身不可点：真正能点的是右侧那枚下拉触发器。

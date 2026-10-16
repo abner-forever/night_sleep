@@ -18,11 +18,13 @@ import 'package:night_sleep/core/widgets/app_basics.dart';
 import 'package:night_sleep/core/widgets/app_icons.dart';
 import 'package:night_sleep/core/widgets/app_menu_field.dart';
 import 'package:night_sleep/core/widgets/glass_surface.dart';
+import 'package:night_sleep/core/widgets/hero_surface.dart';
 import 'package:night_sleep/core/widgets/ios_controls.dart';
 import 'package:night_sleep/core/widgets/top_fade.dart';
 import 'package:night_sleep/features/home/presentation/home_page.dart';
 import 'package:night_sleep/features/compass/presentation/compass_page.dart';
 import 'package:night_sleep/features/log/presentation/log_page.dart';
+import 'package:night_sleep/features/sleep/presentation/widgets/quality_rating.dart';
 import 'package:night_sleep/features/settings/presentation/appearance_settings_page.dart';
 import 'package:night_sleep/features/settings/presentation/demo_data_page.dart';
 import 'package:night_sleep/features/settings/presentation/export_page.dart';
@@ -95,6 +97,21 @@ void main() {
 
   setUp(() => database = AppDatabase(NativeDatabase.memory()));
   tearDown(() => database.close());
+
+  // 声明「系统开了减弱动态效果」。首页 hero 的月晕是**永远在跑**的呼吸动画
+  // （规格 §3.4），只要它挂着，`pumpAndSettle` 就永不收敛——凡是挂真外壳、库里
+  // 有记录的用例都会踩到。`_BreathingGlow` 读到这个标志会**不启动**（而不是跑一个
+  // 零幅度的动画），于是 settle 得下来。放在 `setUp` 里，本文件每个 harness
+  // （含各个用例自己手搓的）都覆盖到，不必逐处重复。
+  setUp(() {
+    TestWidgetsFlutterBinding
+            .instance.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+  });
+  tearDown(() {
+    TestWidgetsFlutterBinding.instance.platformDispatcher
+        .clearAccessibilityFeaturesTestValue();
+  });
 
   // 版本号由 `package_info_plus` 提供，而测试环境没有那条平台通道——静态缓存
   // 空着时 `PackageInfo.fromPlatform()` 的 future 永不完成。这里直接填上缓存，
@@ -449,11 +466,14 @@ void main() {
       expect(find.text('✓ 睡眠充足'), findsOneWidget);
     });
 
-    testWidgets('未选星级保存时，记录没有评分', (tester) async {
+    testWidgets('未选质量保存时，记录没有评分', (tester) async {
       await pumpLogPushed(tester);
 
-      // 表单初始无选中：没碰星级就保存，记录**没有**评分。
-      expect(find.text('未评分'), findsOneWidget, reason: '表单初始就该显示「未评分」');
+      // 表单初始无选中：没碰质量就保存，记录**没有**评分。
+      // v3.34 起未选时不摆占位符（规格 §3.3），所以这里断的是控件自身的值。
+      final choice = tester.widget<QualityChoice>(find.byType(QualityChoice));
+      expect(choice.value, isNull, reason: '表单初始一个药丸都不该选中');
+      expect(find.text('未评分'), findsNothing, reason: '不摆占位符');
 
       await tester.tap(find.text('保存记录'));
       await tester.pumpAndSettle();
@@ -475,12 +495,12 @@ void main() {
       expect(saved.single.hasSoundEvents, isFalse);
     });
 
-    testWidgets('点第 4 颗星再保存，质量是「良好」并按它估算', (tester) async {
+    testWidgets('点第 4 档再保存，质量是「清醒」并按它估算', (tester) async {
       // `ensureSemantics` 必须在用例体内释放：绑定会在 tearDown 里检查。
       final semantics = tester.ensureSemantics();
       await pumpLogPushed(tester);
 
-      await tester.tap(find.bySemanticsLabel('睡眠质量 良好'));
+      await tester.tap(find.bySemanticsLabel('睡眠质量 清醒'));
       await tester.pump();
 
       await tester.tap(find.text('保存记录'));
@@ -613,13 +633,13 @@ void main() {
 
     testWidgets('空库时右上角没有「全部数据」入口', (tester) async {
       await pumpPage(tester, const StatsPage());
-      expect(find.text('全部数据'), findsNothing,
+      expect(find.text('查看所有数据'), findsNothing,
           reason: '一条记录都没有时它通向一个只能显示空状态的地方');
     });
 
     testWidgets('有记录时右上角有「全部数据」入口', (tester) async {
       await pumpPage(tester, const StatsPage(), entries: await demoEntries());
-      expect(find.text('全部数据'), findsOneWidget);
+      expect(find.text('查看所有数据'), findsOneWidget);
     });
 
     testWidgets('右上角入口进全部睡眠数据页，返回后仍在统计页', (tester) async {
@@ -646,7 +666,7 @@ void main() {
       router.go('/');
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('全部数据'));
+      await tester.tap(find.text('查看所有数据'));
       await tester.pumpAndSettle();
 
       expect(find.byType(AllSleepDataPage), findsOneWidget);
@@ -1012,12 +1032,14 @@ void main() {
     testWidgets('睡眠目标数值在卡片内水平居中', (tester) async {
       await pumpRoute(tester, const SleepSettingsPage());
 
-      // `GlassSurface` 把子项画在 `Stack` 里，非 position 子项拿到的是宽松约束；
+      // `HeroSurface` 把子项画在 `Stack` 里，非 position 子项拿到的是宽松约束；
       // `Column` 会在那种约束下缩到最宽子项的宽度并被左锚定，
       // `crossAxisAlignment: center` 只在那一段宽度内居中，整块看着就是偏左。
+      // v3.34 起这张卡从 `GlassSurface` 换成了 `HeroSurface`（偏差 #70 一族），
+      // 约束形态没变，所以这条断言要守的那个 bug 仍然成立。
       final card = find.ancestor(
         of: find.text('5 小时'),
-        matching: find.byType(GlassSurface),
+        matching: find.byType(HeroSurface),
       );
       expect(card, findsWidgets, reason: '找不到睡眠目标卡片');
 

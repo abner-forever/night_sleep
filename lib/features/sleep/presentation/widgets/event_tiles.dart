@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/platform/haptics.dart';
 import '../../../../core/theme/app_tokens.dart';
 import '../../../../core/widgets/app_icons.dart';
-import '../../../../core/widgets/glass_surface.dart';
+import '../../../../core/widgets/quiet_surface.dart';
 import '../../domain/sleep_score.dart';
 
 /// 单个睡眠事件格子（打鼾 / 说梦话 / 辗转难眠 / 噩梦）。
@@ -34,13 +34,17 @@ class EventTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
 
-    return GlassSurface(
+    // 四宫格是**安静实体面**（原型 `.review-event-option`），不是玻璃。
+    // 选中态照原型：`color-mix(事件色 11%, bgCard)` 当底色 + 1.5px 事件色 38%
+    // 描边；未选中交给安静面自己的底与 1px `glassBorder`。
+    return QuietSurface(
       borderRadius: BorderRadius.circular(AppRadii.panel),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       tint: selected
           ? Color.alphaBlend(color.withValues(alpha: 0.11), tokens.bgCard)
           : null,
       borderColor: selected ? color.withValues(alpha: 0.38) : null,
+      borderWidth: selected ? 1.5 : 1,
       onTap: () {
         AppHaptics.select();
         onTap();

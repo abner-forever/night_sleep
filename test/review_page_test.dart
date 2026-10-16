@@ -166,13 +166,25 @@ void main() {
     expect(find.text('8月1日'), findsNothing, reason: '演示记录不该出现在选择器里');
   });
 
-  testWidgets('未评分的记录，星级一颗都不选中', (tester) async {
+  testWidgets('未评分的记录，药丸一个都不选中', (tester) async {
     await pumpReview(tester,
         entries: [realEntry(date: '2026-08-30', quality: null)]);
 
-    final stars = tester.widget<QualityStars>(find.byType(QualityStars));
-    expect(stars.value, isNull);
-    expect(find.text('未评分'), findsOneWidget);
+    final choice = tester.widget<QualityChoice>(find.byType(QualityChoice));
+    expect(choice.value, isNull);
+    // v3.34 起未选时**不摆占位符、也不显示任何一句即时反馈**——原来那个
+    // 「未评分」的占位符随五星一起删掉了（规格 §3.3）。默认高亮某一档
+    // 等于应用替用户打了一个分，那是偏差 #26 的红线。
+    expect(find.text('未评分'), findsNothing);
+    for (final feedback in const [
+      '今晚早点休息',
+      '要留意一下节律',
+      '还算平稳',
+      '状态不错',
+      '休息得很好',
+    ]) {
+      expect(find.text(feedback), findsNothing, reason: '未选时不该有反馈句');
+    }
   });
 
   testWidgets('保存写回同一条 id，不新增副本', (tester) async {
@@ -244,7 +256,7 @@ void main() {
         ],
       );
 
-      await tester.tap(find.bySemanticsLabel('睡眠质量 极好'));
+      await tester.tap(find.bySemanticsLabel('睡眠质量 精力充沛'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('保存补充'));
       await tester.pumpAndSettle();

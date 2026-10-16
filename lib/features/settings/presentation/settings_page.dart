@@ -121,6 +121,7 @@ class SettingsPage extends ConsumerWidget {
         // ── 常用 ────────────────────────────────────────────────────────────
         const SectionHeader('常用'),
         IosListGroup(
+          quiet: true,
           children: [
             _NavRow(
               background: tokens.accentSoft,
@@ -155,6 +156,7 @@ class SettingsPage extends ConsumerWidget {
         // ── 数据与智能 ──────────────────────────────────────────────────────
         const SectionHeader('数据与智能'),
         IosListGroup(
+          quiet: true,
           children: [
             _NavRow(
               background: tokens.accentSoft,
@@ -179,6 +181,7 @@ class SettingsPage extends ConsumerWidget {
         // ── 数据与隐私 ──────────────────────────────────────────────────────
         const SectionHeader('数据与隐私'),
         IosListGroup(
+          quiet: true,
           children: [
             _NavRow(
               background: tokens.accentSoft,
@@ -234,6 +237,7 @@ class SettingsPage extends ConsumerWidget {
         // ── 关于 ────────────────────────────────────────────────────────────
         const SectionHeader('关于'),
         IosListGroup(
+          quiet: true,
           children: [
             IosListItem(
               haptic: false,

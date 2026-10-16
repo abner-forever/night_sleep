@@ -61,6 +61,19 @@ void main() {
 
   tearDown(() => database.close());
 
+  // 声明「系统开了减弱动态效果」。首页 hero 的月晕是**永远在跑**的呼吸动画
+  // （规格 §3.4），只要有它挂着，`pumpAndSettle` 就永不收敛——凡是把首页建出来的
+  // 用例都会踩到。放在 `setUp` 里，本文件每个 harness 都覆盖到。
+  setUp(() {
+    TestWidgetsFlutterBinding
+            .instance.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+  });
+  tearDown(() {
+    TestWidgetsFlutterBinding.instance.platformDispatcher
+        .clearAccessibilityFeaturesTestValue();
+  });
+
   // Anchored from local wall-clock so the assertions below read the same in any
   // machine time zone: the form shows `bedtimeLocal.toUtc().toLocal()`.
   final bedtime = DateTime(2026, 9, 26, 23, 30).toUtc();
@@ -185,7 +198,7 @@ void main() {
       final entry = await seedManual();
       await pump(tester, home(), entries: [entry]);
 
-      await tester.tap(find.byType(RecordCard).first);
+      await tester.tap(find.byType(HomeRecordRow).first);
       await tester.pumpAndSettle();
 
       expect(find.text('睡眠详情'), findsOneWidget);
@@ -197,7 +210,7 @@ void main() {
       final entry = await seedManual();
       await pump(tester, home(), entries: [entry]);
 
-      await tester.tap(find.byType(RecordCard).first);
+      await tester.tap(find.byType(HomeRecordRow).first);
       await tester.pumpAndSettle();
 
       final deleteAction = find.ancestor(
@@ -228,7 +241,7 @@ void main() {
       final entries = await repository.loadAll();
       await pump(tester, home(), entries: entries);
 
-      await tester.tap(find.byType(RecordCard).first);
+      await tester.tap(find.byType(HomeRecordRow).first);
       await tester.pumpAndSettle();
 
       expect(find.text('编辑记录'), findsNothing);
@@ -270,7 +283,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byType(RecordCard).first);
+      await tester.tap(find.byType(HomeRecordRow).first);
       await tester.pumpAndSettle();
       await tester.tap(find.text('编辑记录'));
       await tester.pumpAndSettle();
@@ -316,7 +329,7 @@ void main() {
       expect(find.text('23:30'), findsOneWidget, reason: '入睡时间应预填');
       expect(find.text('07:00'), findsOneWidget, reason: '起床时间应预填');
       expect(find.text('2026-09-27'), findsOneWidget, reason: '日期按醒来日预填');
-      expect(find.text('极好'), findsOneWidget, reason: '主观质量应预填');
+      expect(find.text('精力充沛'), findsOneWidget, reason: '主观质量应预填');
       expect(find.text('昨晚做梦了'), findsOneWidget, reason: '备注应预填');
 
       // The edit form is pushed over the shell and therefore inherits none of
@@ -404,7 +417,7 @@ void main() {
       final entry = await seedManual();
       await pump(tester, home(), entries: [entry]);
 
-      await tester.tap(find.byType(RecordCard).first);
+      await tester.tap(find.byType(HomeRecordRow).first);
       await tester.pumpAndSettle();
       await tester.tap(find.text('删除记录'));
       await tester.pumpAndSettle();
@@ -420,7 +433,7 @@ void main() {
       final entry = await seedManual();
       await pump(tester, home(), entries: [entry]);
 
-      await tester.tap(find.byType(RecordCard).first);
+      await tester.tap(find.byType(HomeRecordRow).first);
       await tester.pumpAndSettle();
       await tester.tap(find.text('删除记录'));
       await tester.pumpAndSettle();
@@ -459,7 +472,7 @@ void main() {
 
       final files = _RecordingClipStore();
       await pump(tester, home(), entries: [entry], files: files);
-      await tester.tap(find.byType(RecordCard).first);
+      await tester.tap(find.byType(HomeRecordRow).first);
       await tester.pumpAndSettle();
       await tester.tap(find.text('删除记录'));
       await tester.pumpAndSettle();

@@ -10,8 +10,8 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_basics.dart';
 import '../../../core/widgets/app_icons.dart';
-import '../../../core/widgets/glass_surface.dart';
 import '../../../core/widgets/ios_controls.dart';
+import '../../../core/widgets/quiet_surface.dart';
 import '../../../core/widgets/subpage.dart';
 import '../../../core/widgets/wheel_picker.dart';
 import '../../sleep/data/sleep_repository.dart';
@@ -23,6 +23,7 @@ import '../../sleep/presentation/widgets/event_tiles.dart';
 import '../../sleep/presentation/widgets/moon_arc.dart';
 import '../../sleep/presentation/widgets/quality_rating.dart';
 import '../../sleep/presentation/widgets/stage_style.dart';
+import 'review_duration_hero.dart';
 
 /// 手动补录 / 编辑记录表单。
 ///
@@ -179,9 +180,8 @@ class _LogPageState extends ConsumerState<LogPage> {
 
     final items = <Widget>[
       // ── Live duration preview ──────────────────────────────────────────
-      GlassSurface(
-        borderRadius: BorderRadius.circular(AppRadii.card),
-        padding: const EdgeInsets.all(20),
+      // 这一页的 hero（晨光，§2.2）：与回顾 Tab 那张记录头是同一张卡，内容不同。
+      ReviewDurationHero(
         child: Row(
           children: [
             MoonArc(durationHours: hours, size: 112),
@@ -251,7 +251,9 @@ class _LogPageState extends ConsumerState<LogPage> {
 
       // ── Time fields ────────────────────────────────────────────────────
       const SectionHeader('时间'),
+      // 三行是表单控件，不是浮在氛围上的面：走安静实体（`QuietSurface`）。
       IosListGroup(
+        quiet: true,
         children: [
           _FieldRow(label: '日期', value: _date, onTap: _pickDate),
           _FieldRow(
@@ -268,29 +270,13 @@ class _LogPageState extends ConsumerState<LogPage> {
 
       // ── Quality ────────────────────────────────────────────────────────
       const SectionHeader('睡眠质量'),
-      GlassSurface(
+      QuietSurface(
         borderRadius: BorderRadius.circular(AppRadii.panel),
         padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            QualityStars(
-              value: _quality,
-              onChanged: (quality) => setState(() => _quality = quality),
-            ),
-            // 星级行与标签之间留 12px：原来是星级行尾部 10px 间隔加 2px，
-            // 提成共享组件后尾部间隔归组件自己管，这里补回同一个观感。
-            const SizedBox(width: 12),
-            Flexible(
-              child: Text(
-                _quality?.label ?? '未评分',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: qualityColor(tokens, _quality),
-                ),
-              ),
-            ),
-          ],
+        // 未选时 `_quality` 是 `null`：五个药丸一个都不亮，行尾的反馈句也不出现。
+        child: QualityChoice(
+          value: _quality,
+          onChanged: (quality) => setState(() => _quality = quality),
         ),
       ),
       const SizedBox(height: 18),
@@ -305,7 +291,7 @@ class _LogPageState extends ConsumerState<LogPage> {
 
       // ── Notes ──────────────────────────────────────────────────────────
       const SectionHeader('备注'),
-      GlassSurface(
+      QuietSurface(
         borderRadius: BorderRadius.circular(AppRadii.panel),
         child: TextField(
           controller: _notesController,

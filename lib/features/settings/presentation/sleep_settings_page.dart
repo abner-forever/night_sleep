@@ -15,7 +15,7 @@ import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_basics.dart';
 import '../../../core/widgets/app_icons.dart';
 import '../../../core/widgets/confirm_dialog.dart';
-import '../../../core/widgets/glass_surface.dart';
+import '../../../core/widgets/hero_surface.dart';
 import '../../../core/widgets/ios_controls.dart';
 import '../../../core/widgets/subpage.dart';
 import '../../../core/widgets/wheel_picker.dart';
@@ -262,9 +262,38 @@ class SleepSettingsPage extends ConsumerWidget {
       children: [
         // ── 每晚睡眠目标 ─────────────────────────────────────────────────────
         const SectionHeader('每晚睡眠目标'),
-        GlassSurface(
+        // 这一页的 hero 卡（规格 §2.5）：描边 = `accent` 15% 混 `glassBorder`；
+        // 底色 = 径向 `circle at 50% 0%`（`accent` 13% → 44% 处透明）叠 `materialStrong`；
+        // 阴影 `0 8px 26px rgba(36,53,91,.07)`；半径 16。
+        HeroSurface(
           borderRadius: BorderRadius.circular(AppRadii.panel),
           padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+          borderColor: Color.alphaBlend(
+            tokens.accent.withValues(alpha: 0.15),
+            tokens.glassBorder,
+          ),
+          // 两层叠色压平成一条渐变：由顶端那个叠完的颜色落到 44% 处的 `materialStrong`。
+          // `radius` 是短板长的几分之几，而原型的 `circle` 默认按 farthest-corner 铺开：
+          // 这一张约 358×330，角到角 ≈ 374，按短板折回来就是 1.15。
+          gradient: RadialGradient(
+            center: Alignment.topCenter, // 50% / 0%
+            radius: 1.15,
+            colors: [
+              Color.alphaBlend(
+                tokens.accent.withValues(alpha: 0.13),
+                tokens.materialStrong,
+              ),
+              tokens.materialStrong,
+            ],
+            stops: const [0.0, 0.44],
+          ),
+          shadow: const [
+            BoxShadow(
+              color: Color(0x1224355B),
+              blurRadius: 26,
+              offset: Offset(0, 8),
+            ),
+          ],
           child: Column(
             children: [
               SizedBox(
@@ -359,6 +388,7 @@ class SleepSettingsPage extends ConsumerWidget {
         // ── 提醒 ────────────────────────────────────────────────────────────
         const SectionHeader('提醒'),
         IosListGroup(
+          quiet: true,
           children: [
             IosListItem(
               child: Row(
@@ -497,6 +527,7 @@ class SleepSettingsPage extends ConsumerWidget {
         if (permission == ReminderPermission.denied) ...[
           const SizedBox(height: 10),
           IosListGroup(
+            quiet: true,
             onTap: () =>
                 ref.read(reminderSchedulerProvider).openSystemSettings(),
             semanticLabel: '去系统设置开启通知权限',
@@ -533,6 +564,7 @@ class SleepSettingsPage extends ConsumerWidget {
         // ── 声音检测 ────────────────────────────────────────────────────────
         const SectionHeader('声音检测'),
         IosListGroup(
+          quiet: true,
           children: [
             IosListItem(
               child: Row(
@@ -651,6 +683,7 @@ class SleepSettingsPage extends ConsumerWidget {
         if (micDenied) ...[
           const SizedBox(height: 10),
           IosListGroup(
+            quiet: true,
             onTap: () => ref.read(appSettingsLauncherProvider).open(),
             semanticLabel: '去系统设置开启麦克风权限',
             children: [

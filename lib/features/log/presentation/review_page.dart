@@ -9,7 +9,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_basics.dart';
 import '../../../core/widgets/app_icons.dart';
-import '../../../core/widgets/glass_surface.dart';
+import '../../../core/widgets/quiet_surface.dart';
 import '../../sleep/data/sleep_repository.dart';
 import '../../sleep/domain/sleep_entry.dart';
 import '../../sleep/domain/sleep_math.dart';
@@ -17,7 +17,7 @@ import '../../sleep/domain/sleep_quality.dart';
 import '../../sleep/domain/sleep_score.dart';
 import '../../sleep/presentation/widgets/event_tiles.dart';
 import '../../sleep/presentation/widgets/quality_rating.dart';
-import '../../sleep/presentation/widgets/stage_style.dart';
+import 'review_duration_hero.dart';
 import 'review_night_picker.dart';
 
 /// 回顾 Tab：给**已经存在**的一晚补上主观感受。
@@ -114,7 +114,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
         ),
       );
       const SizedBox(height: 18);
-      // 用 id 作 key：换到另一晚时重建表单，星级、事件、备注都从新记录重新预填。
+      // 用 id 作 key：换到另一晚时重建表单，质量、事件、备注都从新记录重新预填。
       children.add(_ReviewForm(key: ValueKey(selected.id), entry: selected));
     }
 
@@ -131,6 +131,9 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
 }
 
 /// 记录头：日期、起止、时长与来源。点它打开换一晚的选择器。
+///
+/// 这一页有且只有这一张 hero（晨光，§2.2），所以它直接住进
+/// [ReviewDurationHero]：手动补录页那张时长预览卡与它是同一张卡的两个内容。
 class _NightHeader extends StatelessWidget {
   const _NightHeader({required this.entry, required this.onTap});
 
@@ -150,8 +153,7 @@ class _NightHeader extends StatelessWidget {
     final hours = entry.durationHours.floor();
     final minutes = ((entry.durationHours - hours) * 60).round();
 
-    return GlassSurface(
-      borderRadius: BorderRadius.circular(AppRadii.card),
+    return ReviewDurationHero(
       padding: const EdgeInsets.all(16),
       onTap: onTap,
       semanticLabel: '换一晚回顾',
@@ -254,7 +256,7 @@ class _ReviewFormState extends ConsumerState<_ReviewForm> {
   void initState() {
     super.initState();
     final entry = widget.entry;
-    // 未评分的记录，`_quality` 保持 `null`——星级一颗都不选中，绝不默认某一档。
+    // 未评分的记录，`_quality` 保持 `null`——五个药丸一个都不高亮，绝不默认某一档。
     _quality = entry.quality;
     _events = entry.loggedEvents;
     _notesController = TextEditingController(text: entry.notes);
@@ -303,27 +305,14 @@ class _ReviewFormState extends ConsumerState<_ReviewForm> {
       children: [
         // ── Quality ────────────────────────────────────────────────────────
         const SectionHeader('睡眠质量'),
-        GlassSurface(
+        QuietSurface(
           borderRadius: BorderRadius.circular(AppRadii.panel),
           padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              QualityStars(
-                value: _quality,
-                onChanged: (quality) => setState(() => _quality = quality),
-              ),
-              const SizedBox(width: 12),
-              Flexible(
-                child: Text(
-                  _quality?.label ?? '未评分',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: qualityColor(tokens, _quality),
-                  ),
-                ),
-              ),
-            ],
+          // 还没有评分时 `_quality` 是 `null`：五个药丸一个都不亮，行尾既不写
+          // 「未评分」也不写别的占位（`QualityChoice` 自己管这一条）。
+          child: QualityChoice(
+            value: _quality,
+            onChanged: (quality) => setState(() => _quality = quality),
           ),
         ),
         const SizedBox(height: 18),
@@ -338,7 +327,7 @@ class _ReviewFormState extends ConsumerState<_ReviewForm> {
 
         // ── Notes ──────────────────────────────────────────────────────────
         const SectionHeader('备注'),
-        GlassSurface(
+        QuietSurface(
           borderRadius: BorderRadius.circular(AppRadii.panel),
           child: TextField(
             controller: _notesController,

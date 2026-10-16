@@ -34,6 +34,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
     required this.danger,
     required this.warn,
     required this.caution,
+    required this.good,
     required this.stageDeep,
     required this.stageLight,
     required this.stageRem,
@@ -79,6 +80,14 @@ class AppTokens extends ThemeExtension<AppTokens> {
   final Color warn;
   final Color caution;
 
+  /// 正向判断（达标 / 恢复良好）用的薄荷绿。
+  ///
+  /// 原型末层只在结论条那个圆点上硬编码了 `#86d8c6`（`.sleep-insight-mark`），
+  /// 那是画在**深色 hero 卡**上的值——浅底上它对比度不够，所以浅色另取 `#2e9e83`。
+  /// 只落在「达标 / 恢复良好」这一类判断上；**不要拿它去换 `durationBandColor`**
+  /// ——那会把三页的柱子与时长数字整片重新染色，那不是这一条要的事。
+  final Color good;
+
   // ── Sleep stages ───────────────────────────────────────────────────────────
   final Color stageDeep;
   final Color stageLight;
@@ -115,6 +124,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
     danger: Color(0xFFE5484D),
     warn: Color(0xFFE08A3C),
     caution: Color(0xFFC8A93A),
+    good: Color(0xFF2E9E83),
     stageDeep: Color(0xFF5856D6),
     stageLight: Color(0xFF5AC8FA),
     stageRem: Color(0xFFAF52DE),
@@ -158,6 +168,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
     danger: Color(0xFFFF6B6F),
     warn: Color(0xFFF0A35C),
     caution: Color(0xFFDCC55A),
+    good: Color(0xFF86D8C6),
     stageDeep: Color(0xFF5E5CE6),
     stageLight: Color(0xFF64D2FF),
     stageRem: Color(0xFFBF5AF2),
@@ -190,6 +201,24 @@ class AppTokens extends ThemeExtension<AppTokens> {
               color: Color(0x1A202F56), blurRadius: 28, offset: Offset(0, 10))
         ];
 
+  /// 安静实体面的填充（`.quiet-surface` / `.home-utility-card` / `.stats-metric-card` …）。
+  ///
+  /// 浅色就是 `--ios-material-strong`；深色被原型 `.theme-dark.ios-app` 那一段
+  /// 改写成不透明的 `rgba(28,28,30,.84)`——比 `materialStrong` 更实、更暗。
+  Color get quietFill =>
+      this == dark ? const Color(0xD61C1C1E) : materialStrong;
+
+  /// 安静实体面的阴影。比玻璃那层浅得多：它的存在理由就是**不参与氛围**。
+  List<BoxShadow> get quietShadow => this == dark
+      ? const [
+          BoxShadow(
+              color: Color(0x29000000), blurRadius: 24, offset: Offset(0, 8))
+        ]
+      : const [
+          BoxShadow(
+              color: Color(0x0E24355B), blurRadius: 18, offset: Offset(0, 5))
+        ];
+
   @override
   AppTokens copyWith() => this;
 
@@ -198,6 +227,32 @@ class AppTokens extends ThemeExtension<AppTokens> {
     if (other is! AppTokens) return this;
     return t < 0.5 ? this : other;
   }
+}
+
+/// CSS `color-mix(in srgb, a pA%, b)` 的等价物（`b` 的占比是 `1 - pA`）。
+///
+/// **不要用 `Color.alphaBlend` 顶替。** 两者只有在 `a` **完全不透明**时才相等：
+/// `alphaBlend` 的语义是「把 a 盖在 b 上」，于是 b 的权重变成 `1 - pA·aA`；
+/// 而 `color-mix` 是**按各自不透明度加权求平均**，b 的权重就是 `1 - pA`。
+///
+/// 原型大量使用 `--accent-soft`，而它恰恰**不是**不透明的（浅色 α=.12、深色 α=.20）。
+/// 照 `alphaBlend` 写出来，混进去的蓝会比设计浓约 8 倍——2026-10-16 在真机上
+/// 一眼看出来的「全部数据页 hero 太蓝」就是这一处。
+///
+/// `color-mix(in srgb, X p%, transparent)` 用 `colorMix(X, p, Colors.transparent)` 表达；
+/// 把结果再叠到某个实底上时，才轮到 `Color.alphaBlend`。
+Color colorMix(Color a, double percentA, Color b) {
+  final p = percentA.clamp(0.0, 1.0);
+  final q = 1 - p;
+  final alpha = p * a.a + q * b.a;
+  if (alpha <= 0) return const Color(0x00000000);
+  double channel(double ca, double cb) => (p * a.a * ca + q * b.a * cb) / alpha;
+  return Color.from(
+    alpha: alpha,
+    red: channel(a.r, b.r),
+    green: channel(a.g, b.g),
+    blue: channel(a.b, b.b),
+  );
 }
 
 /// Radii, spacing and motion transcribed from the prototype's utility classes.

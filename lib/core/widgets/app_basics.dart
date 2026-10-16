@@ -155,64 +155,74 @@ class EmptyState extends StatelessWidget {
     return GlassSurface(
       borderRadius: BorderRadius.circular(AppRadii.card),
       padding: const EdgeInsets.fromLTRB(24, 44, 24, 44),
-      child: Column(
-        children: [
-          Container(
-            width: 68,
-            height: 68,
-            margin: const EdgeInsets.only(bottom: 12),
-            decoration: BoxDecoration(
-              color: tokens.accentSoft,
-              shape: BoxShape.circle,
+      // **`SizedBox(width: double.infinity)` 是必须的。** `GlassSurface` 把子项画在
+      // `Stack` 里，而非定位子项拿到的是**宽松**约束——`Column` 于是在那种约束下缩到
+      // 最宽子项的宽度（这里就是标题那一行的宽度）并被左锚定，`crossAxisAlignment`
+      // 的中心只在那一小段里生效，整块看着就是「贴着左边、没居中」。
+      // `GlassSurface.expandWidth` 撑的是**卡**，不是卡里的内容，两者不是一件事。
+      // 2026-10-16 使用方在真机上看出「兜底组件没居中」就是这一处；它影响的是
+      // 全应用每个空状态（首页 / 统计 / 全部数据页 / 导出预览 / 详情弹层都在用）。
+      child: SizedBox(
+        width: double.infinity,
+        child: Column(
+          children: [
+            Container(
+              width: 68,
+              height: 68,
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: tokens.accentSoft,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: icon,
             ),
-            alignment: Alignment.center,
-            child: icon,
-          ),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
-              color: tokens.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 6),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 320),
-            child: Text(
-              body,
+            Text(
+              title,
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 14,
-                height: 1.5,
-                color: tokens.textMuted,
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: tokens.textPrimary,
               ),
             ),
-          ),
-          if (actionLabel != null && onAction != null) ...[
-            const SizedBox(height: 16),
-            Pressable(
-              onTap: onAction,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                decoration: BoxDecoration(
-                  color: tokens.accent,
-                  borderRadius: BorderRadius.circular(16),
+            const SizedBox(height: 6),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 320),
+              child: Text(
+                body,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  height: 1.5,
+                  color: tokens.textMuted,
                 ),
-                child: Text(
-                  actionLabel!,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
+              ),
+            ),
+            if (actionLabel != null && onAction != null) ...[
+              const SizedBox(height: 16),
+              Pressable(
+                onTap: onAction,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: tokens.accent,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Text(
+                    actionLabel!,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ),
-            ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

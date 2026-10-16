@@ -4,6 +4,7 @@ import '../platform/haptics.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_tokens.dart';
 import 'glass_surface.dart';
+import 'quiet_surface.dart';
 
 /// `ios-toggle` — a 52×32 track with a 26px thumb that travels 20px.
 ///
@@ -264,6 +265,7 @@ class IosListGroup extends StatelessWidget {
     this.footer,
     this.onTap,
     this.semanticLabel,
+    this.quiet = false,
   });
 
   final List<Widget> children;
@@ -273,6 +275,13 @@ class IosListGroup extends StatelessWidget {
   final Widget? footer;
   final VoidCallback? onTap;
   final String? semanticLabel;
+
+  /// 用**安静实体面**装这一组，而不是玻璃。
+  ///
+  /// 原型末层把 `.settings-surface` 这一族划给了「安静实体」——表单与列表容器
+  /// 不参与氛围（见规格 §一）。默认仍是玻璃：容器形态本身没变，是**哪一页**用它
+  /// 在变，所以由调用方点名，别的页面一个字节不受影响。
+  final bool quiet;
 
   @override
   Widget build(BuildContext context) {
@@ -303,12 +312,21 @@ class IosListGroup extends StatelessWidget {
       ],
     );
 
-    return GlassSurface(
-      borderRadius: BorderRadius.circular(AppRadii.group),
-      onTap: onTap,
-      semanticLabel: semanticLabel,
-      child: body,
-    );
+    // 两种面只差「用哪一个」：`QuietSurface` 与 `GlassSurface` 的这五个参数同名同义。
+    final radius = BorderRadius.circular(AppRadii.group);
+    return quiet
+        ? QuietSurface(
+            borderRadius: radius,
+            onTap: onTap,
+            semanticLabel: semanticLabel,
+            child: body,
+          )
+        : GlassSurface(
+            borderRadius: radius,
+            onTap: onTap,
+            semanticLabel: semanticLabel,
+            child: body,
+          );
   }
 }
 

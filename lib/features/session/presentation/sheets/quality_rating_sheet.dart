@@ -58,7 +58,7 @@ class _QualityRatingSheetState extends State<_QualityRatingSheet> {
                   style: TextStyle(fontSize: 13, color: tokens.textMuted),
                 ),
                 const SizedBox(height: 20),
-                QualityStars(
+                QualityChoice(
                   value: _choice,
                   onChanged: (quality) => setState(() => _choice = quality),
                 ),
