@@ -12,8 +12,7 @@
 // 这里只产出分数。这样这个测试跑多少次、在哪台机器上跑，都改不了库里的任何东西。
 //
 // 跑法：
-//   flutter drive --driver=test_driver/integration_test.dart \
-//     --target=integration_test/yamnet_eval_test.dart -d <serial>
+//   flutter test integration_test/yamnet_eval_test.dart -d <serial>
 //   adb exec-out run-as com.example.night_sleep cat files/yamnet_scores.txt > scores.txt
 //
 // 它读的是**手机上真实录到的片段**（`getApplicationSupportDirectory()/clips/`），
@@ -63,9 +62,10 @@ void main() {
 
     // ── 模型：从**打包进 APK 的 asset** 读 ──
     //
-    // 一开始走的是「adb push 到 App 的外部私有目录」，**真机上撞死了**：`flutter drive`
-    // 每跑一次都会把 `Android/data/<包名>` 整个清掉（同一个 APK 再跑一次也照样清），
+    // 一开始走的是「adb push 到 App 的外部私有目录」，**真机上撞死了**：跑一次 integration
+    // test 会把应用卸掉重装，`Android/data/<包名>` 跟着整个清掉（同一个 APK 再跑一次也照样清），
     // 于是模型在测试开始前就没了。打进 APK 才不受这条影响。
+    // （与跑法无关：`flutter drive` 与现在的 `flutter test <文件> -d` 都是先卸再装。）
     final loadWatch = Stopwatch()..start();
     final modelBytes = await loadYamnetModelBytes();
     final scorer = createYamnetScorer(modelBytes);
@@ -100,7 +100,7 @@ void main() {
     // **一行分档表都不写**——那份表必须只装真实录音，否则 `tool/eval_clips.dart`
     // 会拿一堆合成噪声去和人的标注对账。
     //
-    // 为什么要有这条路：`flutter drive` 每次跑完都会把应用卸掉，所以「先手动塞几段
+    // 为什么要有这条路：每跑一次都会把应用卸掉重装（数据一并清掉），所以「先手动塞几段
     // WAV 进去、再跑一次」是不成立的；而手机上现在确实一段录音都没有（应用是刚装上的）。
     // 不这么做的话，「推理耗时在手机上有没有读数」会永远留在未验证里。
     if (wavs.isEmpty) {

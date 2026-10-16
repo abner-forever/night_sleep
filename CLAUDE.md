@@ -50,12 +50,12 @@ flutter run -d macos --dart-define=DEMO_DATA=true     # 强制开启
 flutter build macos --dart-define=DEMO_DATA=false     # 发布构建强制关闭
 ```
 
-`integration_test/` **不参与 `flutter test`**，要 `flutter drive`：
+`integration_test/` **不在裸跑 `flutter test` 的扫描范围里**（它只扫 `test/`），要**指名文件 +
+指定设备**：
 
 ```bash
 export NO_PROXY=127.0.0.1,localhost        # 不设会表现为「连不上 VM Service」
-flutter drive --driver=test_driver/integration_test.dart \
-  --target=integration_test/app_screens_test.dart -d <device>     # 界面截图巡检
+flutter test integration_test/app_screens_test.dart -d <device>     # 界面截图巡检
 ```
 
 ## 改动分级：先分清大小，别把小改动做成大工程
@@ -286,8 +286,9 @@ Drift + SQLite，**`schemaVersion => 8`**（`core/database/app_database.dart`）
 
 **integration_test 的坑**：动画只在推帧时前进，长按那类步骤要走 `tester.pump(100ms)` 循环而不是
 `Future.delayed`；走到会话页之后**不能用 `pumpAndSettle`**（60 秒循环的夜景动画永远等不到静止）。
-`flutter drive` 的 `takeScreenshot` 在本机不可靠，巡检只负责导航并停留、截图交给外面的
-`simctl` 循环；驱动时**必须设 `NO_PROXY=127.0.0.1,localhost`**。
+`binding.takeScreenshot` 在本机不可靠（`test_driver/` 那个截图 sink 因此已删——它从来没有被
+调用过），巡检只负责导航并停留、截图交给外面的 `simctl` 循环；跑的时候**必须设
+`NO_PROXY=127.0.0.1,localhost`**。
 
 ## 构建与网络前提
 

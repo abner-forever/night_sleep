@@ -11,8 +11,7 @@
 // 所以分两步：先在**真机**上跑一次端侧测量（`integration_test/yamnet_eval_test.dart`），
 // 它给每一段真实录音落一份「整段均分」，再从设备上取回来喂给这个脚本：
 //
-//   flutter drive --driver=test_driver/integration_test.dart \
-//     --target=integration_test/yamnet_eval_test.dart -d <serial>
+//   flutter test integration_test/yamnet_eval_test.dart -d <serial>
 //   adb exec-out run-as com.example.night_sleep cat \
 //     files/yamnet_scores.txt > scores.txt
 //

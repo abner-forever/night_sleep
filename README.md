@@ -97,13 +97,13 @@ DEV=$(xcrun simctl list devices available | grep -m1 -o '[0-9A-F-]\{36\}')
   done ) &
 
 export NO_PROXY=127.0.0.1,localhost
-flutter drive --driver=test_driver/integration_test.dart \
-  --target=integration_test/app_screens_test.dart -d $DEV
+flutter test integration_test/app_screens_test.dart -d $DEV
 ```
 
 Android 真机上把循环换成 `adb exec-out screencap -p > /tmp/tour/$i.png` 即可
-（**必须用 `exec-out`**，`adb shell cat` 会把二进制拉坏）。巡检自己写出的 `screenshots/`
-目录是 gitignore 的——那批是核对观感的产物；README 这几张是挑过之后单独放进 `docs/images/` 的。
+（**必须用 `exec-out`**，`adb shell cat` 会把二进制拉坏）。巡检自己**不截图**，图落在哪里由外面
+的循环决定；仓里的 `screenshots/` 是给这批核对观感的产物准备的、已 gitignore——README 这几张
+是挑过之后单独放进 `docs/images/` 的。
 
 ## 快速开始
 
@@ -172,7 +172,7 @@ lib/
     home/ log/ session/ stats/ settings/ onboarding/ compass/
     sleep/{domain,data,presentation}   记录聚合、阶段、评分、分组翻阅、录音与音频管线
 test/           领域计算与页面测试（约 840 条用例）
-integration_test/  截图巡检与平台路径验证（不参与 flutter test）
+integration_test/  截图巡检与平台路径验证（裸跑 `flutter test` 扫不到，要指名文件 + 设备）
 tool/           图标与音效生成器、片段复核脚本
 assets/         助眠音效、YAMNet 模型、品牌图标
 ```
@@ -206,12 +206,12 @@ flutter test test/sleep_score_test.dart                       # 单个文件
 flutter test test/sleep_score_test.dart --plain-name "时长阶梯"  # 单个用例（子串匹配）
 ```
 
-`integration_test/` **不参与 `flutter test`**，要 `flutter drive`：
+`integration_test/` **不在裸跑 `flutter test` 的扫描范围里**（它只扫 `test/`），要**指名文件 +
+指定设备**：
 
 ```bash
 export NO_PROXY=127.0.0.1,localhost     # 不设会表现为「连不上 VM Service」
-flutter drive --driver=test_driver/integration_test.dart \
-  --target=integration_test/noise_playback_test.dart -d macos
+flutter test integration_test/noise_playback_test.dart -d macos
 ```
 
 ## 数据与隐私

@@ -1,7 +1,7 @@
 name: night_sleep
 description: 夜深：本地优先的睡眠记录应用。
 publish_to: "none"
-version: 0.42.0+1
+version: 0.43.0+1
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -22,7 +22,10 @@ dependencies:
   just_audio: ^0.10.6
   flutter_local_notifications: ^22.3.1
   timezone: ^0.11.1
-  flutter_timezone: ^5.1.0
+  # 下界锁 5.1.1：5.1.0 用 `apply plugin: 'kotlin-android'` 应用 KGP，会被 Flutter
+  # 基于正则的插件静态检查认出来并报「Future versions of Flutter will fail to build」；
+  # 5.1.1 改成 pluginManager.apply(...) 绕开该检测。别往回降。
+  flutter_timezone: ^5.1.1
   share_plus: ^13.3.0
   package_info_plus: ^10.2.1
   flutter_secure_storage: ^11.2.0

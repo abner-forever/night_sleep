@@ -17,10 +17,7 @@ import 'package:night_sleep/features/sleep/data/noise_player.dart';
 ///
 /// 跑法（桌面最快，不必开模拟器）：
 /// ```bash
-/// flutter drive \
-///   --driver=test_driver/integration_test.dart \
-///   --target=integration_test/noise_playback_test.dart \
-///   -d macos
+/// flutter test integration_test/noise_playback_test.dart -d macos
 /// ```
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();

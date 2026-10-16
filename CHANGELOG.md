@@ -14,6 +14,22 @@
 
 ---
 
+## 0.43（2026-10-17）
+
+`flutter build apk --debug` 每次构建都吐一条插件警告：`flutter_timezone` 应用了 KGP，
+「未来版本的 Flutter 会构建失败」。
+
+- **变更：`flutter_timezone` 下界 5.1.0 → 5.1.1（实际解析 5.1.1）。** Flutter 的插件体检
+  **不跑 Gradle，而是用正则扫插件的构建脚本文本**（`FlutterPluginUtils.kgpRegexGroovy` 匹配
+  `^\s*apply plugin: 'kotlin-android'`）；5.1.0 正是这种写法，5.1.1 换成
+  `pluginManager.apply('kotlin-android')`，文本不再命中。**插件行为没变**——它照旧在
+  AGP 9 以下或未开 built-in Kotlin 时自己应用 KGP，只是绕开了那条静态检查。所以这里的下界
+  是承重的，不要往回降。
+- **验证：** 警告清零。`flutter build apk --debug` 构建成功（实测 57.1s），
+  `:app:help` 的配置阶段同样不再打印该警告。
+
+---
+
 ## 0.42（2026-10-16）
 
 使用方追问「那你这识别算法有啥用呢 一晚上的真实睡眠数据一个识别不出来」。上一轮做完调研与
