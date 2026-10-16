@@ -46,6 +46,7 @@ class SessionSetupBody extends ConsumerStatefulWidget {
     required this.onCollapse,
     required this.onHeaderDragUpdate,
     required this.onHeaderDragEnd,
+    required this.onHeaderDragCancel,
     required this.onStart,
     required this.scrollController,
   });
@@ -70,6 +71,9 @@ class SessionSetupBody extends ConsumerStatefulWidget {
   /// 标题行上的下拉（由页面执行位移与松手判定，这一屏只负责把事件递出去）。
   final ValueChanged<double> onHeaderDragUpdate;
   final ValueChanged<double> onHeaderDragEnd;
+
+  /// 手势被抢走时按「松手」处理（见 `session_header.dart`）。
+  final VoidCallback onHeaderDragCancel;
 
   final VoidCallback onStart;
   final ScrollController scrollController;
@@ -218,6 +222,7 @@ class _SessionSetupBodyState extends ConsumerState<SessionSetupBody> {
       onCollapse: widget.onCollapse,
       onDragUpdate: widget.onHeaderDragUpdate,
       onDragEnd: widget.onHeaderDragEnd,
+      onDragCancel: widget.onHeaderDragCancel,
     );
   }
 

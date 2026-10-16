@@ -26,6 +26,7 @@ import 'package:night_sleep/features/log/presentation/log_page.dart';
 import 'package:night_sleep/features/settings/presentation/appearance_settings_page.dart';
 import 'package:night_sleep/features/settings/presentation/demo_data_page.dart';
 import 'package:night_sleep/features/settings/presentation/export_page.dart';
+import 'package:night_sleep/features/settings/presentation/export_preview_page.dart';
 import 'package:night_sleep/features/settings/data/app_cache.dart';
 import 'package:night_sleep/features/settings/data/insight_credentials.dart';
 import 'package:night_sleep/features/settings/data/insight_service.dart';
@@ -42,6 +43,8 @@ import 'package:night_sleep/features/sleep/domain/sleep_quality.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_score.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_session.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_stage.dart';
+import 'package:night_sleep/features/sleep/domain/sound_event.dart' as domain;
+import 'package:night_sleep/features/stats/presentation/all_sleep_data_page.dart';
 import 'package:night_sleep/features/stats/presentation/stats_page.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -55,6 +58,38 @@ void _noop() {}
 /// a pending timer at teardown (and can hang the test outright). Instead the
 /// pages are handed the same data through provider overrides, and the two tests
 /// that exercise a write path assert against the database directly.
+/// 一条 `daysAgo` 天前醒来的记录（本机时区的墙钟时刻，跨时区跑也稳）。
+///
+/// **带声音事件**：柱状图每根柱子下面那行小图标就是它们画的。不带的话那行是空的，
+/// 「窄柱子上图标放不下」这件事在测试里根本不会发生——用户报的溢出正是从那里来的。
+SleepEntry _nightDaysAgo(int daysAgo) {
+  final end = DateTime(2026, 10, 15, 7).subtract(Duration(days: daysAgo));
+  final start = end.subtract(const Duration(hours: 8));
+  return SleepEntry(
+    id: 'r$daysAgo',
+    startAtUtc: start.toUtc(),
+    endAtUtc: end.toUtc(),
+    timeZoneId: 'UTC',
+    quality: SleepQuality.good,
+    createdAtUtc: end.toUtc(),
+    updatedAtUtc: end.toUtc(),
+    soundClips: [
+      domain.SoundClip(
+        id: 'snore-$daysAgo',
+        kind: domain.SoundEventKind.snore,
+        startedAtUtc: start.add(const Duration(hours: 1)).toUtc(),
+        durationMs: 30000,
+      ),
+      domain.SoundClip(
+        id: 'talk-$daysAgo',
+        kind: domain.SoundEventKind.talk,
+        startedAtUtc: start.add(const Duration(hours: 2)).toUtc(),
+        durationMs: 8000,
+      ),
+    ],
+  );
+}
+
 void main() {
   late AppDatabase database;
 
@@ -557,6 +592,71 @@ void main() {
       expect(find.textContaining('不构成医疗建议'), findsWidgets);
       expect(find.text('梦话记录'), findsOneWidget);
     });
+
+    testWidgets('14 天与 30 天在手机宽度上不溢出', (tester) async {
+      // 用户报的「14 天 / 30 天时柱状列表有异常布局提示」。夹具给满 30 晚，
+      // 视口用手机宽度（此前那几条用的是 430×2600 的画布，柱子再挤也不会露馅）。
+      final entries = [
+        for (var i = 0; i < 30; i++) _nightDaysAgo(i),
+      ];
+
+      await pumpPage(tester, const StatsPage(),
+          entries: entries, surface: const Size(390, 844));
+      expect(tester.takeException(), isNull, reason: '7 天就溢出的话，先记在这里');
+
+      for (final label in ['14天', '30天']) {
+        await tester.tap(find.text(label));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull, reason: '$label 有溢出');
+      }
+    });
+
+    testWidgets('空库时右上角没有「全部数据」入口', (tester) async {
+      await pumpPage(tester, const StatsPage());
+      expect(find.text('全部数据'), findsNothing,
+          reason: '一条记录都没有时它通向一个只能显示空状态的地方');
+    });
+
+    testWidgets('有记录时右上角有「全部数据」入口', (tester) async {
+      await pumpPage(tester, const StatsPage(), entries: await demoEntries());
+      expect(find.text('全部数据'), findsOneWidget);
+    });
+
+    testWidgets('右上角入口进全部睡眠数据页，返回后仍在统计页', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            databaseProvider.overrideWithValue(database),
+            settingsProvider.overrideWith((ref) => Stream.value(settings())),
+            sleepEntriesProvider.overrideWith((ref) => demoEntries()),
+            activeTabProvider.overrideWith((ref) => AppTab.stats),
+            activeSessionProvider.overrideWith((ref) => null),
+          ],
+          child: const NightSleepApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      // 应用路由是共享实例，前一个路由测试可能仍停在别的页面。
+      final router = tester
+          .widget<MaterialApp>(find.byType(MaterialApp))
+          .routerConfig! as GoRouter;
+      router.go('/');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('全部数据'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AllSleepDataPage), findsOneWidget);
+      expect(find.byType(AppShell), findsNothing, reason: '二级页要盖住标签条');
+      // 这一页的返回胶囊写的是「统计」（它从统计页推入），不是默认的「返回」。
+      await tester.tap(find.text('统计'));
+      await tester.pumpAndSettle();
+      expect(find.byType(StatsPage), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
   });
 
   group('设置页', () {
@@ -995,6 +1095,50 @@ void main() {
       expectProperlyRendered(tester, '睡眠数据导出');
     });
 
+    testWidgets('导出页的「预览表格」进表格预览页', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            databaseProvider.overrideWithValue(database),
+            settingsProvider.overrideWith((ref) => Stream.value(settings())),
+            sleepEntriesProvider.overrideWith((ref) => [
+                  SleepEntry(
+                    id: 'real-1',
+                    startAtUtc: DateTime.utc(2026, 9, 26, 23),
+                    endAtUtc: DateTime.utc(2026, 9, 27, 7),
+                    timeZoneId: 'UTC',
+                    quality: SleepQuality.good,
+                    createdAtUtc: DateTime.utc(2026, 9, 27, 8),
+                    updatedAtUtc: DateTime.utc(2026, 9, 27, 8),
+                  ),
+                ]),
+            activeSessionProvider.overrideWith((ref) => null),
+          ],
+          child: const NightSleepApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final router = tester
+          .widget<MaterialApp>(find.byType(MaterialApp))
+          .routerConfig! as GoRouter;
+      router.go('/settings/export');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('预览表格'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ExportPreviewPage), findsOneWidget);
+      expect(find.text('日期'), findsOneWidget, reason: '预览里是记录表的表头');
+      await tester.tap(find.text('导出'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ExportPreviewPage), findsNothing);
+      expect(find.byType(ExportPage), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
     testWidgets('清除演示数据只删演示行，保留用户自己的记录', (tester) async {
       await DemoSeed.install(database, now: DateTime(2026, 9, 27, 12));
       final repository = SleepRepository(database);
@@ -1172,6 +1316,36 @@ void main() {
             '而带内第一个停点是满值 alpha，两者形成一条硬分界',
       );
       expect(tester.getSize(fade).height, 144);
+    });
+
+    testWidgets('手机横屏（窄而矮）：侧边栏不溢出，中段那一列可以滚', (tester) async {
+      // 844×390：宽度过了 768 的断点，于是走侧边栏；可高度只剩 390。头部的 logo 块、
+      // 中段四条导航、底部的助眠音效卡三段加起来比这高时，中段必须让得开——它现在
+      // 是可以滚的（用户报的「左下角白噪音处有黑黄警告条」就是这里撑破了）。
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      for (final entry in const [
+        ('844x390', Size(844, 390), 1.0),
+        ('800x360', Size(800, 360), 1.0),
+        ('780x360', Size(780, 360), 1.0),
+        ('926x428', Size(926, 428), 1.0),
+        ('768x360', Size(768, 360), 1.0),
+        ('844x390@1.3', Size(844, 390), 1.3),
+        ('800x360@1.3', Size(800, 360), 1.3),
+      ]) {
+        tester.platformDispatcher.textScaleFactorTestValue = entry.$3;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await pumpWithOverrides(tester, const AppScaffold(), surface: entry.$2);
+        // 溢出以异常形式抛出。
+        expect(tester.takeException(), isNull, reason: '${entry.$1} 侧边栏溢出');
+      }
+
+      // 四条导航仍然都在（滚得到，不是被裁掉）。
+      for (final label in ['首页', '回顾', '统计', '设置']) {
+        expect(find.text(label), findsWidgets, reason: '少了「$label」');
+      }
+      expect(find.text('助眠音效'), findsOneWidget, reason: '底部那张卡仍在');
     });
   });
 

@@ -24,6 +24,7 @@ class SessionHeader extends StatelessWidget {
     required this.onCollapse,
     required this.onDragUpdate,
     required this.onDragEnd,
+    required this.onDragCancel,
   }) : middle = const _SetupKicker();
 
   /// 进行中态：中间是呼吸圆点 +「睡眠进行中」。
@@ -32,6 +33,7 @@ class SessionHeader extends StatelessWidget {
     required this.onCollapse,
     required this.onDragUpdate,
     required this.onDragEnd,
+    required this.onDragCancel,
   }) : middle = const _LiveKicker();
 
   /// 中间那一段。两态的子树**逐字搬过来**，不做「title + style」那套参数化——
@@ -46,6 +48,10 @@ class SessionHeader extends StatelessWidget {
   /// 松手时的竖直速度（`primaryVelocity`，向下为正）。
   final ValueChanged<double> onDragEnd;
 
+  /// 手势被抢走时（竞技场判给了别人）**当作松手**：不处理的话面板会停在拉到的
+  /// 位置，而手指早就松开了。
+  final VoidCallback onDragCancel;
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -54,6 +60,7 @@ class SessionHeader extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         onVerticalDragUpdate: (details) => onDragUpdate(details.delta.dy),
         onVerticalDragEnd: (details) => onDragEnd(details.primaryVelocity ?? 0),
+        onVerticalDragCancel: onDragCancel,
         child: Row(
           children: [
             CollapsePill(onTap: onCollapse),

@@ -319,6 +319,86 @@ void main() {
         reason: '到点之后不能留下一个「在播」的假值');
   });
 
+  group('下拉关闭（2026-10-16 补）', () {
+    /// 门把手：面板上唯一一个带竖直拖拽的手势区。
+    Finder handle() => find.byWidgetPredicate(
+          (w) => w is GestureDetector && w.onVerticalDragUpdate != null,
+          description: '带竖直拖拽的手势区（门把手）',
+        );
+
+    /// 面板顶边。量标题文字：它随面板一起动，且不受滚动位置影响。
+    double panelTop(WidgetTester tester) =>
+        tester.getTopLeft(find.text('白噪音设置')).dy;
+
+    testWidgets('拖动跟手，手势被抢走后回弹到原位', (tester) async {
+      await pumpNoiseSheet(tester);
+      final rest = panelTop(tester);
+
+      final gesture = await tester.startGesture(tester.getCenter(handle()));
+      // 第一段位移会被识别器吃掉（越过 touch slop 才开拖，那之前的累计位移不补发），
+      // 所以先走一段「起手」，再从**稳定的位置**开始量跟手。
+      await gesture.moveBy(const Offset(0, 40));
+      await tester.pump();
+      final started = panelTop(tester);
+
+      await gesture.moveBy(const Offset(0, 120));
+      await tester.pump();
+
+      expect(panelTop(tester), closeTo(started + 120, 1),
+          reason: '开拖之后每一像素都要跟手');
+
+      // 手势被抢走（竞技场判给了别人）时也要收尾：不处理的话面板就停在半路，
+      // 而手指早已松开。
+      await gesture.cancel();
+      await tester.pumpAndSettle();
+
+      expect(panelTop(tester), closeTo(rest, 0.5), reason: '回弹要真的回到位');
+      expect(find.text('白噪音设置'), findsOneWidget, reason: '回弹不是关闭');
+    });
+
+    testWidgets('慢慢拉过阈值松手就关掉', (tester) async {
+      await pumpNoiseSheet(tester);
+
+      // 430×932 上阈值是 932 × .28 ≈ 261，拉 400 足够。800ms 让速度压在 700 的
+      // 甩动线之下，于是**由距离而不是速度**决定关闭（与两条会话页用例同一手法）。
+      await tester.timedDragFrom(
+        tester.getCenter(handle()),
+        const Offset(0, 400),
+        const Duration(milliseconds: 800),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('白噪音设置'), findsNothing, reason: '过阈值应当关掉');
+    });
+
+    testWidgets('小幅下拉后松手回弹，弹窗保持打开', (tester) async {
+      await pumpNoiseSheet(tester);
+      final rest = panelTop(tester);
+
+      // 80px：越过约 18px 的 touch slop（短于它会被判成点击），又远在 261 之下。
+      await tester.timedDragFrom(
+        tester.getCenter(handle()),
+        const Offset(0, 80),
+        const Duration(milliseconds: 800),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('白噪音设置'), findsOneWidget, reason: '距离不足应回弹');
+      expect(panelTop(tester), closeTo(rest, 0.5), reason: '回弹要真的回到位');
+    });
+
+    testWidgets('点门把手也是关闭', (tester) async {
+      await pumpNoiseSheet(tester);
+
+      // 与 `app_sheet.dart` 那个门把手同一套语义：这一页没有未保存的草稿，
+      // 选中的声音立刻就生效了，所以点它关掉没有代价。
+      await tester.tap(handle());
+      await tester.pumpAndSettle();
+
+      expect(find.text('白噪音设置'), findsNothing);
+    });
+  });
+
   testWidgets('浅色应用主题下，弹窗内的共享控件仍是深色令牌', (tester) async {
     // 回归：`showGeneralDialog` 默认 `useRootNavigator: true`，弹窗路由挂在 root
     // navigator 下，**继承不到会话页那层 `Theme(AppTheme.dark())`**。外框走

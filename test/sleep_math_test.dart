@@ -20,6 +20,18 @@ void main() {
     expect(stats.goalDays, 1);
     expect(stats.qualityAverage, 3);
   });
+
+  test('星期七项都写对，且按本地区算', () {
+    // 2026-10-12 是周一，往后数七天正好一个循环。
+    const expected = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+    for (var i = 0; i < 7; i++) {
+      final day = DateTime(2026, 10, 12 + i, 7);
+      expect(formatWeekday(day), expected[i], reason: '本地时刻 ${day.day} 日');
+      // 传进去的是同一个瞬时值的 UTC 形式时，结论必须一致——不然「周一」会在
+      // 时区偏移跨过午夜的那些机器上错一天。
+      expect(formatWeekday(day.toUtc()), expected[i]);
+    }
+  });
 }
 
 class _Record {

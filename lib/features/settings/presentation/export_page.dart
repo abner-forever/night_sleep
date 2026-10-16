@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_tokens.dart';
+import '../../../core/widgets/app_basics.dart';
 import '../../../core/widgets/app_icons.dart';
 import '../../../core/widgets/glass_surface.dart';
 import '../../../core/widgets/ios_controls.dart';
@@ -65,7 +67,38 @@ class _ExportPageState extends ConsumerState<ExportPage> {
   @override
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
-    final all = ref.watch(sleepEntriesProvider).valueOrNull ?? const [];
+    final entries = ref.watch(sleepEntriesProvider);
+
+    // **读不到不等于没有。** 此前这里只取 `valueOrNull`，于是加载中和读失败都退化成
+    // 空列表，页面照着一句「暂无可导出的记录」把三个动作一起置灰——把「读不到」说成了
+    // 「没有」，而它自己推入的表格预览页对同一个状态是分开说的。三态各有各的说法。
+    return entries.when(
+      loading: () => _shell(const [
+        Padding(
+          padding: EdgeInsets.symmetric(vertical: 40),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      ]),
+      error: (error, stack) => _shell([
+        EmptyState(
+          icon: AppIcons.wave(size: 30, color: tokens.danger, strokeWidth: 1.6),
+          title: '无法读取记录',
+          body: '本地数据库打开失败，因此现在读不出有几条可导出的记录：$error',
+        ),
+      ]),
+      data: (all) => _content(context, all),
+    );
+  }
+
+  /// 加载 / 出错 / 有数据三态共用同一副外壳与标题。
+  Widget _shell(List<Widget> children) => Subpage(
+        backLabel: '设置',
+        title: '睡眠数据导出',
+        children: children,
+      );
+
+  Widget _content(BuildContext context, List<SleepEntry> all) {
+    final tokens = AppTokens.of(context);
     final exportable = SleepExporter.exportableOf(all);
     final excluded = all.length - exportable.length;
 
@@ -78,10 +111,8 @@ class _ExportPageState extends ConsumerState<ExportPage> {
 
     final hasData = exportable.isNotEmpty;
 
-    return Subpage(
-      backLabel: '设置',
-      title: '睡眠数据导出',
-      children: [
+    return _shell(
+      [
         GlassSurface(
           borderRadius: BorderRadius.circular(AppRadii.card),
           padding: const EdgeInsets.all(20),
@@ -141,6 +172,18 @@ class _ExportPageState extends ConsumerState<ExportPage> {
         const SizedBox(height: 22),
         IosListGroup(
           children: [
+            // 预览排在两个导出动作之前：先看清文件里是什么，再决定要不要交出去。
+            // 没有可导出记录时与它们一起禁用——空的预览只等于一个点了没反应的入口。
+            IosListItem(
+              onTap: hasData
+                  ? () => context.push('/settings/export/preview')
+                  : null,
+              child: _Action(
+                enabled: hasData,
+                title: '预览表格',
+                subtitle: '先看一眼将写进文件的两张表',
+              ),
+            ),
             IosListItem(
               onTap: hasData ? () => _export(asJson: false, all: all) : null,
               child: _Action(

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -26,6 +25,7 @@ import '../../sleep/data/clip_analyzer.dart';
 import '../../sleep/data/session_repository.dart';
 import '../../sleep/domain/sleep_session.dart';
 import 'night_scene.dart';
+import 'session_panel_transition.dart';
 import 'night_style.dart';
 import 'sheets/quality_rating_sheet.dart';
 import 'widgets/hold_to_finish_button.dart';
@@ -78,10 +78,19 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage>
   /// 页面滚动位置。
   final ScrollController _scroll = ScrollController();
 
+  /// 位移的出口（转场那一层的 notifier）。页面被单独挂载时为 null。
+  ValueNotifier<double>? _dragSink;
+
   /// 标题行下拉的跟手位移（逻辑像素，正数向下）。
   ///
   /// **`unbounded`**：它不驱动动画进度，只是被当「当前位移」读写——下拉时直接赋值，
   /// 松手回弹时 `animateTo(0)`。范围不设上界，往下拉多少就是多少。
+  ///
+  /// 它维护手势与回弹，并把每一帧的位移**报告给转场**（那一层用同一个数字算遮罩的
+  /// 浓度）。面板自己的位移仍由这一页施加——理由见页面 `build()` 里那段。
+  ///
+  /// 出口是从 `SessionPanelDrag` 这个作用域认领来的（转场提供）。页面被单独挂载
+  /// （测试里直接挂它、没有转场）时没有出口，位移照样工作，只是没有遮罩。
   late final AnimationController _drag = AnimationController.unbounded(
     vsync: this,
     value: 0,
@@ -112,7 +121,26 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage>
         if (mounted) setState(() => _now = DateTime.now());
       });
     }
+    // 位移每变一次就报给转场（包括回弹的每一帧：面板要跟着一起回去）。
+    _drag.addListener(_reportDrag);
     _loadWakeDraft();
+  }
+
+  /// 把当前位移报给转场。没有出口（页面被单独挂载）时什么都不做。
+  void _reportDrag() {
+    final sink = _dragSink;
+    if (sink != null) sink.value = _drag.value;
+  }
+
+  /// 认领转场提供的位移出口。
+  ///
+  /// 用 `didChangeDependencies` 而不是 `initState`：`initState` 里读不了
+  /// `InheritedWidget`。这里**不补报当前值**——第一次挂载时两边都是 0，而之后
+  /// 出口不会再换（转场的 State 与这个 State 同生共死），补报反而会在建树期间写值。
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _dragSink = SessionPanelDrag.maybeOf(context);
   }
 
   /// 只读一次，**不订阅** `settingsProvider` 那条 drift 流：widget 测试的假时钟
@@ -129,6 +157,7 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage>
   void dispose() {
     _timer?.cancel();
     _scroll.dispose();
+    _drag.removeListener(_reportDrag);
     _drag.dispose();
     super.dispose();
   }
@@ -174,6 +203,7 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage>
                           onCollapse: _collapseCurrentState,
                           onHeaderDragUpdate: _onHeaderDragUpdate,
                           onHeaderDragEnd: _onHeaderDragEnd,
+                          onHeaderDragCancel: _onHeaderDragCancel,
                           onStart: _beginSleep,
                           scrollController: _scroll,
                         )
@@ -191,6 +221,7 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage>
                           onCollapse: _collapseCurrentState,
                           onHeaderDragUpdate: _onHeaderDragUpdate,
                           onHeaderDragEnd: _onHeaderDragEnd,
+                          onHeaderDragCancel: _onHeaderDragCancel,
                           scrollController: _scroll,
                         ),
                 ),
@@ -206,53 +237,21 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage>
     //
     // 用的是与应用同一份 [appSystemUiOverlayStyle]，不是 `SystemUiOverlayStyle.light`
     // 预设：那个预设把导航栏写成不透明黑，进这一页会重新压出一条黑带。
+    //
+    // **`AnnotatedRegion` 必须在 `Transform` 外面**：它按自己的矩形判定系统栏样式，
+    // 而框架探的是屏幕顶端那一小块。把它塞进位移里，拖过一个状态栏高度它就滑出了顶端，
+    // 系统栏随即翻回**应用主题**的样式（浅色主题下图标变深色，压在暗掉的首页上）。
+    // 位移只施加给 `page`——面板走，这一圈不动。
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: appSystemUiOverlayStyle(Brightness.dark),
-      child: Stack(
-        children: [
-          // 面板往下一动，露出来的那一层：**模糊 + 压暗**，跟底部弹层的蒙层同一套观感
-          // （`app_sheet.dart` 的 `_SheetHost`，模糊半径也照它）。
-          //
-          // **它不随面板位移**——跟着一起滑的话看起来像是被拖进来的。它留在原地，
-          // 面板从它前面滑开。
-          //
-          // 静止时遮罩的 `Opacity` 是 0，会跳过整棵子树的绘制，所以这一夜挂着它不花钱；
-          // 代价只发生在手指压着往下拉的这几帧。**这也让系统栏在拖动过程中保持深色**：
-          // `AnnotatedRegion` 因此仍覆盖屏幕顶端（换成把它塞进 `Transform` 就会在拖到
-          // 一个状态栏高度时翻回应用主题的样式——顶端露出的已是首页，那正是要它压暗的原因）。
-          _dragScrim(),
-          AnimatedBuilder(
-            animation: _drag,
-            // **必须带 `child:`**：不带的话每一帧都会重建整棵页面（含夜景与列表）。
-            builder: (context, child) => Transform.translate(
-              offset: Offset(0, _drag.value),
-              child: child,
-            ),
-            child: page,
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 下拉时露出的遮罩，浓度跟着手指走：拉到「够呛要关」那条线时刚好全浓。
-  Widget _dragScrim() {
-    return Positioned.fill(
-      child: IgnorePointer(
-        child: AnimatedBuilder(
-          animation: _drag,
-          builder: (context, _) => Opacity(
-            opacity: (_drag.value /
-                    (MediaQuery.sizeOf(context).height * kPanelDismissFraction))
-                .clamp(0.0, 1.0),
-            child: BackdropFilter(
-              filter: ui.ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-              // 用夜色那一份而不是 `AppTokens.overlayScrim`：这一页常暗，而
-              // `AppTokens` 在这一层取到的是**应用主题**的值（浅色主题下会偏淡）。
-              child: const ColoredBox(color: NightStyle.scrim),
-            ),
-          ),
+      child: AnimatedBuilder(
+        animation: _drag,
+        // **必须带 `child:`**：不带的话每一帧都会重建整棵页面（含夜景与列表）。
+        builder: (context, child) => Transform.translate(
+          offset: Offset(0, _drag.value),
+          child: child,
         ),
+        child: page,
       ),
     );
   }
@@ -263,6 +262,12 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage>
     _drag.stop();
     _drag.value = (_drag.value + dy).clamp(0.0, double.infinity);
   }
+
+  /// 手势被抢走（例如某一侧的滚动视图赢了竞技场）：**把它当作松手回弹**。
+  ///
+  /// 不处理的话面板就停在拉到的那个位置——一次被抢走的手势会留下一块错位的面板，
+  /// 而手指早就松开了。
+  void _onHeaderDragCancel() => _settleDrag();
 
   /// 松手：甩得够快、或拉得够远就滑走，否则弹回去。
   ///
@@ -278,6 +283,12 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage>
       unawaited(_collapseCurrentState());
       return;
     }
+    _settleDrag();
+  }
+
+  /// 回弹：面板滑回顶边，遮罩随之淡回不可见（浓度就取自这个位移）。
+  void _settleDrag() {
+    if (!mounted) return;
     _drag.animateTo(
       0,
       duration: AppDurations.standard,
@@ -482,6 +493,7 @@ class _SessionBody extends StatelessWidget {
     required this.onCollapse,
     required this.onHeaderDragUpdate,
     required this.onHeaderDragEnd,
+    required this.onHeaderDragCancel,
     required this.scrollController,
   });
 
@@ -494,6 +506,7 @@ class _SessionBody extends StatelessWidget {
   final VoidCallback onCollapse;
   final ValueChanged<double> onHeaderDragUpdate;
   final ValueChanged<double> onHeaderDragEnd;
+  final VoidCallback onHeaderDragCancel;
   final ScrollController scrollController;
 
   @override
@@ -506,6 +519,7 @@ class _SessionBody extends StatelessWidget {
           onCollapse: onCollapse,
           onDragUpdate: onHeaderDragUpdate,
           onDragEnd: onHeaderDragEnd,
+          onDragCancel: onHeaderDragCancel,
         ),
         const SizedBox(height: 4),
         _TimerBlock(session: session, now: now),

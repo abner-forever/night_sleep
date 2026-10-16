@@ -61,6 +61,9 @@ void main() {
     WidgetTester tester, {
     required ExportSharer sharer,
     List<SleepEntry> entries = const [],
+
+    /// 让 provider 落到**错误**态：这一支要证明「读不到」没有被说成「没有」。
+    bool readError = false,
   }) async {
     tester.view.physicalSize = const Size(430, 2600);
     tester.view.devicePixelRatio = 1.0;
@@ -69,7 +72,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          sleepEntriesProvider.overrideWith((ref) => entries),
+          sleepEntriesProvider.overrideWith((ref) async {
+            if (readError) throw StateError('数据库坏了');
+            return entries;
+          }),
           exportSharerProvider.overrideWithValue(sharer),
         ],
         child: MaterialApp(
@@ -101,6 +107,41 @@ void main() {
     await tester.tap(find.text('导出 CSV'));
     await tester.pumpAndSettle();
     expect(sharer.received, isNull, reason: '禁用的动作不该调用分享层');
+  });
+
+  testWidgets('预览表格与两个导出动作一起禁用并置灰', (tester) async {
+    await pumpRoute(tester, sharer: _FakeSharer(), entries: [
+      entry(id: 'd1', source: 'demo'),
+    ]);
+
+    expect(find.text('预览表格'), findsOneWidget);
+    final previewColor = tester.widget<Text>(find.text('预览表格')).style?.color;
+    expect(
+      previewColor,
+      AppTokens.of(tester.element(find.text('预览表格'))).textMuted,
+      reason: '与两个导出动作同一套禁用口径',
+    );
+  });
+
+  testWidgets('有真实记录时预览行是正常色', (tester) async {
+    await pumpRoute(tester, sharer: _FakeSharer(), entries: [entry(id: 'a')]);
+
+    final preview = find.text('预览表格');
+    expect(
+      tester.widget<Text>(preview).style?.color,
+      AppTokens.of(tester.element(preview)).textPrimary,
+    );
+  });
+
+  testWidgets('读不到记录时说读不到，不说「暂无可导出」', (tester) async {
+    await pumpRoute(tester, sharer: _FakeSharer(), readError: true);
+
+    expect(find.text('无法读取记录'), findsOneWidget);
+    expect(find.textContaining('数据库坏了'), findsOneWidget);
+    // 库里可能有一堆记录，只是这一刻读不出来——把它说成「没有」就是替用户下了
+    // 一个没根据的结论，那正是这一页最不该犯的错。
+    expect(find.text('暂无可导出的记录'), findsNothing);
+    expect(find.text('预览表格'), findsNothing, reason: '读不到就不摆一个点不动的入口');
   });
 
   testWidgets('条数统计只数真实记录', (tester) async {

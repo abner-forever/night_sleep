@@ -18,6 +18,39 @@ class ExportFile {
   final String mimeType;
 }
 
+/// CSV 的两张表。界面上的分段控件按它分栏。
+enum ExportTableKind {
+  records('记录'),
+  stages('阶段');
+
+  const ExportTableKind(this.label);
+
+  final String label;
+}
+
+/// 一张导出表：文件名、表头，以及**已按 CSV 规则渲染成字符串**的行。
+///
+/// 导出页的表格预览读的就是它，而 `csv()` 只是它的序列化。单元格的生成因此只有
+/// `SleepExporter.tables()` 这一处——预览里看到的每一格与文件里的那一格必然相同，
+/// 不会出现「照着 CSV 的规则又渲染了一遍」那种两份格式知识各自漂移的局面。
+class ExportTable {
+  const ExportTable({
+    required this.kind,
+    required this.fileName,
+    required this.header,
+    required this.rows,
+  });
+
+  final ExportTableKind kind;
+  final String fileName;
+  final List<String> header;
+
+  /// 与表头等长的行；每格是最终写进文件的文本（引号由序列化那一步加）。
+  final List<List<String>> rows;
+
+  int get rowCount => rows.length;
+}
+
 /// 把用户自己的记录变成导出内容。
 ///
 /// **纯函数**：没有数据库、没有插件、也没有自己的时钟（`now` 由调用方传入）。
@@ -52,11 +85,18 @@ abstract final class SleepExporter {
   /// 排序放在这里，而不是沿用调用方给的顺序：`sleepEntriesProvider` 给的是**倒序**
   /// （界面要最新在前）。让导出格式继承它，等于把导出和界面隐式绑在一起——将来
   /// `SleepRepository.loadAll()` 一改排序，导出的文件会静默跟着变。显式排序断开这个
-  /// 耦合，也让表格软件里按时间轴自然展开。
+  /// 耦合，也让表格软件里按时间轴自然展开。排序是**全序**（同一时刻按 id 兜底），
+  /// 因此同一份数据无论排几次都得到同一个文件。
   static List<SleepEntry> exportableOf(List<SleepEntry> entries) {
     final exportable =
         entries.where((e) => e.source != AppConfig.demoSource).toList();
-    exportable.sort((a, b) => a.startAtUtc.compareTo(b.startAtUtc));
+    exportable.sort((a, b) {
+      final byStart = a.startAtUtc.compareTo(b.startAtUtc);
+      // 入睡时刻相同的两条（同一早上补录两次就会这样）用 id 兜底定序。
+      // 只按时间排时它们的先后是**未定义**的，而预览页与文件是两次独立的排序调用
+      // ——未定义就意味着两者可能不一致，正好破坏「预览与文件逐格相同」这条承诺。
+      return byStart != 0 ? byStart : a.id.compareTo(b.id);
+    });
     return exportable;
   }
 
@@ -64,7 +104,10 @@ abstract final class SleepExporter {
   ///
   /// 阶段不压成「深睡/浅睡/REM 分钟」三列：分段的时间戳是阶段图的唯一来源，
   /// 压成合计就回不来了。
-  static List<ExportFile> csv(
+  ///
+  /// 它是导出内容的**唯一**产地：文件名、表头、每一格都在这里定下来，
+  /// `csv()` 与界面上的表格预览都只是读它。
+  static List<ExportTable> tables(
     List<SleepEntry> entries, {
     required DateTime now,
   }) {
@@ -72,23 +115,39 @@ abstract final class SleepExporter {
     final stamp = _dateStamp(now);
 
     return [
-      ExportFile(
+      ExportTable(
+        kind: ExportTableKind.records,
         fileName: '夜深-睡眠记录-$stamp.csv',
-        mimeType: csvMime,
-        content: _table(_recordHeader, [
+        header: _recordHeader,
+        rows: [
           for (final entry in exportable) _recordRow(entry),
-        ]),
+        ],
       ),
-      ExportFile(
+      ExportTable(
+        kind: ExportTableKind.stages,
         fileName: '夜深-睡眠阶段-$stamp.csv',
-        mimeType: csvMime,
-        content: _table(_stageHeader, [
+        header: _stageHeader,
+        rows: [
           for (final entry in exportable)
             for (final segment in entry.stages) _stageRow(entry.id, segment),
-        ]),
+        ],
       ),
     ];
   }
+
+  /// 把 [tables] 序列化成两份 CSV 文件。
+  static List<ExportFile> csv(
+    List<SleepEntry> entries, {
+    required DateTime now,
+  }) =>
+      [
+        for (final table in tables(entries, now: now))
+          ExportFile(
+            fileName: table.fileName,
+            mimeType: csvMime,
+            content: _table(table.header, table.rows),
+          ),
+      ];
 
   /// 完整嵌套的一份存档。
   ///

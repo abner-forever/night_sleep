@@ -466,18 +466,24 @@ class _Sidebar extends StatelessWidget {
                 ),
               ),
               Expanded(
-                child: Column(
-                  children: [
-                    for (final tab in AppTab.values)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: _SidebarItem(
-                          tab: tab,
-                          active: tab == current,
-                          onTap: () => onSelect(tab),
+                // **中段可以滚**：头部那块 logo 与底部那张助眠音效卡都是定高的，
+                // 矮窗口（手机横屏，实测 800×360 那一档）里三层加起来会撑破侧边栏
+                // ——用户看到的就是左下角那条黑黄警告。让成滚动而不是把导航项压扁：
+                // 压扁的导航比要滚还难用，而滚动在鼠标滚轮与触摸上都成立。
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      for (final tab in AppTab.values)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: _SidebarItem(
+                            tab: tab,
+                            active: tab == current,
+                            onTap: () => onSelect(tab),
+                          ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
               if (onOpenNoise != null)

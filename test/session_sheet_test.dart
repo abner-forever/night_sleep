@@ -10,6 +10,7 @@ import 'package:night_sleep/core/database/app_database.dart';
 import 'package:night_sleep/core/platform/reminders.dart';
 import 'package:night_sleep/core/platform/system_bars.dart';
 import 'package:night_sleep/core/theme/app_tokens.dart';
+import 'package:night_sleep/features/session/presentation/session_panel_transition.dart';
 import 'package:night_sleep/features/session/presentation/sleep_session_page.dart';
 import 'package:night_sleep/features/session/presentation/widgets/night_backdrop.dart';
 import 'package:night_sleep/features/session/presentation/widgets/session_header.dart';
@@ -309,17 +310,107 @@ void main() {
       await openSession(tester);
 
       final gesture = await tester.startGesture(headerPoint(tester));
+      // **两段位移，并且先确认面板真的动了**：这个手势的识别器与页面里的滚动视图
+      // 同场竞技，跨过 slop 那一刻会把整段累计位移丢掉（同文件「遮罩」那两条的注释）。
+      // 只用一段的话面板一像素都不动，这条断言写什么都会过——它此前正是这样空转的。
+      await gesture.moveBy(const Offset(0, 60));
+      await tester.pump();
       await gesture.moveBy(const Offset(0, 120));
       await tester.pump();
+
+      expect(tester.getTopLeft(panelBody()).dy, greaterThan(24),
+          reason: '先证明面板真的被拉下去了，下面那条断言才有意义');
 
       expect(
         systemBarStyleAt(tester),
         appSystemUiOverlayStyle(Brightness.dark),
-        reason: '面板一往下走，顶端露出的就是被压暗的首页——系统栏不能这时翻回应用主题',
+        reason: '面板一往下走（已超过一个状态栏高度），顶端露出的就是被压暗的首页'
+            '——系统栏不能这时翻回应用主题。区域必须留在位移之外',
       );
 
       await gesture.cancel();
       await tester.pumpAndSettle();
+    });
+  });
+
+  group('下拉时的那层遮罩', () {
+    /// 遮罩的不透明度。
+    double scrimOpacity(WidgetTester tester) => tester
+        .widget<Opacity>(find.descendant(
+          of: find.byType(SessionPanelScrim),
+          matching: find.byType(Opacity),
+        ))
+        .opacity;
+
+    /// 整屏矩形。
+    Rect screenOf(WidgetTester tester) => Rect.fromLTWH(
+        0, 0, tester.view.physicalSize.width, tester.view.physicalSize.height);
+
+    testWidgets('拖动时遮罩变浓，但它自己钉在整屏不动', (tester) async {
+      await pumpRealApp(tester,
+          session: sessionAt(DateTime(2026, 8, 30, 23, 14)));
+      await openSession(tester);
+
+      expect(scrimOpacity(tester), 0, reason: '静止时不该有任何压暗');
+
+      final gesture = await tester.startGesture(headerPoint(tester));
+      // **两段位移**：第一段会被识别器吃掉（越过 touch slop 才开拖，那之前的累计位移
+      // 不补发），只用一段的话面板根本不动，这条断言就成了空转。
+      await gesture.moveBy(const Offset(0, 60));
+      await tester.pump();
+      await gesture.moveBy(const Offset(0, 160));
+      await tester.pump();
+
+      expect(scrimOpacity(tester), greaterThan(0), reason: '面板一走，露出来的那一层就该压暗');
+      expect(
+        tester.getRect(find.byType(SessionPanelScrim)),
+        screenOf(tester),
+        reason: '遮罩钉在整屏：跟着面板往下滑的话，顶端露出的首页就是没压暗的',
+      );
+
+      await gesture.cancel();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('过阈值松手：面板继续滑走，遮罩在原地淡出', (tester) async {
+      await pumpRealApp(tester,
+          session: sessionAt(DateTime(2026, 8, 30, 23, 14)));
+      await openSession(tester);
+      // 要采退场的中间帧，这里**挂载之后**才把动画放回真实时长（挂载时就开着的话
+      // `pumpAndSettle` 根本收敛不了——夜景那 60 秒循环永不停止）。
+      enableAnimations(tester);
+
+      // 430×874 上阈值是 874 × .28 ≈ 245，拉 400 足够；800ms 让速度压在甩动线之下，
+      // 结论因此由**距离**决定（同「下拉关闭」那几条）。
+      await tester.timedDragFrom(
+        headerPoint(tester),
+        const Offset(0, 400),
+        const Duration(milliseconds: 800),
+      );
+      expect(scrimOpacity(tester), closeTo(1, 0.01), reason: '拉过阈值那一刻遮罩是全浓的');
+
+      // 退场走到一半。
+      await tester.pump(AppDurations.standard ~/ 2);
+
+      expect(
+        tester.getTopLeft(panelBody()).dy,
+        greaterThan(245),
+        reason: '面板要继续往下滑走，不是原地消失',
+      );
+      expect(
+        tester.getRect(find.byType(SessionPanelScrim)),
+        screenOf(tester),
+        reason: '遮罩**留在原地**：跟着面板走的话，顶端露出的首页是没压暗的',
+      );
+      final mid = scrimOpacity(tester);
+      expect(mid, lessThan(1), reason: '退场时遮罩该在淡出');
+      expect(mid, greaterThan(0), reason: '还没退完，不该已经没了');
+
+      // 走完：这一页退掉，底下是首页。
+      await tester.pump(AppDurations.standard);
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.byType(SleepSessionPage), findsNothing);
+      expect(find.text('睡眠概览'), findsOneWidget);
     });
   });
 

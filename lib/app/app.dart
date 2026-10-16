@@ -20,15 +20,18 @@ import '../features/onboarding/presentation/splash_screen.dart';
 import '../features/settings/presentation/appearance_settings_page.dart';
 import '../features/settings/presentation/demo_data_page.dart';
 import '../features/settings/presentation/export_page.dart';
+import '../features/settings/presentation/export_preview_page.dart';
 import '../features/settings/presentation/insight_config_page.dart';
 import '../features/settings/presentation/settings_page.dart';
 import '../features/settings/presentation/sleep_import_page.dart';
 import '../features/settings/presentation/sleep_settings_page.dart';
+import '../features/session/presentation/session_panel_transition.dart';
 import '../features/session/presentation/sleep_session_page.dart';
 import '../features/sleep/data/clip_analyzer.dart';
 import '../features/sleep/data/clip_pruning.dart';
 import '../features/sleep/data/clip_store.dart';
 import '../features/sleep/presentation/sheets/noise_sheet.dart';
+import '../features/stats/presentation/all_sleep_data_page.dart';
 import '../features/stats/presentation/stats_page.dart';
 import 'app_shell.dart';
 import 'app_toast.dart';
@@ -72,6 +75,12 @@ final _router = GoRouter(
           path: 'settings/export',
           builder: (context, state) => const ExportPage(),
         ),
+        // 导出页的表格预览（v3.31）。与导出页平级，不嵌成它的子路由：
+        // 这一页的返回目标是导出页，而它的位置由 `Subpage` 的返回胶囊自己说明。
+        GoRoute(
+          path: 'settings/export/preview',
+          builder: (context, state) => const ExportPreviewPage(),
+        ),
         GoRoute(
           path: 'settings/insight',
           builder: (context, state) => const InsightConfigPage(),
@@ -90,6 +99,11 @@ final _router = GoRouter(
         GoRoute(
           path: 'log/edit',
           builder: (context, state) => LogEditPage(routeArgument: state.extra),
+        ),
+        // 全部睡眠数据（v3.31）：统计页右上角的「全部数据」推入这里。
+        GoRoute(
+          path: 'stats/all',
+          builder: (context, state) => const AllSleepDataPage(),
         ),
         // 手动补录：回顾页底部的入口与会话时长越界的说明层都推到这里。
         GoRoute(
@@ -117,17 +131,11 @@ final _router = GoRouter(
             opaque: false,
             transitionDuration: AppDurations.standard,
             reverseTransitionDuration: AppDurations.standard,
+            // 遮罩与面板的位移几何都在 `session_panel_transition.dart` 里：
+            // 遮罩挂在这一层（它不能跟着面板走），位移仍由页面自己施加。
             transitionsBuilder: (context, animation, secondary, child) =>
-                SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(0, 1),
-                end: Offset.zero,
-              ).animate(
-                CurvedAnimation(
-                  parent: animation,
-                  curve: AppMotion.standardCurve,
-                ),
-              ),
+                SessionPanelTransition(
+              animation: animation,
               child: child,
             ),
             child: const SleepSessionPage(),

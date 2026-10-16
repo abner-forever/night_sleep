@@ -14,6 +14,16 @@ String formatDuration(Duration duration) {
 
 String formatDate(DateTime value) => DateFormat('M月d日').format(value.toLocal());
 
+/// 中文星期：`周一` … `周日`。
+///
+/// 七个字手写，不用 `DateFormat('E', 'zh')`：应用从来没有初始化 intl 的本地化数据
+/// （没有 `initializeDateFormatting`），带 locale 的 pattern 会直接抛。
+String formatWeekday(DateTime value) =>
+    '周${_weekdayNames[value.toLocal().weekday - 1]}';
+
+/// `DateTime.weekday` 是 1（周一）到 7（周日）。
+const _weekdayNames = ['一', '二', '三', '四', '五', '六', '日'];
+
 String formatDateTime(DateTime value) =>
     DateFormat('M月d日 HH:mm').format(value.toLocal());
 

@@ -92,6 +92,57 @@ void main() {
     return result;
   }
 
+  /// 按 RFC 4180 把整份内容拆回二维表（会正确处理引号里的逗号与换行）。
+  ///
+  /// 与 [cells] 的区别是它作用于**整份文件**：引号里那个裸换行会把按行切分的
+  /// [rowOf] 拆散，所以「预览与文件逐格相同」这条只能用整份解析来断。
+  List<List<String>> parseTable(String content) {
+    final rows = <List<String>>[];
+    var row = <String>[];
+    final buffer = StringBuffer();
+    var quoted = false;
+    final text = content.replaceFirst('\uFEFF', '');
+
+    void endRow() {
+      row.add(buffer.toString());
+      buffer.clear();
+      rows.add(row);
+      row = <String>[];
+    }
+
+    for (var i = 0; i < text.length; i++) {
+      final char = text[i];
+      if (quoted) {
+        if (char != '"') {
+          buffer.write(char);
+        } else if (i + 1 < text.length && text[i + 1] == '"') {
+          buffer.write('"');
+          i++;
+        } else {
+          quoted = false;
+        }
+        continue;
+      }
+      switch (char) {
+        case '"':
+          quoted = true;
+        case ',':
+          row.add(buffer.toString());
+          buffer.clear();
+        case '\r':
+          if (i + 1 < text.length && text[i + 1] == '\n') i++;
+          endRow();
+        case '\n':
+          endRow();
+        default:
+          buffer.write(char);
+      }
+    }
+    // 文件以 CRLF 结尾，所以走到这里 buffer 与 row 都是空的，不会再补一行。
+    expect(buffer.isEmpty && row.isEmpty, isTrue, reason: '解析完还剩着内容，说明行结构被破坏了');
+    return rows;
+  }
+
   test('记录表表头列序固定', () {
     final file = SleepExporter.csv([entry()], now: now).first;
 
@@ -238,6 +289,72 @@ void main() {
   test('exportableOf 只留下非演示记录', () {
     final all = [entry(id: 'a'), entry(id: 'b', source: 'demo')];
     expect(SleepExporter.exportableOf(all).map((e) => e.id), ['a']);
+  });
+
+  test('入睡时刻相同的两条按 id 定序，两次排序结果一致', () {
+    // `entry()` 造出来的两条时间完全一样。只按时间排时它们的先后未定义，
+    // 而导出文件与预览页是两次独立的排序调用——未定义就等于两者可以不一致。
+    final a = entry(id: 'aaa');
+    final b = entry(id: 'bbb');
+
+    expect(SleepExporter.exportableOf([b, a]).map((e) => e.id), ['aaa', 'bbb']);
+    expect(SleepExporter.exportableOf([a, b]).map((e) => e.id), ['aaa', 'bbb'],
+        reason: '与调用方给的顺序无关');
+  });
+
+  test('预览读的表与 CSV 文件逐格相同', () {
+    final entries = [
+      entry(
+        id: 'a',
+        notes: '吃了药, 有点"闷"\n醒了两次',
+        stages: [
+          segment(SleepStageType.deep, minutes: 60),
+          segment(SleepStageType.rem, minutes: 30),
+        ],
+      ),
+      entry(id: 'b', source: 'demo', stages: [segment(SleepStageType.deep)]),
+      entry(id: 'c', quality: null),
+    ];
+
+    final tables = SleepExporter.tables(entries, now: now);
+    final files = SleepExporter.csv(entries, now: now);
+
+    expect(tables, hasLength(files.length));
+    for (var i = 0; i < tables.length; i++) {
+      final parsed = parseTable(files[i].content);
+      expect(tables[i].fileName, files[i].fileName);
+      expect(parsed.first, tables[i].header,
+          reason: '表头：${tables[i].kind.label}表');
+      expect(parsed.sublist(1), tables[i].rows,
+          reason: '数据行：${tables[i].kind.label}表。预览页显示的就是这些行，'
+              '与文件不一致就等于预览在说谎');
+    }
+  });
+
+  test('两张表的身份、列数与行数', () {
+    final tables = SleepExporter.tables([
+      entry(id: 'a', stages: [
+        segment(SleepStageType.deep, minutes: 60),
+        segment(SleepStageType.light, minutes: 30),
+      ]),
+    ], now: now);
+
+    expect(tables.map((table) => table.kind),
+        [ExportTableKind.records, ExportTableKind.stages]);
+    expect(tables.map((table) => table.kind.label), ['记录', '阶段']);
+    expect(tables.first.fileName, '夜深-睡眠记录-20260928.csv');
+    expect(tables.last.fileName, '夜深-睡眠阶段-20260928.csv');
+    expect(tables.first.header, hasLength(16));
+    expect(tables.last.header, hasLength(6));
+    expect(tables.first.rowCount, 1);
+    expect(tables.last.rowCount, 2, reason: '阶段表一行一段');
+  });
+
+  test('没有记录时两张表都只剩表头', () {
+    final tables = SleepExporter.tables(const [], now: now);
+
+    expect(tables, hasLength(2));
+    expect(tables.every((table) => table.rowCount == 0), isTrue);
   });
 
   test('JSON 表头字段齐全，数组恒为数组', () {

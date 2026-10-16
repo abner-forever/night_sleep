@@ -1,6 +1,7 @@
 import '../../../app/app_shell.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/platform/haptics.dart';
 import '../../../core/theme/app_theme.dart';
@@ -67,7 +68,44 @@ class _StatsPageState extends ConsumerState<StatsPage> {
             pageBottomInset(context),
           ),
           children: [
-            const PageHeading(eyebrow: '睡眠统计', title: '趋势分析'),
+            // 右上角是「看全部」的入口（v3.31）：这一页只看最近 7 / 14 / 30 条，
+            // 想翻更早的记录得有个去处。库里一条记录都没有时不显示它——
+            // 那一刻它通向一个只能显示空状态的地方，而下面的空状态已经把话说完了。
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                const Expanded(
+                  child: PageHeading(eyebrow: '睡眠统计', title: '趋势分析'),
+                ),
+                if (records.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4, left: 12),
+                    child: Pressable(
+                      onTap: () => context.push('/stats/all'),
+                      semanticLabel: '查看所有睡眠数据',
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '全部数据',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: tokens.accent,
+                            ),
+                          ),
+                          const SizedBox(width: 2),
+                          AppIcons.chevronRight(
+                            size: 14,
+                            color: tokens.accent,
+                            strokeWidth: 2,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
             const SizedBox(height: 18),
             if (stats.isEmpty)
               EmptyState(
@@ -225,101 +263,124 @@ class _DurationChartCard extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: Column(
-                  children: [
-                    SizedBox(
-                      height: _chartHeight,
-                      child: Stack(
-                        children: [
-                          // Baseline, target and ceiling rules.
-                          for (final fraction in [
-                            0.0,
-                            stats.targetHeightPercent / 100,
-                            1.0,
-                          ])
-                            Positioned(
-                              left: 0,
-                              right: 0,
-                              bottom: _chartHeight * fraction,
-                              child: Container(
-                                height: 1,
-                                color:
-                                    fraction == stats.targetHeightPercent / 100
+                // 柱位宽度决定柱子下面那行事件图标放不放得下。宽度只能在这里量——
+                // 它取决于条数、柱间距与视口宽三者，任何一处写死都会在别的机型上错。
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    // 一根柱子分到多宽。两只 10px 的图标加一点余量 = 24px；低于它就
+                    // 整行不画（见下面那段注释）。
+                    final slot = (constraints.maxWidth -
+                            barGap * (stats.entries.length - 1)) /
+                        stats.entries.length;
+                    final showEventIcons = slot >= 24;
+
+                    return Column(
+                      children: [
+                        SizedBox(
+                          height: _chartHeight,
+                          child: Stack(
+                            children: [
+                              // Baseline, target and ceiling rules.
+                              for (final fraction in [
+                                0.0,
+                                stats.targetHeightPercent / 100,
+                                1.0,
+                              ])
+                                Positioned(
+                                  left: 0,
+                                  right: 0,
+                                  bottom: _chartHeight * fraction,
+                                  child: Container(
+                                    height: 1,
+                                    color: fraction ==
+                                            stats.targetHeightPercent / 100
                                         ? tokens.accent.withValues(alpha: 0.72)
                                         : tokens.border.withValues(alpha: 0.55),
-                              ),
-                            ),
-                          Positioned.fill(
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                for (final entry in stats.entries) ...[
-                                  if (entry != stats.entries.first)
-                                    SizedBox(width: barGap),
-                                  Expanded(
-                                      child: _Bar(
-                                    entry: entry,
-                                    percent: stats.barPercentFor(entry),
-                                    selected: selected?.id == entry.id,
-                                    showLabel: showDayLabels ||
-                                        selected?.id == entry.id,
-                                    onTap: () {
-                                      AppHaptics.select();
-                                      onSelect(entry);
-                                    },
-                                  )),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        for (final entry in stats.entries) ...[
-                          if (entry != stats.entries.first)
-                            SizedBox(width: barGap),
-                          Expanded(
-                            child: Column(
-                              children: [
-                                if (showDayLabels)
-                                  Text(
-                                    entry.dayLabel,
-                                    style: AppTheme.num(
-                                      context,
-                                      size: 10,
-                                      color: tokens.textMuted,
-                                    ),
-                                  ),
-                                SizedBox(
-                                  height: 12,
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      if (entry.hasSnore)
-                                        AppIcons.snore(
-                                          size: 10,
-                                          color: tokens.accentBlue,
-                                          strokeWidth: 1.5,
-                                        ),
-                                      if (entry.hasTalk)
-                                        AppIcons.bubble(
-                                          size: 10,
-                                          color: tokens.accentViolet,
-                                          strokeWidth: 1.5,
-                                        ),
-                                    ],
                                   ),
                                 ),
-                              ],
-                            ),
+                              Positioned.fill(
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    for (final entry in stats.entries) ...[
+                                      if (entry != stats.entries.first)
+                                        SizedBox(width: barGap),
+                                      Expanded(
+                                          child: _Bar(
+                                        entry: entry,
+                                        percent: stats.barPercentFor(entry),
+                                        selected: selected?.id == entry.id,
+                                        showLabel: showDayLabels ||
+                                            selected?.id == entry.id,
+                                        onTap: () {
+                                          AppHaptics.select();
+                                          onSelect(entry);
+                                        },
+                                      )),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            for (final entry in stats.entries) ...[
+                              if (entry != stats.entries.first)
+                                SizedBox(width: barGap),
+                              Expanded(
+                                child: Column(
+                                  children: [
+                                    if (showDayLabels)
+                                      Text(
+                                        entry.dayLabel,
+                                        style: AppTheme.num(
+                                          context,
+                                          size: 10,
+                                          color: tokens.textMuted,
+                                        ),
+                                      ),
+                                    // **再挤下去这一行就是溢出**（实测：390 宽的屏上 14 天
+                                    // 溢出 7.4px，30 天更长）。两只 10px 的图标要塞进
+                                    // 12.6px 的柱位，`Row` 只能是「放不下」。
+                                    //
+                                    // 柱位放不下两只图标时整行不画，而不是缩小或裁一半：
+                                    // 裁一半会让人以为那晚只打鼾没说梦话（那是**假读数**），
+                                    // 缩到 3px 则谁也看不清。事件计数在下方的「打鼾夜数 /
+                                    // 梦话夜数」里一直有，信息没有丢。
+                                    if (showEventIcons)
+                                      SizedBox(
+                                        height: 12,
+                                        child: Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            if (entry.hasSnore)
+                                              AppIcons.snore(
+                                                size: 10,
+                                                color: tokens.accentBlue,
+                                                strokeWidth: 1.5,
+                                              ),
+                                            if (entry.hasTalk)
+                                              AppIcons.bubble(
+                                                size: 10,
+                                                color: tokens.accentViolet,
+                                                strokeWidth: 1.5,
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                       ],
-                    ),
-                  ],
+                    );
+                  },
                 ),
               ),
             ],
