@@ -957,6 +957,162 @@ void main() {
     }
   }
 
+  Future<void> writeV7Database() async {
+    final v7 = _V7Database(NativeDatabase(file));
+    try {
+      await v7.customStatement(
+        "INSERT INTO sleep_records (id, start_at_utc, end_at_utc, time_zone_id, "
+        "quality, notes, tags_json, source, flagged_snore, flagged_talk, "
+        "flagged_restless, flagged_nightmare, created_at, updated_at) "
+        "VALUES ('r1', 1759000000, 1759026000, 'Asia/Shanghai', 4, '', '[]', "
+        "'session', 0, 0, 0, 0, 1759000000, 1759000000)",
+      );
+      // 三条真实片段各代表一种 v8 要区别对待的状态：
+      //  * `c-analysed` —— 手写阈值跑过、写了结论（**该被清回 pending**）
+      //  * `c-abstain`  —— 手写阈值跑过、弃权（同样该被清：那也是旧引擎的结论）
+      //  * `c-failed`   —— 音频读不出来（**不该被动**：「读不出来」与「引擎换了」无关）
+      for (final row in [
+        (
+          'c-analysed',
+          'snore',
+          'analysed',
+          '\'{"kind":"snore","margin":0.42,"basis":"低频能量 66%",'
+              '"startMs":300,"durationMs":6300,"atUtc":"2026-10-14T08:00:00.000Z"}\''
+        ),
+        (
+          'c-abstain',
+          'noise',
+          'analysed',
+          '\'{"kind":null,"atUtc":"2026-10-14T08:00:00.000Z"}\''
+        ),
+        ('c-failed', 'noise', 'failed', 'NULL'),
+      ]) {
+        await v7.customStatement(
+          "INSERT INTO sound_clips (id, record_id, kind, started_at_utc, "
+          "duration_ms, local_uri, transcript, analysis, analysis_status, "
+          "source, waveform_envelope, labeled_at_utc, auto_analysis) "
+          "VALUES ('${row.$1}', 'r1', '${row.$2}', 1759000100, 4200, "
+          "'/tmp/clips/${row.$1}.wav', NULL, NULL, '${row.$3}', 'recording', "
+          "'[0.1,0.9]', 1759000200, ${row.$4})",
+        );
+      }
+      // 演示数据：它的 `analysis_status` 是示例数据本身的一部分，补跑按定义不看它，
+      // 所以**不许被清回 pending**（清了就永远没人管，会一直挂在「待标注」上）。
+      await v7.customStatement(
+        "INSERT INTO sound_clips (id, record_id, kind, started_at_utc, "
+        "duration_ms, local_uri, transcript, analysis, analysis_status, "
+        "source, waveform_envelope, labeled_at_utc, auto_analysis) "
+        "VALUES ('c-demo', 'r1', 'snore', 1759000100, 4200, NULL, NULL, NULL, "
+        "'analysed', 'demo', NULL, NULL, NULL)",
+      );
+    } finally {
+      await v7.close();
+    }
+  }
+
+  // v8 是**本仓第一条改数据的迁移**（其余都是加列）。它要作废的是 2026-10-16 之前
+  // 那套手写声学阈值写下的结论——那套规则已被证伪（47 段上覆盖 2% / 准确 0%）。
+  // 留着不清的后果很具体：`analysePending` 只捡 `pending`，于是**使用者那 3 段真鼾声
+  // 会永远停在「待标注」**，而那正是这一版要修的事。
+  group('v7 → v8', () {
+    test('夹具确实是 v7，而升级后停在当前版本', () async {
+      await writeV7Database();
+      final v7 = _V7Database(NativeDatabase(file));
+      expect(await userVersion(v7), 7);
+      await v7.customStatement('SELECT 1');
+      await v7.close();
+
+      final db = openCurrent();
+      addTearDown(db.close);
+      await db.allRecords(); // 触发迁移
+      expect(await userVersion(db), db.schemaVersion);
+    });
+
+    test('旧引擎的判断被清回 pending，`auto_analysis` 一起清空', () async {
+      await writeV7Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+
+      final rows = await db.allRecordingClips();
+      for (final id in ['c-analysed', 'c-abstain']) {
+        final row = rows.firstWhere((r) => r.id == id);
+        expect(row.analysisStatus, 'pending', reason: '$id 该等着用新引擎重算');
+        expect(row.autoAnalysis, isNull, reason: '$id 的旧结论该被清掉');
+      }
+    });
+
+    test('**用户自己的标注一个字节都不动**——清的是机器那一列', () async {
+      // 这是这条迁移唯一可能造成实质损失的地方：`kind` 与 `labeled_at_utc` 是用户
+      // 听过之后标的东西，不是机器猜的。迁移碰了它们就等于替用户改写历史。
+      await writeV7Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+
+      final row = (await db.allRecordingClips())
+          .firstWhere((r) => r.id == 'c-analysed');
+      expect(row.kind, 'snore', reason: '人标的那个词');
+      expect(row.labeledAtUtc, isNotNull, reason: '标过的时刻');
+      expect(row.waveformEnvelope, '[0.1,0.9]', reason: '实测包络');
+      expect(row.localUri, '/tmp/clips/c-analysed.wav', reason: '音频路径');
+    });
+
+    test('记过 failed 的不动——「音频读不出来」与「引擎换了」是两件事', () async {
+      await writeV7Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+
+      final row =
+          (await db.allRecordingClips()).firstWhere((r) => r.id == 'c-failed');
+      expect(row.analysisStatus, 'failed',
+          reason: '清成 pending 会让它每次冷启动都重试一遍，而文件还是读不出来');
+    });
+
+    test('演示数据不动——补跑按定义不看它，清了就永远没人管', () async {
+      await writeV7Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+
+      final all = (await db.allClipsByRecord())['r1']!;
+      final demo = all.firstWhere((r) => r.id == 'c-demo');
+      expect(demo.analysisStatus, 'analysed');
+    });
+
+    test('清完之后补跑真的捡得起它们（迁移与补跑是配套的两半）', () async {
+      // 只断言状态字符串等于 'pending' 是不够的：真正要成立的是**下一次冷启动会把
+      // 它们捡起来**。这两半分开写就都不算数。
+      await writeV7Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+
+      final waiting = await db.clipsAwaitingAnalysis();
+      expect(
+        waiting.map((r) => r.id).toSet(),
+        {'c-analysed', 'c-abstain'},
+        reason: 'failed 与 demo 都不该在里面',
+      );
+    });
+
+    test('再来一次不重跑（版本已经停在当前版）', () async {
+      await writeV7Database();
+      var db = openCurrent();
+      await db.allRecords();
+      await db.updateClipAutoAnalysis(
+        'c-analysed',
+        payload: '{"kind":"snore","margin":0.9,"basis":"YAMNet 鼾声分 0.85",'
+            '"atUtc":"2026-10-16T08:00:00.000Z"}',
+        status: 'analysed',
+      );
+      await db.close();
+
+      db = openCurrent();
+      addTearDown(db.close);
+      final row = (await db.allRecordingClips())
+          .firstWhere((r) => r.id == 'c-analysed');
+      expect(row.analysisStatus, 'analysed', reason: '重开一次库不该把新引擎的结论又清掉');
+      expect(row.autoAnalysis, contains('YAMNet'));
+    });
+  });
+
   group('v6 → v7', () {
     test('夹具确实是 v6，而升级后停在当前版本', () async {
       await writeV6Database();
@@ -1530,6 +1686,120 @@ class _V6Database extends AppDatabase {
               source TEXT NOT NULL DEFAULT 'recording',
               waveform_envelope TEXT,
               labeled_at_utc INTEGER,
+              PRIMARY KEY (id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE insights (
+              id TEXT NOT NULL,
+              record_id TEXT
+                REFERENCES sleep_records (id) ON DELETE CASCADE,
+              kind TEXT NOT NULL DEFAULT 'record_summary',
+              content TEXT,
+              provider TEXT,
+              model TEXT,
+              score INTEGER,
+              generated_at_utc INTEGER NOT NULL,
+              status TEXT NOT NULL DEFAULT 'unavailable',
+              PRIMARY KEY (id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE active_sessions (
+              id TEXT NOT NULL,
+              start_at_utc INTEGER NOT NULL,
+              time_zone_id TEXT NOT NULL DEFAULT 'UTC',
+              wake_minutes INTEGER NOT NULL,
+              alarm_enabled INTEGER NOT NULL DEFAULT 0,
+              noise_id TEXT,
+              noise_volume REAL NOT NULL DEFAULT 0.5,
+              scene_id TEXT,
+              created_at INTEGER NOT NULL,
+              clip_journal TEXT,
+              PRIMARY KEY (id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE app_settings (
+              id TEXT NOT NULL,
+              theme_mode TEXT NOT NULL DEFAULT 'system',
+              sleep_goal_minutes INTEGER NOT NULL DEFAULT 480,
+              bedtime_reminder_enabled INTEGER NOT NULL DEFAULT 0,
+              bedtime_reminder_minutes INTEGER,
+              wake_reminder_enabled INTEGER NOT NULL DEFAULT 0,
+              wake_reminder_minutes INTEGER,
+              sound_recording_enabled INTEGER NOT NULL DEFAULT 0,
+              onboarded INTEGER NOT NULL DEFAULT 0,
+              insight_provider TEXT,
+              insight_model TEXT,
+              PRIMARY KEY (id)
+            )
+          ''');
+        },
+      );
+}
+
+/// The schema as it shipped in v7: v6 plus `sound_clips.auto_analysis`.
+///
+/// **这一版的形状与 v8 完全相同**——v8 那条迁移只改数据（把旧引擎的判断清回
+/// `pending`），不加列。所以这个夹具存在的理由与别的夹具不同：它冻住的不是列集，
+/// 而是**升级前那一刻的数据状态**（一条 `analysed` 的、带着手写阈值结论的片段）。
+class _V7Database extends AppDatabase {
+  _V7Database(super.executor);
+
+  @override
+  int get schemaVersion => 7;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) async {
+          await customStatement('''
+            CREATE TABLE sleep_records (
+              id TEXT NOT NULL,
+              start_at_utc INTEGER NOT NULL,
+              end_at_utc INTEGER NOT NULL,
+              time_zone_id TEXT NOT NULL DEFAULT 'UTC',
+              quality INTEGER,
+              notes TEXT NOT NULL DEFAULT '',
+              tags_json TEXT NOT NULL DEFAULT '[]',
+              source TEXT NOT NULL DEFAULT 'manual',
+              flagged_snore INTEGER NOT NULL DEFAULT 0,
+              flagged_talk INTEGER NOT NULL DEFAULT 0,
+              flagged_restless INTEGER NOT NULL DEFAULT 0,
+              flagged_nightmare INTEGER NOT NULL DEFAULT 0,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL,
+              PRIMARY KEY (id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE sleep_stage_segments (
+              id TEXT NOT NULL,
+              record_id TEXT NOT NULL
+                REFERENCES sleep_records (id) ON DELETE CASCADE,
+              stage TEXT NOT NULL,
+              start_at_utc INTEGER NOT NULL,
+              end_at_utc INTEGER NOT NULL,
+              source TEXT NOT NULL DEFAULT 'import',
+              PRIMARY KEY (id)
+            )
+          ''');
+          await customStatement('''
+            CREATE TABLE sound_clips (
+              id TEXT NOT NULL,
+              record_id TEXT NOT NULL
+                REFERENCES sleep_records (id) ON DELETE CASCADE,
+              kind TEXT NOT NULL,
+              started_at_utc INTEGER NOT NULL,
+              duration_ms INTEGER NOT NULL,
+              local_uri TEXT,
+              transcript TEXT,
+              analysis TEXT,
+              analysis_status TEXT NOT NULL DEFAULT 'pending',
+              source TEXT NOT NULL DEFAULT 'recording',
+              waveform_envelope TEXT,
+              labeled_at_utc INTEGER,
+              auto_analysis TEXT,
               PRIMARY KEY (id)
             )
           ''');

@@ -25,3 +25,7 @@ screenshots/
 
 # 可视化伴侣（brainstorming）产物，不入库
 .superpowers/
+
+# 注：`assets/model/` **不再被忽略**。判定改为在端侧跑之后，模型必须随包发布，
+# 所以 `yamnet.tflite` 是提交进仓库的（见 pubspec.yaml 那条注释与 README 的
+# 发布阻塞项）。这里留一行说明，免得下次有人以为它是漏提交的临时文件又加回来。

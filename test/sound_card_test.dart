@@ -85,6 +85,9 @@ SoundClip _clip({
   DateTime? labeledAtUtc,
   int durationMs = 3000,
   AutoAnalysis? autoAnalysis,
+  // 默认仍是 `pending`：不给 `autoAnalysis` 的 `_clip()` 要真的是一条
+  // 「从没分析过」的记录，而不是一个「分析过却没留下 payload」的不可能状态。
+  SoundAnalysisStatus analysisStatus = SoundAnalysisStatus.pending,
 }) {
   return SoundClip(
     id: id,
@@ -94,14 +97,19 @@ SoundClip _clip({
     localUri: localUri,
     waveformEnvelope: envelope,
     labeledAtUtc: labeledAtUtc,
+    analysisStatus: analysisStatus,
     autoAnalysis: autoAnalysis,
   );
 }
 
 /// 一条「机器判出来了」的记录。
+///
+/// 默认 `basis` 是**模型分**的写法（2026-10-16 起判定由 YAMNet 给出）。默认
+/// `startMs` / `durationMs` 为 0——**新判定不带区间**；需要区间的用例显式传，
+/// 那钉的是「旧记录还读得回来」。
 AutoAnalysis _auto(
   AutoLabel? label, {
-  String basis = '低频能量 66% · 谱质心 390 Hz · 周期性 0.95',
+  String basis = 'YAMNet 鼾声分 0.85 · 人声分 0.02（整段 8 个窗口均分，判定线 0.40）',
   int startMs = 0,
   int durationMs = 0,
 }) {
@@ -297,9 +305,10 @@ void main() {
       expect(find.text('待标注'), findsNothing);
     });
 
-    testWidgets('判出来的是有起止的一段时，把那一对秒数摆出来', (tester) async {
-      // 一段里先后混着几种声音是常事。只给一个词等于把「哪几秒」吞掉了，
-      // 用户就没法直接跳到那几秒去核对。
+    testWidgets('旧记录带着起止时，那一对秒数照样摆出来', (tester) async {
+      // 2026-10-16 之前那套判定确实找过事件，库里存着它的区间。换引擎不该让
+      // 那些记录读不回来——所以这条钉的是**旧记录仍然显示得出来**，而不是新判定
+      // 会产出区间（新判定恒为 0，见下一条）。
       await pumpCard(
         tester,
         _clip(
@@ -311,6 +320,20 @@ void main() {
       expect(find.text('第 0.3–6.6 秒'), findsOneWidget);
     });
 
+    testWidgets('新判定没有区间，**不许**画出「第 0.0–0.0 秒」', (tester) async {
+      // YAMNet 按整段给结论，`durationMs` 恒为 0。少了这道守卫，每一段新判定都会
+      // 多出一行「第 0.0–0.0 秒」——一个凭空画出来的、没有任何测量支撑的区间。
+      await pumpCard(
+        tester,
+        _clip(durationMs: 11800, autoAnalysis: _auto(AutoLabel.snore)),
+      );
+
+      expect(find.text('自动 · 疑似打鼾'), findsOneWidget);
+      expect(find.textContaining('YAMNet'), findsOneWidget,
+          reason: '依据那一行还是要摆的，只是不带区间');
+      expect(find.textContaining('秒', findRichText: false), findsNothing);
+    });
+
     testWidgets('「杂音」没有事件可指，就不摆秒数', (tester) async {
       await pumpCard(
         tester,
@@ -318,6 +341,60 @@ void main() {
       );
 
       expect(find.textContaining('秒', findRichText: false), findsNothing);
+    });
+
+    testWidgets('机器弃权时，展开区明说「看过、没把握」', (tester) async {
+      // 标题上「弃权」与「从没分析过」都是「待标注」，展开区再不多说一句，
+      // 用户点完「重新分析」看到的就是一个什么都没变的界面——2026-10-16 使用方
+      // 报的正是这个：一晚 27 段全部弃权，屏幕上没有任何地方说机器看过它们。
+      await pumpCard(
+        tester,
+        _clip(
+            autoAnalysis: _auto(null),
+            analysisStatus: SoundAnalysisStatus.analysed),
+      );
+
+      expect(find.textContaining('机器看过这段'), findsOneWidget);
+      // 「没有把握」不许被说成一个结论。
+      expect(find.text('自动判断依据'), findsNothing);
+      expect(find.text('待标注'), findsOneWidget);
+    });
+
+    testWidgets('分析失败与弃权分得开：失败说读不出来，且不假装机器看过', (tester) async {
+      await pumpCard(
+        tester,
+        _clip(analysisStatus: SoundAnalysisStatus.failed),
+      );
+
+      expect(find.textContaining('没能分析这段'), findsOneWidget);
+      expect(find.textContaining('机器看过这段'), findsNothing);
+    });
+
+    testWidgets('有判断时不摆那一行——上面已经有依据了', (tester) async {
+      await pumpCard(tester, _clip(autoAnalysis: _auto(AutoLabel.snore)));
+
+      expect(find.textContaining('机器看过这段'), findsNothing);
+      expect(find.textContaining('没能分析这段'), findsNothing);
+    });
+
+    testWidgets('从没分析过时不摆那一行——展开区末尾本来就有一句', (tester) async {
+      await pumpCard(tester, _clip());
+
+      expect(find.textContaining('机器看过这段'), findsNothing);
+      expect(find.text('尚未分析这段录音，因此没有转录或洞察。'), findsOneWidget);
+    });
+
+    testWidgets('用户改标之后，那一行也跟着退出显示', (tester) async {
+      await pumpCard(
+        tester,
+        _clip(
+          labeledAtUtc: DateTime.utc(2026, 10, 4, 8),
+          analysisStatus: SoundAnalysisStatus.analysed,
+          autoAnalysis: _auto(null),
+        ),
+      );
+
+      expect(find.textContaining('机器看过这段'), findsNothing);
     });
 
     testWidgets('用户改标之后，机器判断退出显示但记录仍在库里', (tester) async {

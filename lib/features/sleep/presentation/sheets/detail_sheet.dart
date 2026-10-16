@@ -80,7 +80,8 @@ class _DetailSheetState extends ConsumerState<DetailSheet> {
     if (_analysingSounds) return;
     setState(() => _analysingSounds = true);
     try {
-      await ref.read(clipAnalyzerProvider).analyseRecord(_entry.id);
+      final settled =
+          await ref.read(clipAnalyzerProvider).analyseRecord(_entry.id);
       final refreshed = await ref.read(sleepRepositoryProvider).loadAll();
       SleepEntry? updated;
       for (final candidate in refreshed) {
@@ -94,12 +95,29 @@ class _DetailSheetState extends ConsumerState<DetailSheet> {
       if (refreshedEntry != null) {
         setState(() => _entry = refreshedEntry);
       }
+      ref
+          .read(toastProvider.notifier)
+          .show(_analysisSummary(settled, refreshedEntry));
     } catch (error) {
       if (!mounted) return;
       ref.read(toastProvider.notifier).show('分析失败：$error');
     } finally {
       if (mounted) setState(() => _analysingSounds = false);
     }
+  }
+
+  /// 「重新分析」跑完之后要说的那一句。
+  ///
+  /// **零结论也必须说。** 这个动作在本机跑完，最常见的结局恰恰是「一段都没把握」
+  /// ——判定规则宁弃权不猜，界面于是从标题到展开区一个字都没变，用户只会以为按钮
+  /// 没生效（2026-10-16 的原话：「点击重新分析音频都还是待标注」）。所以如实报出
+  /// 「看过几段、其中几段有结论」，哪怕两个数里有一个是零。
+  String _analysisSummary(int settled, SleepEntry? entry) {
+    if (settled == 0) return '没有可分析的片段（录音可能已被保留期限清掉）';
+    final verdicts =
+        entry?.soundClips.where((clip) => clip.hasAutoVerdict).length ?? 0;
+    if (verdicts == 0) return '看过 $settled 段，没有一段有把握，仍留待标注';
+    return '看过 $settled 段，其中 $verdicts 段给出了自动判断';
   }
 
   /// 生成失败的原因，显示在区块内。失败**不写库、不覆盖**已有洞察——

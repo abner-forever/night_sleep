@@ -25,6 +25,7 @@ import 'package:night_sleep/features/session/presentation/sleep_session_page.dar
 import 'package:night_sleep/features/session/presentation/widgets/hold_to_finish_button.dart';
 import 'package:night_sleep/features/session/presentation/widgets/night_backdrop.dart';
 import 'package:night_sleep/features/session/presentation/widgets/night_scene_picker.dart';
+import 'package:night_sleep/features/sleep/data/clip_analyzer.dart';
 import 'package:night_sleep/features/sleep/data/night_recorder.dart';
 import 'package:night_sleep/features/sleep/data/noise_player.dart';
 import 'package:night_sleep/features/sleep/data/noise_asset.dart';
@@ -127,6 +128,24 @@ class _StatusRecorder implements NightRecorder {
   Future<void> dispose() async => _status.dispose();
 }
 
+/// 一个**一定会抛**的分析器。
+///
+/// 模型加载不起来时 `analyseRecord` 就是这个样子（抛 `ClipModelUnavailable`）。
+/// 用真的 `ClipAnalyzer` 走不到这条路上——它要模型文件与原生库，单测里两样都没有。
+class _ExplodingAnalyzer extends ClipAnalyzer {
+  _ExplodingAnalyzer(super.db);
+
+  /// 被调了几次。**这一格不是装饰**：它把「分析真的被叫了」与「页面对它的失败无所谓」
+  /// 两件事分开——少了它，一条没走到 `_finish` 正文的用例会绿得毫无意义。
+  int calls = 0;
+
+  @override
+  Future<int> analyseRecord(String recordId) async {
+    calls++;
+    throw const ClipModelUnavailable('模型不在包里');
+  }
+}
+
 void main() {
   late AppDatabase database;
 
@@ -159,6 +178,7 @@ void main() {
     ReminderScheduler? scheduler,
     ThemeData? appTheme,
     NightRecorder? recorder,
+    ClipAnalyzer? analyzer,
   }) async {
     // 默认给一块很高的视口，好让整页一次渲染完（断言不用先滚）。
     // 要测「屏幕外」这类几何问题，传一个真实手机尺寸的 `size`。
@@ -227,6 +247,9 @@ void main() {
           // 鼾声那一行副标题的用例都该传一个，否则测的是「还没对账过」的 idle。
           if (recorder != null)
             nightRecorderProvider.overrideWithValue(recorder),
+          // 真的 `ClipAnalyzer` 要模型文件与原生库，单测里两样都没有。
+          if (analyzer != null)
+            clipAnalyzerProvider.overrideWithValue(analyzer),
         ],
         child: MaterialApp.router(
           theme: appTheme ?? AppTheme.dark(),
@@ -739,6 +762,35 @@ void main() {
 
     expect(find.text('昨晚睡得怎么样？'), findsOneWidget);
     expect(find.text('跳过'), findsOneWidget);
+  });
+
+  testWidgets('分析抛异常不许拦住收尾——那一句是 `unawaited` 踢出去的', (tester) async {
+    // 模型加载不起来时 `analyseRecord` 会抛 `ClipModelUnavailable`，而会话结束时
+    // 那次分析**不 await**。`unawaited` 不会替调用方吞掉异常：漏接的话它就是一个
+    // 无人处理的异步错误——控制台里一行，用户那边「分析悄悄没发生」。
+    // 详情页那条路有自己的 catch，这条没有，所以这条用例钉的就是这里。
+    //
+    // **必须走完评星那一步**：`_finish` 的正文（连同这一句）在评星之后才跑。
+    // 只 `holdToFinish` 就断言，测到的是「弹出了评星框」，`analyseRecord` 一次都没被调到
+    // ——那条用例是空的（实测过：把它写成那样，`calls` 恒为 0）。
+    final start = DateTime(2026, 8, 30, 23, 14);
+    final exploding = _ExplodingAnalyzer(database);
+    await pumpSession(
+      tester,
+      session: sessionAt(start),
+      now: start.add(const Duration(hours: 7, minutes: 48)),
+      analyzer: exploding,
+    );
+
+    await holdToFinish(tester);
+    await tester.tap(find.text('跳过'));
+    // **让事件循环真的转一圈**：那句被踢出去的 future 要到一个微任务之后才落地。
+    // 测试体跑完就结束的话，这个错误是在「测试已经通过」之后才发生的——断言什么也没钉住。
+    await tester.pumpAndSettle();
+
+    expect(exploding.calls, 1, reason: '这一晚的片段确实交给分析了');
+    expect(tester.takeException(), isNull,
+        reason: '**异常必须被接住**：没人处理的话它就是一个静默的异步错误');
   });
 
   testWidgets('跳过评星：记录落库但质量为 null 且没有评分', (tester) async {

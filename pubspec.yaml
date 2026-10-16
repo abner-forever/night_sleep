@@ -28,6 +28,7 @@ dependencies:
   flutter_secure_storage: ^11.2.0
   record: ^7.1.1
   url_launcher: ^6.3.2
+  tflite_flutter: ^0.12.1
 
 dev_dependencies:
   flutter_test:
@@ -47,3 +48,9 @@ flutter:
     # 源素材来自爱给网（aigei.com），**可商用授权尚未落实**——发布前必须确认或更换，
     # 见 docs/superpowers/specs/2026-10-03-noise-real-recordings-design.md §3.1。
     - assets/noise/
+    # 鼾声/人声判定的模型（YAMNet，MediaPipe 那份 TFLite 转换件，4,126,810 字节）。
+    # **它进仓库**：判定在端侧跑，文件必须在包里。
+    # ⚠️ **它的许可证官方至今没有正面声明**（模型文件内嵌元数据写的是 Apache-2.0，
+    # 上游 YAMNet 权重也是 Apache-2.0，但 MediaPipe 的文档没写这一条）——
+    # 与「助眠音效素材的可商用授权」同一类**发布阻塞项**，见 README「未实现」表。
+    - assets/model/

@@ -4,40 +4,37 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 这是什么
 
-「夜深」——中文、本地优先的睡眠记录 Flutter 应用（iOS / macOS 已构建；**Android 平台目录已
-生成、真机跑通**——v3.11 生成工程、v3.12 装到 MI 9 上跑通、v3.13 适配系统栏，但后台录音与
-通知投递仍未实现；**Web 只有骨架、从未构建**。逐条现状见 README「未实现」表）。
-界面按 Figma Make 原型的**最终生效层**实现。
+「夜深」——中文、本地优先的睡眠记录 Flutter 应用。iOS / macOS / Android 都已构建、都在真机或
+模拟器上跑通过（v3.12 起在 MI 9 上跑，v3.26 起后台录音走 Android 前台服务，v3.35 拿到
+「整夜录到的都是真音频」的证据）；**Web 只有骨架、从未构建**。逐条现状见 README「未实现」表
+——那里写的是「还差什么」，**不要当成已完成**。界面按 Figma Make 原型的**最终生效层**实现。
 
 **动手前先读 `docs/superpowers/specs/2026-09-28-night-sleep-design.md` 第 8 章「与原型的有意偏差」。**
-那张表现有 66 条（`#1`–`#65` 外加一条 `#16b`；`#7` / `#31` / `#35` / `#44` 标着「作废」，是历史
-不是待办；`#34` 排在 `#39` 之后，别按位置找）。每条都写了理由，**却不保证都写了回归方法**。
+那张表现有 68 条（`#1`–`#71` 外加一条 `#16b`，另加 v3.37 的 `#72`–`#73`；`#7` / `#31` / `#35` /
+`#44` 标着「作废」，是历史不是待办；`#34` 排在 `#39` 之后，别按位置找）。每条都写了理由，
+**却不保证都写了回归方法**。
 
 表里反复引用的那句是**「没有的东西就显示为没有」**（#3 / #7 / #26 / #33 一族）。落到具体能力上：
 不伪造睡眠阶段（#10）、没有真实音频就不画波形（#2 / #13 / #27，措辞是「没有测量就不画」）、
 不显示读不到的余额（#3）、不猜小米导入字段（#4；公开实现的阶段映射已被实测证明是错的，见
 [`2026-10-13-xiaomi-band-sleep-integration-design.md`](docs/superpowers/specs/2026-10-13-xiaomi-band-sleep-integration-design.md) §五）。
 这些是产品红线，不是待办——原型里它们是演示数据，规格书明令不得当真实能力实现。
-`README.md` 的「未实现」表同样不要当成已完成。
 
-新增或修改能力后，同步更新该规格（偏差表 / 测试矩阵）与 `README.md`（实现范围），
-版本变更记入 `CHANGELOG.md`。
+**需求写完，只写一条 `CHANGELOG.md` 就够了。** 新增了什么功能、修好了什么问题、行为变了什么，
+每条三五行为宜。**纯文档改动不进 CHANGELOG**（README / 规格 / 计划的搬迁与重排——git 历史
+就是记录）。
 
-**`CHANGELOG.md` 只记项目级变动**：新增了什么功能、修好了什么问题、行为变了什么。
-**纯文档改动不进 CHANGELOG**（README / 规格 / 计划的搬迁与重排——git 历史就是记录）。
-每条三五行为宜，细节指向规格或验证记录，别写成设计文档。
+**不要顺手去同步 README、规格、验证记录，也不为一个需求补一份计划。** 只有一种情况必须动
+它们：**你的改动让那里已经写下的一句话变成了假话**——README 的「未实现」表说某能力还没有、
+而你刚把它做出来了；规格里某条裁定被你改了。那时改的也是**那一句话**，不是补一份文档。
 
-**验收记录只有一处**：本轮实跑结果与**未验证项**一律写进
-[`docs/verification-log.md`](docs/verification-log.md)（按时间倒序，最新在最上面）。
-**每条的抬头自带它当时那台机器与环境**——文件开头那句「本机环境：macOS」只管 v3.11 之前的条目，
-v3.11 起都是在 Windows 上做的。
-**`README.md` 里不再保留任何一版**——连指针式的一段都不留（v3.17 起；v3.14 曾拆成
-「README 留最近一版 + 更早的进 docs」两处，2026-10-13 使用方要求**全部搬走**）。
-**「未验证」那一半不许省**——它是规格书「不得把没做过的事写成已完成」那条红线的凭据。
+**说的时候要准**：没跑过的别写成跑过，跑绿了就说跑绿了、哪条没验就写哪条。这条是产品红线，
+不是文档要求——它管的是**你说的话**，不是要你每次留一份档案。
 
-新的设计规格落 `docs/superpowers/specs/`，新的实现计划落 `docs/superpowers/plans/`，
-文件名一律 `YYYY-MM-DD-<topic>.md`。规格是活文档：创建时定日期，之后原地更新，不新开文件，
-变更史记入 `CHANGELOG.md`。
+三份长文档都还在，**想写长了再写**：`docs/verification-log.md`（某次验收跑出了什么、
+哪些没验，按时间倒序，每条的抬头自带当时那台机器与环境）、`docs/superpowers/specs/`
+（设计规格）、`docs/superpowers/plans/`（实现计划 + 一页索引 `ARCHIVE.md`）。
+文件名一律 `YYYY-MM-DD-<topic>.md`；规格是活文档，创建时定日期、之后原地更新、不新开文件。
 
 **先分清改动的大小，别把小改动做成大工程。** 判定标准是一句话：**这个决策能不能从代码和现有
 规格里推出来？** 推得出来就直接改——不写计划、不写 spec、**也不先复述一遍要改什么**。用户报的
@@ -46,9 +43,11 @@ bug、改一句文案、调一处样式、加个开关，都属于这一类：�
 
 | 档 | 触发条件 | 产物 |
 | --- | --- | --- |
-| **直接改**（默认档） | 单点、单文件、现有测试能验证 | **不开 plan、不写 spec、不先复述方案**；改完跑 `dart format .` / `flutter analyze` / `flutter test`；功能 / 修复再在 `CHANGELOG.md` 记一行（纯文档改动不记） |
+| **直接改**（默认档） | 单点、单文件、现有测试能验证 | **不开 plan、不写 spec、不先复述方案**；改完跑 `dart format .` / `flutter analyze` / `flutter test` |
 | **只开 plan** | 跨几处或多平台、有「不许破坏 X」的硬约束、需要先红后绿地钉测试 | 一份短 plan 挂到**已有规格**的对应章节（原地更新），**不新开 spec** |
 | **spec + plan** | 新能力、新架构、影响产品语义、需要权衡取舍 | 新 spec + 新 plan |
+
+**三档的差别只在「要不要先写方案」；三档做完都只记一条 `CHANGELOG`。**
 
 **拿不准就往低档走。** 不要为小改动写计划、写长篇方案说明或逐条复述将要改什么。
 
@@ -94,11 +93,18 @@ shell profile 里写环境变量，或改 `~/.gradle/init.d/`、仓库里的 `di
 每个 push 页面都走 `Subpage`（推入的路由继承不到 `Scaffold` 与 `Material` 祖先）；
 `SleepRepository.save()` 的 `stages` 传 `null` 表示「保持已有阶段不变」，不是「清空」。
 
-`docs/architecture.md` **落后于代码几处**，动手前以代码为准：provider 表不是全集（只列了首批
-7 个，`lib/` 里实际有三十多个）；schema 版本号也不是当前的（代码是 v7，README 已对齐、
-architecture.md 还停在 v3）；`source` 的取值除
-`manual / import / demo` 外还有 `session`（会话落库的记录）；密钥早已进系统钥匙串（v3.7 起），
-文档里「尚未接入安全存储」那句是旧的。
+**片段自动分析（鼾声 / 人声）分三层，别搅在一起**：判定规则在
+`features/sleep/domain/clip_yamnet.dart`（纯函数，**不许 import `tflite_flutter`**，
+否则它在 `flutter test` 里一条都测不了）；跑模型在 `data/yamnet_scorer.dart`；
+读文件 / 起 isolate / 写库在 `data/clip_analyzer.dart`。模型
+`assets/model/yamnet.tflite` 进包也进仓库，**它的许可证未落实，是发布阻塞项**。
+真机上的评估入口是 `integration_test/yamnet_eval_test.dart`（`dart run` 起不了 TFLite）。
+详情见 [`docs/architecture.md`](docs/architecture.md)。
+
+`docs/architecture.md` **仍落后于代码几处**，动手前以代码为准：provider 表不是全集（只列了首批
+7 个，`lib/` 里实际有三十多个）；`source` 的取值除 `manual / import / demo` 外还有
+`session`（会话落库的记录）；密钥早已进系统钥匙串（v3.7 起），文档里「尚未接入安全存储」
+那句是旧的。（schema 版本号 v3.37 顺手对齐到了 v8。）
 
 ## 写 Flutter 代码前
 
@@ -114,6 +120,12 @@ DDL）见 **[`.claude/skills/flutter-pitfalls/SKILL.md`](.claude/skills/flutter-
 Android 那套两形式见偏差 #16b）与 `generate_noise_assets.dart`（`assets/noise/` 五条循环素材）。
 要改图标或音效就改生成器再跑一遍，别手改产物。跑法见 README「运行与生成」。
 **助眠音效素材的可商用授权尚未落实，是发布阻塞项。**
+（同目录下另外两个——`analyse_clips.dart` / `eval_clips.dart`——是**复核**用的，只读、不改文件，
+用法见 README「复核自动分析的两个脚本」。）
+
+**两个已登记的发布阻塞项**：助眠音效素材的可商用授权，以及 `assets/model/yamnet.tflite`
+的许可证（YAMNet 权重是 Apache-2.0，但 MediaPipe 那份**转换件**官方文档没有正面声明）。
+两条都在 README「未实现」表里，**别当成已经解决**。
 
 ## 其他约定
 

@@ -442,13 +442,26 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage>
       return;
     }
 
-    // 把这一晚的片段交给自动分析。**不 await**：读磁盘、跑 FFT，一晚几十上百段
+    // 把这一晚的片段交给自动分析。**不 await**：读磁盘、跑模型，一晚几十上百段
     // 可能要好几秒，不能让它拦着页面收尾。分析完会写回 `sound_clips`，而
     // `sleepEntriesProvider` 订阅着那张表，详情页自然就看到了。
     //
     // 半路被杀也不要紧：下次冷启动的补跑会把没分析完的片段捡回来
     // （`ClipAnalyzer.analysePending`）。
-    unawaited(ref.read(clipAnalyzerProvider).analyseRecord(recordId));
+    //
+    // **异常必须在这里接住。** `analyseRecord` 是会抛的（模型加载不起来时抛
+    // `ClipModelUnavailable`），而 `unawaited` 不会替我们吞掉它——抛出去就是一个
+    // 无人处理的异步错误，只会在控制台里留一行，用户那边则是「分析悄悄没发生」。
+    // 详情页那条路有 `catch` 会说给用户听，这一条没有，所以这里必须自己接。
+    unawaited(
+      ref
+          .read(clipAnalyzerProvider)
+          .analyseRecord(recordId)
+          .catchError((Object error) {
+        debugPrint('会话结束后的片段分析失败：$error');
+        return 0;
+      }),
+    );
 
     // 记录已经落库，下面全是收尾。收尾一步都不许抛出去——一旦抛了，用户就被
     // 撂在一个没有会话、也没有任何反馈的页面上。见 [teardownSession]。

@@ -99,6 +99,11 @@ class SoundClips extends Table {
   ///
   /// 存 JSON 而不是拆成四列，是照 [waveformEnvelope] 与 `active_sessions.clip_journal`
   /// 的既有惯例：这几个字段永远一起读、一起写，且没有任何按它们检索的查询。
+  ///
+  /// **这个键集没有版本号，而判定引擎换过一次**（2026-10-16：手写声学阈值 → YAMNet）。
+  /// 新旧记录的**形状**一样、**含义**不同，靠 `atUtc` 区分不了。所以那次换引擎时
+  /// 走的是 v8 迁移把旧值整体清掉（见 `onUpgrade`），而不是在这里加一个 engine 键
+  /// ——旧值一个都不该再被当成结论显示。
   TextColumn get autoAnalysis => text().nullable()();
 
   @override
@@ -228,7 +233,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -315,6 +320,31 @@ class AppDatabase extends _$AppDatabase {
           // `createTable` 用的是当前定义，已经带着它了，再加就是 `duplicate column name`。
           if (from >= 2 && from < 7) {
             await m.addColumn(soundClips, soundClips.autoAnalysis);
+          }
+          // v8 **不是加列，是把旧引擎的判断作废**——这是本文件里唯一一条会改数据的
+          // 迁移，理由要写清楚。
+          //
+          // 2026-10-16 起机器判定由 YAMNet 给出（`domain/clip_yamnet.dart`），而 v7
+          // 及以前写进 `auto_analysis` 的全是那套手写声学阈值的结论。它已被证伪：
+          // 47 段人工标注上覆盖 2% / 准确 0% / 鼾声召回 0%，把时长门槛从 2500 ms
+          // 扫到 500 ms 也救不回来（规格 §五·补）。
+          //
+          // **清的是机器那一列，不是用户的标注**：`kind` 与 `labeled_at_utc` 一个字
+          // 都不动，那两列才是用户自己的东西。清完 `analysis_status` 回到 `pending`，
+          // 冷启动那次补跑（`ClipAnalyzer.analysePending`）会用新引擎自动重算——
+          // 用户不需要做任何动作。
+          //
+          // **不清会怎样**：`analysePending` 只捡 `pending`，所以旧判断会永远留着；
+          // 而**他那 3 段真鼾声会一直停在「待标注」**——正是这一版要修的那件事。
+          //
+          // 只碰 `source = 'recording'`：演示数据的 `analysis_status` 是示例数据的
+          // 一部分，而补跑按定义不看演示数据，重置了只会让它永远停在 `pending`。
+          if (from < 8) {
+            await customStatement(
+              "UPDATE sound_clips SET analysis_status = 'pending', "
+              "auto_analysis = NULL "
+              "WHERE source = 'recording' AND analysis_status = 'analysed'",
+            );
           }
         },
         beforeOpen: (details) async {

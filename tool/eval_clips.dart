@@ -1,17 +1,34 @@
 // 把机器的自动判定与人的标注逐段对照，算出正确率。
 //
 // **这是「阈值到底对不对」唯一能给出数字的工具。** 与 `analyse_clips.dart` 的分工：
-// 那个是给你用耳朵复核单段的特征表，这个是拿你**已经标过**的那些段算总账。
+// 那个把实测的声学特征摆出来给人核对，这个拿你**已经标过**的那些段算总账。
+//
+// ## 为什么要先有一份「分档表」
+//
+// 判定在 2026-10-16 换成了 YAMNet（`domain/clip_yamnet.dart`），而**模型不能在
+// `dart run` 里跑**——`tflite_flutter` 要一个平台原生库，命令行 Dart 没有。
+//
+// 所以分两步：先在**真机**上跑一次端侧测量（`integration_test/yamnet_eval_test.dart`），
+// 它给每一段真实录音落一份「整段均分」，再从设备上取回来喂给这个脚本：
+//
+//   flutter drive --driver=test_driver/integration_test.dart \
+//     --target=integration_test/yamnet_eval_test.dart -d <serial>
+//   adb exec-out run-as com.example.night_sleep cat \
+//     files/yamnet_scores.txt > scores.txt
 //
 // 用法：
-//   dart run tool/eval_clips.dart <片段目录> <标注文件> [--sweep=参数名]
+//   dart run tool/eval_clips.dart <分档表> <标注文件> [--sweep=snore|voice]
+//
+// 分档表的行：`<片段 id> <Snoring 均分> <Speech 均分>`，空白或 `|` 分隔。
+// **表里没有的片段一律按弃权计**——那正是数字静音那一段的结局（它根本不喂给模型，
+// 见 `clip_yamnet.dart` 的 `kSilenceDbfs`），所以「没有行」与「弃权」在这里是同一件事。
 //
 // 标注文件按行写 `<片段 id> <标注>`，空行与 `#` 开头的行忽略。标注取值：
 //   snore / talk / noise  —— 与 `SoundEventKind` 的 id 一致
 //   -                     —— 没标过，跳过
 // 从真机库里导出这个文件：
-//   sqlite3 night_sleep.sqlite \
-//     "select id, kind from sound_clips where labeled_at_utc is not null;" > labels.txt
+//   adb exec-out run-as com.example.night_sleep cat app_flutter/night_sleep.sqlite > db.sqlite
+//   sqlite3 db.sqlite "select id, kind from sound_clips where labeled_at_utc is not null;" > labels.txt
 //
 // **正确率必须连同「弃权多少」一起读。** 机器靠弃权可以轻易把正确率做到 100%
 // （判一段都不判），所以这个工具同时报出**覆盖率**——机器肯开口的那部分占多少。
@@ -21,8 +38,8 @@
 
 import 'dart:io';
 
-import 'package:night_sleep/features/sleep/data/wav_file.dart';
 import 'package:night_sleep/features/sleep/domain/clip_analysis.dart';
+import 'package:night_sleep/features/sleep/domain/clip_yamnet.dart';
 
 /// 标注 id → 机器标签。人只说「梦话」，机器只说「疑似人声」——两者对齐在这里，
 /// 且只在这里：名字不同是刻意的，别为了对齐把机器的说法改成「梦话」。
@@ -32,40 +49,21 @@ const _humanToAuto = {
   'noise': AutoLabel.noise,
 };
 
-/// 可扫的阈值：名字 → (参数名, 取值序列)。用来回答「调大调小会怎样」。
-final _sweepable = <String, (String, List<double>)>{
-  'snoreLowRatio': (
-    'snoreLowRatio',
-    [0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60]
-  ),
-  'snoreCentroid': ('snoreCentroid', [400, 500, 600, 700, 800, 1000, 1200]),
-  'snorePitchStrength': (
-    'snorePitchStrength',
-    [0.20, 0.30, 0.40, 0.45, 0.50, 0.60, 0.70]
-  ),
-  'snoreMaxPeakShare': (
-    'snoreMaxPeakShare',
-    [0.20, 0.25, 0.30, 0.35, 0.40, 0.50, 0.70]
-  ),
-  'voiceSpeechRatio': (
-    'voiceSpeechRatio',
-    [0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70]
-  ),
-  'voiceCentroid': ('voiceCentroid', [500, 600, 700, 800, 900, 1000, 1200]),
-  'voicePitchStrength': (
-    'voicePitchStrength',
-    [0.20, 0.30, 0.40, 0.45, 0.50, 0.60, 0.70]
-  ),
-  'minEventMs': ('minEventMs', [500, 1000, 1500, 2000, 2500, 3000, 4000]),
+/// 可扫的两条判定线。**模型分本身不能扫**，能扫的只有拿分比哪条线。
+const _sweepable = <String, String>{
+  'snore': '鼾声判定线',
+  'voice': '人声判定线',
 };
+
+/// 每条线扫哪些取值。**现值也在里面**，好一眼看出它在整条曲线上落在哪。
+const _sweepValues = <double>[0.10, 0.20, 0.30, 0.40, 0.50, 0.70, 0.90];
 
 Future<void> main(List<String> args) async {
   final flags = args.where((a) => a.startsWith('--')).toList();
   final positional = args.where((a) => !a.startsWith('--')).toList();
   if (positional.length < 2) {
-    stderr.writeln('用法：dart run tool/eval_clips.dart <片段目录> <标注文件> '
-        '[--sweep=参数名]');
-    stderr.writeln('可扫参数：${_sweepable.keys.join(" / ")}');
+    stderr.writeln('用法：dart run tool/eval_clips.dart <分档表> <标注文件> '
+        '[--sweep=${_sweepable.keys.join("|")}]');
     exit(2);
   }
 
@@ -75,31 +73,29 @@ Future<void> main(List<String> args) async {
     exit(2);
   }
 
-  final samples = await _loadClips(Directory(positional[0]));
-  if (samples.isEmpty) {
-    stderr.writeln('片段目录里没有能读的 WAV：${positional[0]}');
+  final scores = _readScores(File(positional[0]));
+  if (scores.isEmpty) {
+    stderr.writeln('分档表里没有一条有效记录：${positional[0]}');
     exit(2);
   }
 
-  final sweepNames = flags
-      .where((f) => f.startsWith('--sweep='))
-      .map((f) => f.substring('--sweep='.length))
-      .toList();
+  final sweepNames =
+      flags.where((f) => f.startsWith('--sweep=')).map((f) => f.substring(8));
   final sweep = sweepNames.isEmpty ? null : sweepNames.first;
 
   final evaluated = <_Case>[];
-  for (final s in samples) {
-    final human = labels[s.id];
+  for (final entry in scores.entries) {
+    final human = labels[entry.key];
     if (human == null) continue;
     evaluated.add(_Case(
-      id: s.id,
+      id: entry.key,
       human: human,
-      seconds: s.audio.duration.inMilliseconds / 1000,
-      verdict: classifyClip(s.audio.samples, sampleRate: s.audio.sampleRate),
+      score: entry.value,
+      verdict: _verdictFor(entry.value, const YamnetParams()),
     ));
   }
   if (evaluated.isEmpty) {
-    stderr.writeln('片段与标注对不上号：没有一个片段在标注文件里。');
+    stderr.writeln('分档表与标注文件对不上号：没有一个片段两边都有。');
     exit(2);
   }
 
@@ -107,27 +103,27 @@ Future<void> main(List<String> args) async {
   _printScore(evaluated);
 
   if (sweep != null) {
-    final entry = _sweepable[sweep];
-    if (entry == null) {
-      stderr.writeln('不能扫的参数：$sweep。可扫：${_sweepable.keys.join(" / ")}');
+    final title = _sweepable[sweep];
+    if (title == null) {
+      stderr.writeln('不能扫的判定线：$sweep。可扫：${_sweepable.keys.join(" / ")}');
       exit(2);
     }
-    _printSweep(sweep, samples, labels, entry.$1, entry.$2);
+    _printSweep(sweep, title, scores, labels);
   }
 }
 
-/// 一段被评估的录音：人标的、机器判的、以及它的时长。
+/// 一段的分档与它对应的判定。
 class _Case {
   _Case({
     required this.id,
     required this.human,
-    required this.seconds,
+    required this.score,
     required this.verdict,
   });
 
   final String id;
   final AutoLabel human;
-  final double seconds;
+  final _Score score;
   final AutoVerdict? verdict;
 
   AutoLabel? get machine => verdict?.label;
@@ -137,39 +133,27 @@ class _Case {
   bool get correct => machine == human;
 }
 
-/// 目录里一段读得动的录音。
-class _Sample {
-  _Sample(this.id, this.audio);
+/// 一段的整段均分，来自真机上的端侧测量。
+class _Score {
+  _Score(this.snoreMean, this.speechMean);
 
-  final String id;
-  final Pcm16Audio audio;
+  final double snoreMean;
+  final double speechMean;
 }
 
-Future<List<_Sample>> _loadClips(Directory dir) async {
-  if (!dir.existsSync()) return const [];
-  final files = dir
-      .listSync()
-      .whereType<File>()
-      .where((f) => f.path.toLowerCase().endsWith('.wav'))
-      .toList()
-    ..sort((a, b) => a.path.compareTo(b.path));
-
-  final out = <_Sample>[];
-  for (final file in files) {
-    final audio = await readWavFile(file.path);
-    if (audio == null) {
-      stderr.writeln('跳过读不开的文件：${file.path}');
-      continue;
-    }
-    out.add(_Sample(_clipIdOf(file.uri.pathSegments.last), audio));
-  }
-  return out;
-}
-
-/// 文件名 `clip-<时间戳>.wav` → 片段 id。其余形状原样返回（标注文件照它对齐）。
-String _clipIdOf(String fileName) {
-  final stem = fileName.substring(0, fileName.length - 4);
-  return stem;
+/// 用**同一套**判定规则算结论——这是这个工具的全部意义所在。
+///
+/// 把两个均分各包成「只有一个窗口」的 [ClipScores]：只剩一窗时均分就是它自己，
+/// 于是这里算出来的与设备上算出来的逐字相同，**规则只有一份实现**。
+///
+/// `dbfs` 传 0（= 不是静音）：静音那一段在设备上根本没喂给模型、也就没有分档行，
+/// 在这里按弃权计。见文件头。
+AutoVerdict? _verdictFor(_Score score, YamnetParams params) {
+  return verdictFromScores(
+    ClipScores(snore: [score.snoreMean], speech: [score.speechMean]),
+    dbfs: 0,
+    params: params,
+  );
 }
 
 Map<String, AutoLabel> _readLabels(File file) {
@@ -194,18 +178,39 @@ Map<String, AutoLabel> _readLabels(File file) {
   return labels;
 }
 
+Map<String, _Score> _readScores(File file) {
+  if (!file.existsSync()) {
+    stderr.writeln('分档表不存在：${file.path}');
+    exit(2);
+  }
+  final scores = <String, _Score>{};
+  for (final raw in file.readAsLinesSync()) {
+    final line = raw.trim();
+    if (line.isEmpty || line.startsWith('#')) continue;
+    final parts = line.split(RegExp(r'[\s|]+'));
+    if (parts.length < 3) continue;
+    final snore = double.tryParse(parts[1]);
+    final speech = double.tryParse(parts[2]);
+    if (snore == null || speech == null) {
+      stderr.writeln('分档表这一行读不出分数，跳过：$line');
+      continue;
+    }
+    scores[parts[0]] = _Score(snore, speech);
+  }
+  return scores;
+}
+
 void _printTable(List<_Case> cases) {
-  print('${'片段'.padRight(22)}${'时长'.padLeft(7)}${'人标'.padLeft(8)}'
-      '${'机器'.padLeft(12)}${'位置'.padLeft(20)}判定');
-  print('-' * 82);
+  print('${'片段'.padRight(22)}${'人标'.padLeft(8)}'
+      '${'鼾分'.padLeft(8)}${'声分'.padLeft(8)}${'机器'.padLeft(12)}判定');
+  print('-' * 78);
   for (final c in cases) {
-    final span = c.verdict?.event?.spanLabel ?? '';
     final mark = c.abstained ? '弃权' : (c.correct ? '✓' : '✗ 不符');
     print('${c.id.padRight(22)}'
-        '${'${c.seconds.toStringAsFixed(1)}s'.padLeft(7)}'
         '${c.human.label.padLeft(8)}'
-        '${(c.machine?.label ?? '—').padLeft(12)}'
-        '${span.padLeft(20)}  $mark');
+        '${c.score.snoreMean.toStringAsFixed(3).padLeft(8)}'
+        '${c.score.speechMean.toStringAsFixed(3).padLeft(8)}'
+        '${(c.machine?.label ?? '—').padLeft(12)}  $mark');
   }
 }
 
@@ -252,33 +257,37 @@ void _printScore(List<_Case> cases) {
   }
 }
 
-/// 扫一个阈值，打印它取各个值时的（覆盖率, 准确率, 保守正确率）。
+/// 扫一条判定线，打印它取各个值时的（覆盖率, 准确率, 保守正确率）。
 ///
 /// **别只看准确率那一列。** 把门槛调严会让准确率一路升到 100%，代价是覆盖率掉到 0
 /// ——那一列必须同时在眼前。
+///
+/// **扫出来的好数字不构成定阈值的理由**：样本不够时那叫拟合，本仓的规矩是样本不足
+/// 不调参。这个表的用处是让人看见「换一条线会往哪边动」，不是让人挑最大的那一格。
 void _printSweep(
-  String name,
-  List<_Sample> samples,
+  String key,
+  String title,
+  Map<String, _Score> scores,
   Map<String, AutoLabel> labels,
-  String paramName,
-  List<double> values,
 ) {
   print('');
-  print('扫 $paramName：');
-  print('${'取值'.padLeft(10)}${'开口'.padLeft(8)}${'覆盖'.padLeft(8)}'
+  print('扫 $title：');
+  print('${'判定线'.padLeft(10)}${'开口'.padLeft(8)}${'覆盖'.padLeft(8)}'
       '${'准确'.padLeft(8)}${'保守'.padLeft(8)}  逐类命中（鼾/声/杂）');
-  for (final value in values) {
-    final params = _withParam(paramName, value);
+  for (final value in _sweepValues) {
+    final params = key == 'snore'
+        ? YamnetParams(snoreThreshold: value)
+        : YamnetParams(voiceThreshold: value);
+
     final cases = <_Case>[];
-    for (final s in samples) {
-      final human = labels[s.id];
+    for (final entry in scores.entries) {
+      final human = labels[entry.key];
       if (human == null) continue;
       cases.add(_Case(
-        id: s.id,
+        id: entry.key,
         human: human,
-        seconds: s.audio.duration.inMilliseconds / 1000,
-        verdict: classifyClip(s.audio.samples,
-            sampleRate: s.audio.sampleRate, params: params),
+        score: entry.value,
+        verdict: _verdictFor(entry.value, params),
       ));
     }
     final spoke = cases.where((c) => !c.abstained).toList();
@@ -291,26 +300,10 @@ void _printSweep(
         : '${(right * 100 / spoke.length).toStringAsFixed(0)}%';
     final coverage =
         '${(spoke.length * 100 / cases.length).toStringAsFixed(0)}%';
-    print('${value.toString().padLeft(10)}${'${spoke.length}'.padLeft(8)}'
+    print('${value.toStringAsFixed(2).padLeft(10)}'
+        '${'${spoke.length}'.padLeft(8)}'
         '${coverage.padLeft(8)}${accuracy.padLeft(8)}'
-        '${'${(right * 100 / cases.length).toStringAsFixed(0)}%'.padLeft(8)}  $hits');
+        '${'${(right * 100 / cases.length).toStringAsFixed(0)}%'.padLeft(8)}'
+        '  $hits');
   }
-}
-
-/// 造一个只改了一个参数的 [ClipAnalysisParams]。
-ClipAnalysisParams _withParam(String name, double value) {
-  const d = ClipAnalysisParams();
-  return ClipAnalysisParams(
-    snoreLowRatio: name == 'snoreLowRatio' ? value : d.snoreLowRatio,
-    snoreCentroid: name == 'snoreCentroid' ? value : d.snoreCentroid,
-    snorePitchStrength:
-        name == 'snorePitchStrength' ? value : d.snorePitchStrength,
-    snoreMaxPeakShare:
-        name == 'snoreMaxPeakShare' ? value : d.snoreMaxPeakShare,
-    voiceSpeechRatio: name == 'voiceSpeechRatio' ? value : d.voiceSpeechRatio,
-    voiceCentroid: name == 'voiceCentroid' ? value : d.voiceCentroid,
-    voicePitchStrength:
-        name == 'voicePitchStrength' ? value : d.voicePitchStrength,
-    minEventMs: name == 'minEventMs' ? value.round() : d.minEventMs,
-  );
 }

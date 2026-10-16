@@ -296,13 +296,33 @@ class _SoundCardState extends ConsumerState<SoundCard> {
   String? get _autoBasis =>
       _isLabeled ? null : _clip.autoAnalysis?.verdict?.basis;
 
-  /// 机器判出来的那个事件**在片段的哪一段上**（「第 3.2 秒起 · 持续 4.0 秒」）。
+  /// 机器判出来的那个事件**在片段的哪一段上**（「第 0.3–3.8 秒」）。
   ///
-  /// 一段里混着几种声音是常事，只给一个标签等于把「哪几秒」这件事吞掉了。有了它，
-  /// 用户可以直接跳到那几秒去核对，也不用因为后 8 秒是翻身声就否掉前 3 秒的鼾声。
-  /// 「杂音」没有事件可指，返回 `null`。
+  /// **新判定给不出这个**：YAMNet 是按整段给一个结论的，所以 `durationMs` 恒为 0，
+  /// `AutoVerdict.event` 会返回 `null`，这一行就不显示。有区间的一定是 2026-10-16
+  /// 之前那套旧规则写下的记录——那时候判定确实找过事件，「哪几秒」是它的结论之一。
+  /// 「杂音」也没有事件可指。
   String? get _autoSpan =>
       _isLabeled ? null : _clip.autoAnalysis?.verdict?.event?.spanLabel;
+
+  /// 机器对这一段说过什么。`null` = 不必额外说。
+  ///
+  /// **「看过但弃权」与「读不出来」都必须说出来。** 这两种在标题上与「从没分析过」
+  /// 长得一模一样（都是「待标注」），含义却完全不同：一个是机器没把握，一个是机器
+  /// 根本没读到音频。沉默的代价 2026-10-16 撞到过——那一晚 27 段全部弃权，用户在详情页
+  /// 点「重新分析」，屏幕上从标题到展开区一个字都没变，看起来就是那个按钮没生效。
+  ///
+  /// 有判断时不必说（上面已经有依据那一行），从没分析过时也不必说（展开区末尾
+  /// 本来就有「尚未分析这段录音」那句）。
+  String? get _machineNote {
+    if (_isLabeled) return null; // 人标的优先，机器说过什么都不再显示
+    if (_clip.analysisStatus == SoundAnalysisStatus.failed) {
+      return '机器没能分析这段：音频读不出来。它仍然可以回放。';
+    }
+    final analysis = _clip.autoAnalysis;
+    if (analysis == null || analysis.verdict != null) return null;
+    return '机器看过这段，没有把握下结论，所以留给你听。';
+  }
 
   /// 取色与取图标用的 kind。三态：人标的 > 机器判的 > 中性占位。
   ///
@@ -570,6 +590,10 @@ class _SoundCardState extends ConsumerState<SoundCard> {
                     _AutoBasisRow(basis: basis, span: _autoSpan),
                     const SizedBox(height: 14),
                   ],
+                  if (_machineNote case final note?) ...[
+                    _MachineNoteRow(note: note),
+                    const SizedBox(height: 14),
+                  ],
                   _LabelChooser(
                     selected: _isLabeled ? _kind : null,
                     onSelect: _label,
@@ -825,11 +849,15 @@ class _WaveformTrack extends StatelessWidget {
   }
 }
 
-/// 机器判定所依据的实测特征。
+/// 机器判定所依据的实测数。
 ///
 /// 这一行是「自动标注」这件事的**可反驳性**所在：它不显示任何「把握」或概率
 /// （那要靠标注数据才估得出来，没有就是编的），只把量出来的几个数摆出来。
 /// 用户看一眼就知道机器凭什么这么说，也就能否掉它。
+///
+/// **摆的是模型分，不是声学特征。** 2026-10-16 之前这里摆的是「低频能量 / 谱质心 /
+/// 周期性 / 最强单音占比」——那是旧规则真的照着判的四个数。判定换成 YAMNet 之后
+/// 模型一个都不用它们，继续摆就是让人以为机器是照那些数判的。
 class _AutoBasisRow extends StatelessWidget {
   const _AutoBasisRow({required this.basis, this.span});
 
@@ -876,12 +904,41 @@ class _AutoBasisRow extends StatelessWidget {
           ],
           const SizedBox(height: 6),
           Text(
-            '这是机器按声学特征测出来的，不是结论。你可以直接改成自己听到的。',
+            '这是模型对整段声音测出来的分，不是结论。你可以直接改成自己听到的。',
             style:
                 TextStyle(fontSize: 12, height: 1.5, color: tokens.textMuted),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 机器看过、却没留下判断时的一行说明（弃权，或音频读不出来）。
+///
+/// 与 [_AutoBasisRow] 是两种东西，刻意不共用那个盒子：那一行摆的是**测出来的数**，
+/// 这一行说的是**机器没有结论**。给沉默配一个「依据」框，等于把「什么都没测出来」
+/// 画成一副煞有介事的样子。
+class _MachineNoteRow extends StatelessWidget {
+  const _MachineNoteRow({required this.note});
+
+  final String note;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppTokens.of(context);
+    return Row(
+      children: [
+        AppIcons.ai(size: 14, color: tokens.textMuted, strokeWidth: 1.8),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            note,
+            style:
+                TextStyle(fontSize: 12, height: 1.5, color: tokens.textMuted),
+          ),
+        ),
+      ],
     );
   }
 }

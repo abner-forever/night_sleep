@@ -49,10 +49,39 @@
 再跳出引导」。因为它在 `Stack` 里，任何 push 在其之上的路由都会盖住它——只在冷启动停在 `/`
 时生效，将来若加路由恢复或 deep link 要改挂 `MaterialApp.builder`。
 
+## 片段分析管线（v3.37 换过判定引擎）
+
+三层，搬动任何一层之前先看清边界：
+
+| 层 | 文件 | 能不能单测 |
+| --- | --- | --- |
+| **判定规则**（分 → 结论 / 弃权） | `features/sleep/domain/clip_yamnet.dart` | **能，而且是唯一能被完整测的一层**。不 import `tflite_flutter`、不碰 `dart:io`——模型在 `flutter test` 里根本加载不了 |
+| **跑模型**（波形 → 分） | `features/sleep/data/yamnet_scorer.dart` | 不能。要原生库与模型文件 |
+| **I/O**（读文件、起 isolate、写库） | `features/sleep/data/clip_analyzer.dart` | 注入假 `ClipScorer` 后能，且**从 isolate 那一跳开始走生产路径** |
+
+- **判定是 YAMNet**（AudioSet 521 类，`Snoring`=38 / `Speech`=0），按**整段均分**判，
+  阈值 `YamnetParams`（鼾声 0.40 / 人声 0.70）。**永不输出「杂音」**。
+  2026-10-16 之前那套手写声学阈值已删除，理由见
+  [specs/2026-10-14-night-clip-auto-analysis-design.md](superpowers/specs/2026-10-14-night-clip-auto-analysis-design.md) §五·补。
+- **整批只起一个 isolate、只加载一次模型**（一晚约 5.3 秒，实测读数见验证记录 v3.37）。
+  `ClipAnalyzer._serialised` 保证同一时刻只跑一批：`analyseRecord` 是**不 await** 地从
+  会话结束与详情页两处踢出去的，撞车时两份 4 MB 模型是实打实的代价。
+- **模型字节在主 isolate 读**（`rootBundle` 要走平台通道，后台 isolate 收不到），
+  再跟着批处理送进 isolate。闭包捕获要当心——写 `_scorerFactory` 就是捕获 `this`，
+  连数据库句柄一起被塞进消息，`SendPort.send()` 会报「object is unsendable」。
+- **`measureClip` / `AudioFeatures` 还在，但不参与判定**：它们是实测特征，
+  `tool/analyse_clips.dart` 拿它们给人肉眼核对。**别把它们摆进「自动判断依据」**。
+- `assets/model/yamnet.tflite`（3.94 MiB）**进包也进仓库**；它的**许可证未落实**，
+  是发布阻塞项，见 README「未实现」表。
+
 ## 数据库
 
-Drift + SQLite，schema v3（`schemaVersion => 3`，`onUpgrade` 在 `app_database.dart`）。
+Drift + SQLite，schema **v8**（`schemaVersion => 8`，`onUpgrade` 在 `app_database.dart`）。
 外键级联删除；`source ∈ {manual, import, demo}` 隔离演示数据。
+
+> **本文的版本号曾经停在 v3 很久**（CLAUDE.md 一直标着「落后于代码」）。这次顺手对齐到 v8，
+> 但逐版细节仍以 `app_database.dart` 与 README 的迁移列表为准——那里才是每次改 schema 时
+> 一定会被更新的地方。
 
 - **v3 的关键改动**：`Insights.recordId` 补上了 `ON DELETE CASCADE` 外键（v2 里没有）。
   v2 时 `deleteDemoData()` 会留下孤儿洞察行（记录删了、洞察还在），重装演示数据时固定 id
@@ -84,3 +113,6 @@ Drift + SQLite，schema v3（`schemaVersion => 3`，`onUpgrade` 在 `app_databas
   由 `tool/generate_noise_assets.dart` 生成，`noise_player.dart` 用 `setAsset` 播放。
   **原 DSP 合成器 `noise_synth.dart` 已删除。** 素材的可商用授权**尚未落实**，
   发布前必须确认或更换——见 [specs/2026-10-03-noise-real-recordings-design.md](superpowers/specs/2026-10-03-noise-real-recordings-design.md) §3.1。
+- **`lib/` 里读打包资源的只有一处**：`yamnet_scorer.dart` 的 `loadYamnetModelBytes()`
+  （`rootBundle.load`）。助眠音效不走 `rootBundle`，走 `just_audio` 的 `setAsset`。
+  这一处的模型字节**只能在主 isolate 读**——后台 isolate 收不到平台推来的消息。

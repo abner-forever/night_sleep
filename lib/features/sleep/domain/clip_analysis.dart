@@ -1,35 +1,29 @@
-// 夜间录音片段的声学特征与启发式判定——整条分析链路里唯一能被完整单测的纯函数层。
+// 夜间录音片段的**实测声学特征**，以及机器判定的落地格式。
 //
 // 这个文件故意不 import `dart:io`、不碰任何插件、不碰平台通道：读 WAV、写数据库都要
-// 真机或集成测试才能验证，而「一段声音有哪些可测量的特征、够不够格下一个判断」必须
-// 全部靠单测钉死。把判定规则挪出这个文件，整条链路就再没有可被完整验证的部分了。
+// 真机或集成测试才能验证，而「一段声音有哪些可测量的特征」必须靠单测钉死。
 //
-// **这里没有模型，也不声称有。** 输出全部来自**实测特征**加一组写死在
-// [ClipAnalysisParams] 里的阈值。
+// ## 判定已经不在这个文件里了
 //
-// ## 判定是「找事件」，不是「给整段平均打一个分」
+// **2026-10-16 起，机器判定由 YAMNet 给出，规则在 [`clip_yamnet.dart`](clip_yamnet.dart)。**
+// 这里原来那套写死的声学阈值（低频占比 + 谱质心 + 周期性 + 最强单音 + 滑动窗找事件）
+// **已被证伪、已删除**：在使用方 47 段真实录音上覆盖 2% / 准确 0% / 鼾声召回 0%，
+// 把时长门槛从 2500 ms 一路扫到 500 ms 也救不回来——不是阈值没调对，是那组特征
+// 不承载「鼾声 vs 划桌子 + 拍手」这个区分。逐条读数见
+// `docs/superpowers/specs/2026-10-14-night-clip-auto-analysis-design.md` §五·补。
 //
-// 早先的版本把整段几十秒平均成一个特征向量再判一次，两个后果都在真机上撞到了：
+// **[measureClip] / [AudioFeatures] 留着**，而且不是死代码：它们是**真测量**，
+// `tool/analyse_clips.dart` 仍然把它们逐段打出来给人肉眼核对。**但它们已经不参与判定了**
+// ——摆一份「实测特征」在「自动判断依据」旁边会让人以为机器是照这些数判的，而模型
+// 一个都不用。所以界面上那行依据摆的是模型分，见 [AutoVerdict.basis]。
 //
-//  * **一段里混着鼾声与杂音时，平均完谁都不像。** 实测：一段 11.8 秒的录音，
-//    前 3.5 秒是教科书式的鼾声（低频 66–84%、质心 331–502 Hz、平坦度 0.00），
-//    后 8 秒是别的声音；整段平均出来是「低频 50%、质心 704 Hz」，两条规则都不满足，
-//    于是弃权——**明明有 3.5 秒的鼾声，机器却说判不了**。
-//  * **时长完全没被用上。** 实测：一段 1.1 秒的拖椅子声，低频 75%、质心 350 Hz、
-//    平坦度 0.02，是全部样本里最像鼾声的一段，机器给了最高余量。它错在只有 1.1 秒
-//    ——**鼾声不可能只有一秒**，而整段平均的模型里根本没有「时长」这个概念。
+// ## 三件刻意不做的事，别当遗漏
 //
-// 所以现在改成：滑动窗逐窗判，把连续同向的窗口并成**事件**，只有持续够长的事件才算数。
-// 这同时解决了上面两条，而且是同一个改动的两面：**一段混音里只有真正持续的那部分
-// 才配得上一个标签。**
-//
-// 四件刻意不做的事，别当遗漏：
 //  * **不做语音转写**：`SoundClips.transcript` 永远不由这里写。
-//  * **不声称「梦话」**：那要分清梦话、清醒说话与电视声，光靠声学特征做不到，
-//    所以只说 [AutoLabel.voice]（疑似人声）。
-//  * **不给概率**：[AutoVerdict.margin] 是「越过阈值多少」，**不是**「有多大概率
+//  * **不声称「梦话」**：那要分清梦话、清醒说话与电视声，所以只说 [AutoLabel.voice]
+//    （疑似人声）。换了模型也不改这一条——YAMNet 的 `Speech` 类同样分不出这几个。
+//  * **不给概率**：[AutoVerdict.margin] 是「越过判定线多少」，**不是**「有多大概率
 //    是鼾声」。没有标注数据就估不出概率，编一个百分比出来正是本仓最要挡的那种假话。
-//  * **判不出来就弃权，不拿「杂音」兜底**：见 [AutoLabel.noise] 的文档。
 
 import 'dart:convert';
 import 'dart:math' as math;
@@ -40,11 +34,11 @@ import 'dart:typed_data';
 /// **前两个是机器能给的，第三个不是。** [AutoLabel.snore] 与 [AutoLabel.voice] 是
 /// 机器的**正向证据**：测到了持续的低频周期性 / 持续的语音带周期性。
 ///
-/// **[AutoLabel.noise] 只能由人来给。** 2026-10-15 之前机器拿它兜底——「按窗口扫过
-/// 整段，没找到够格的鼾声或人声事件」就报杂音。**这条兜底已拆掉**，因为它的前提
-/// 不成立：说「杂音」等于同时说了「不是鼾声」和「不是人声」两个否定结论，而机器
-/// **根本认不出鼾声**（在 19 段已标注真机片段上召回 0%，见 `docs/verification-log.md`），
-/// 它没有任何资格下这个否定结论。现在扫完没找到事件一律弃权，界面上留「待标注」。
+/// **[AutoLabel.noise] 只能由人来给。** 2026-10-15 之前机器拿它兜底——「扫过整段，
+/// 没找到够格的鼾声或人声事件」就报杂音。**这条兜底已拆掉，而且换了模型也没有回来**：
+/// 说「杂音」等于同时说了「不是鼾声」和「不是人声」两个否定结论，而 YAMNet 给出的是
+/// 521 类的排序、不是这两个否定——某一段在 `Snoring` 上没到判定线，与「它不是鼾声」
+/// 是两回事。现在没过判定线一律弃权，界面上留「待标注」。
 ///
 /// 这个值仍然必须留着两处用它：**人标的取值**，以及**旧记录里已经写下的
 /// `auto_analysis`**——删掉它等于让那些记录读不回来。
@@ -170,10 +164,11 @@ class AudioFeatures {
   /// [spectralFlatness]。
   final double syllableBandRatio;
 
-  /// 人在界面上能核对的依据串。**显示实测数，不显示任何「把握」**。
+  /// 把四个特征拼成一行，给**人**读的一串实测数。
   ///
-  /// 三条判据一条一个数，顺序与 [ClipAnalysisParams] 里鼾声规则的顺序一致——
-  /// 读者拿这三个数就能自己复核机器为什么这么判。
+  /// **它不再是判定依据**——判定由 YAMNet 给出，界面上那行依据摆的是模型分
+  /// （[AutoVerdict.basis]）。这一串只出现在 `tool/analyse_clips.dart` 的表里，
+  /// 用途是让人拿它逐段核对声学特征本身对不对。
   String get basis {
     String pct(double v) => '${(v * 100).round()}%';
     return '低频能量 ${pct(lowRatio)} · 谱质心 ${spectralCentroid.round()} Hz '
@@ -184,8 +179,15 @@ class AudioFeatures {
 
 /// 机器在片段里找到（或否定）的一个事件。
 ///
+/// **新的判定不再产出它。** YAMNet 给的是**整段**的分数，拿它画一个「第几秒到第几秒」
+/// 就是把没量过的东西画出来（片级标签训出来的模型定位能力差是公认的，见
+/// `2026-10-16-snore-detection-approaches-design.md` §4.3）。
+///
+/// 这个类留着只有一个理由：**旧记录里存着区间**。2026-10-16 之前那套判定确实产出过
+/// 起止位置，`AutoAnalysis.decode` 会把它们读回来，界面也还在显示——删掉这个类等于
+/// 让那些记录读不回来，同 [AutoLabel.noise] 是同一条理由。
+///
 /// [startMs] / [durationMs] 是**实测的**：它们就是那串连续同向窗口的实际跨度。
-/// 旧版本没有这两个数，于是「1.1 秒的拖椅子声」和「10 秒的鼾声」在结果里长得一模一样。
 class ClipEvent {
   const ClipEvent({
     required this.label,
@@ -233,26 +235,36 @@ class AutoVerdict {
   /// 详见文件头最后一条。
   final double margin;
 
-  /// 判定所依据的实测特征，直接来自 [AudioFeatures.basis]。
+  /// 判定所依据的**实测数**——现在是 YAMNet 的分与判定线，由
+  /// `clip_yamnet.dart` 的 `verdictFromScores` 拼出来。
+  ///
+  /// 它不再是 [AudioFeatures.basis] 那一组声学特征：模型一个都不用那些数，
+  /// 摆在「自动判断依据」里就是让人以为机器是照它们判的。
   final String basis;
 
   /// 判出来的那个事件在片段里的位置与时长（毫秒）。见 [ClipEvent]。
+  ///
+  /// **新判定恒为 0**（按整段给结论，不定位）。有值的一定是 2026-10-16 之前的旧记录。
   final int startMs;
   final int durationMs;
 
   /// 判出来的事件。
   ///
-  /// [AutoLabel.noise] 没有事件可给——它指的是「扫过一遍没找到事件」，不是某个段落。
-  /// 现在的判定路径**永远不会产出** noise（见 [AutoLabel] 的文档），但旧记录里存着，
-  /// [AutoAnalysis.decode] 会把它们读回来，所以这一支仍然要留着。
-  ClipEvent? get event => label == AutoLabel.noise
-      ? null
-      : ClipEvent(
-          label: label,
-          startMs: startMs,
-          durationMs: durationMs,
-          margin: margin,
-        );
+  /// 三种情形返回 `null`：**没有时长**（新判定的常态，见 [ClipEvent]）、
+  /// [AutoLabel.noise]（它指的是「扫过一遍没找到事件」，不是某个段落）。
+  ///
+  /// 守卫写在这里而不是界面里：「这一段没有区间」是关于结论本身的事实，
+  /// 不该由每个读它的地方各自判断一遍——漏掉一处就会画出「第 0.0–0.0 秒」。
+  ClipEvent? get event {
+    if (label == AutoLabel.noise) return null;
+    if (durationMs <= 0) return null;
+    return ClipEvent(
+      label: label,
+      startMs: startMs,
+      durationMs: durationMs,
+      margin: margin,
+    );
+  }
 }
 
 /// 一次机器分析的落地记录，存进 `sound_clips.auto_analysis` 那一列。
@@ -324,11 +336,13 @@ class AutoAnalysis {
   }
 }
 
-/// 判定参数。**全部是拍的，必须在真实样本上验过再定稿**。
+/// 特征测量的参数。**只剩「怎么量」，没有「怎么判」了。**
 ///
-/// 现状（2026-10-15）：这组值在**使用方手机上 12 段真实录音**上跑过，但**没有定稿**
-/// ——那 12 段的标注自相矛盾（见 `docs/verification-log.md` 本轮条目），拿它标定等于
-/// 往错的答案上拟合。**未验证项原样留在验证日志里。**
+/// 判定那些阈值（低频占比 / 谱质心 / 周期性 / 最强单音、时长门槛、余量门槛）连同
+/// 它们的理由一起删掉了，去向见文件头：那套规则已被证伪，换成 `clip_yamnet.dart`
+/// 里的模型分判定。**理由没有丢**——它们逐条写在
+/// `docs/superpowers/specs/2026-10-14-night-clip-auto-analysis-design.md` §三 与
+/// §七，以及 git 历史里。将来若要回到声学特征这条路，从那里接着走，不要从头再想。
 class ClipAnalysisParams {
   const ClipAnalysisParams({
     this.frameLength = 1024,
@@ -338,30 +352,12 @@ class ClipAnalysisParams {
     this.speechBandTop = 3400,
     this.pitchBandBottom = 40,
     this.pitchBandTop = 320,
-    this.windowMs = 1200,
-    this.windowHopMs = 300,
-    this.mergeGapMs = 1500,
-    this.minEventMs = 2500,
-    this.snoreLowRatio = 0.45,
-    this.snoreCentroid = 800,
-    this.snorePitchStrength = 0.50,
-    this.snoreMaxPeakShare = 0.30,
-    this.voiceSpeechRatio = 0.50,
-    this.voiceCentroid = 700,
-    this.voicePitchStrength = 0.50,
-    this.voiceLowRatioMax = 0.45,
-    this.noiseMinDbfs = -60,
-    this.minMargin = 0.20,
   })  : assert(frameLength > 0),
         assert(hopLength > 0),
         assert(lowBandBottom >= 0),
         assert(lowBandTop > lowBandBottom),
         assert(speechBandTop > lowBandTop),
-        assert(pitchBandTop > pitchBandBottom),
-        assert(windowMs > 0),
-        assert(windowHopMs > 0),
-        assert(mergeGapMs >= 0),
-        assert(minEventMs > 0);
+        assert(pitchBandTop > pitchBandBottom);
 
   /// 一帧的采样点数（FFT 长度），必须是 2 的幂。
   final int frameLength;
@@ -373,7 +369,7 @@ class ClipAnalysisParams {
   ///
   /// **不是 0，是刻意的。** 麦克风有直流偏置是常事，而直流与次声不是「声音」——把它
   /// 算进低频带会让任何一段录音都显得低频很足。实测过：同一段片段，把直流算进来时
-  /// 低频占比 0.62，排除之后是 0.36，足以让一段翻身摩擦被误判成鼾声。
+  /// 低频占比 0.62，排除之后是 0.36，足以让一段翻身摩擦看起来低频很足。
   final double lowBandBottom;
 
   /// 低频带的右边界（Hz）。
@@ -387,84 +383,6 @@ class ClipAnalysisParams {
 
   /// 周期性搜索的上限（Hz）。
   final double pitchBandTop;
-
-  /// 滑动窗长度（毫秒）。判定在这个尺度上进行，不再对整段求平均。
-  final int windowMs;
-
-  /// 窗口步进（毫秒）。小于 [windowMs] 才有重叠，事件的起止才定得准。
-  final int windowHopMs;
-
-  /// 相邻两个同向事件相隔不超过它，就并成一个。
-  ///
-  /// **这是为「鼾声是一串」准备的**：一次吸气一两秒，两次之间本来就有停顿。不合并的话
-  /// 每一段单独的鼾声都够不着 [minEventMs]，整夜会一条都判不出来。
-  final int mergeGapMs;
-
-  /// 事件要成立所需的最短持续时长（毫秒）。
-  ///
-  /// **这是本文件里最重要的一条阈值**，也是使用方直接指出来的：实测那段误报是
-  /// 1.1 秒的拖椅子声，频率上像极了鼾声，机器给了全部样本里最高的余量——它唯一的
-  /// 破绽就是**太短**。鼾声是一次吸气，不可能只有一秒；把它定在 2.5 秒，
-  /// 1.1 秒的瞬态再怎么像也拿不到标签。
-  final int minEventMs;
-
-  /// 打鼾：低频占比不低于它。
-  final double snoreLowRatio;
-
-  /// 打鼾：谱质心必须**低于**它。
-  final double snoreCentroid;
-
-  /// 打鼾：周期性强度必须**不低于**它。
-  ///
-  /// 取 0.50 而不是 0.45，是为了**留出余量**而不是为了那 5 个百分点：真机上那段误报
-  /// 的拖椅子声量出来是 0.44，0.45 只比它高 0.01——那样这条判据随时会因为一点点
-  /// 录音差异而失守。0.50 落在实测两簇（≤0.44 与 ≥0.63）的中间空档里。
-  final double snorePitchStrength;
-
-  /// 打鼾：最强谱峰占比必须**低于**它——**鼾声不是乐音**。
-  ///
-  /// 这条是使用方那句「我前面一段在哼歌」逼出来的。哼歌与鼾声在「低频 + 周期」上
-  /// 几乎无法区分（哼歌也是准周期的低频浊音），实测那段哼歌因此被判成疑似打鼾。
-  /// 分开两者的是**有调性**：哼歌是乐音（单一音高，实测最强峰占 43.3%、峰间距只有
-  /// 12 Hz 的颤音），鼾声是软腭振动发出的**粗糙**声，能量摊在众多谐波与谐波间噪声上
-  /// （实测拖椅子 9.8%、床品 8.0%、翻身吱呀 3.0%、假装鼾声 2.5%）。
-  ///
-  /// 取 0.30 是**在两簇之间的空档里取中**：实测哼歌 37.2% / 44.3% / 48.9%，
-  /// 其余全部 ≤24.9%。0.30 离两边各约 1.2 倍。
-  ///
-  /// **仍然不知道真实鼾声落在这条线的哪一侧**——见规格 §七 未验证。这是本组阈值里
-  /// 唯一一条**完全没有正样本**的判据，它的依据是「鼾声不是乐音」这条声学常识，
-  /// 不是任何一段被确认过的鼾声。
-  final double snoreMaxPeakShare;
-
-  /// 疑似人声：语音带占比不低于它。
-  final double voiceSpeechRatio;
-
-  /// 疑似人声：谱质心必须**高于**它（人声不会像鼾声那么闷）。
-  final double voiceCentroid;
-
-  /// 疑似人声：周期性强度必须**不低于**它。取值理由同 [snorePitchStrength]。
-  final double voicePitchStrength;
-
-  /// 疑似人声：低频占比必须**低于**它——否则同一段东西会被两条规则同时认领。
-  final double voiceLowRatioMax;
-
-  /// 低于这个响度就不下任何结论（dBFS）。
-  ///
-  /// **数字静音不是「杂音」，也不是任何别的东西。** 平台静音时录到的是一串零，给它
-  /// 安一个标签等于把「什么都没录到」说成一个判断。
-  ///
-  /// 这道闸**在三条判定通路的更上游**，所以它挡的不只是「杂音」：极轻的抖动噪声上
-  /// 算出来的谱特征本来就是垃圾，任何一条规则都可能被它蒙对。样本全零时
-  /// [AudioFeatures.dbfs] 是 −160，天然被挡在外面。
-  final double noiseMinDbfs;
-
-  /// 自动标注的**最低余量**，低于它一律弃权。
-  ///
-  /// 这是「有把握才自动写」这句承诺在代码里的落点。三条阈值**擦边**满足的片段，
-  /// 特征上确实像，但擦边本身就说明它离另一类不远——那种片段该留给用户听，
-  /// 而不是让机器抢答。余量是相对量（超出阈值的比例），所以它不随片段的绝对响度漂移。
-  final double minMargin;
 }
 
 /// 包络分析的帧率（Hz）。50 意味着每 20 ms 一格。
@@ -500,7 +418,7 @@ AudioFeatures measureClip(
   final envelope = _envelopeBands(samples, sampleRate);
 
   return AudioFeatures(
-    dbfs: _dbfs(samples),
+    dbfs: rmsDbfs(samples),
     lowRatio: stats.lowRatio,
     speechRatio: stats.speechRatio,
     highRatio: stats.highRatio,
@@ -705,207 +623,6 @@ double _pitchStrength(
   return best.clamp(0.0, 1.0);
 }
 
-/// 一个窗口给出的判断（还没有并成事件）。
-typedef _WindowVerdict = ({int startMs, AutoLabel label, double margin});
-
-/// 在片段里找出够格的事件。
-///
-/// 三步：**逐窗判 → 连续同向的并成一段 → 太短的丢掉**。第三步是这件事的关键，
-/// 理由见 [ClipAnalysisParams.minEventMs]。
-List<ClipEvent> detectEvents(
-  Float64List samples, {
-  required int sampleRate,
-  ClipAnalysisParams params = const ClipAnalysisParams(),
-}) =>
-    _detect(samples, sampleRate: sampleRate, params: params);
-
-/// 找出够格的事件。**擦边的窗口不算事件，也不另行上报。**
-///
-/// 2026-10-15 之前这里还数了「过了三条特征阈值、但没过余量门槛」的窗口个数，好让
-/// [classifyClip] 把「有东西但不够格」与「什么都没找到」分开——前者弃权、后者报杂音。
-/// 杂音兜底拆掉之后两者都归弃权，那个计数就没有用处了，于是删掉。
-List<ClipEvent> _detect(
-  Float64List samples, {
-  required int sampleRate,
-  required ClipAnalysisParams params,
-}) {
-  if (samples.isEmpty) return const <ClipEvent>[];
-
-  final windowSamples = sampleRate * params.windowMs ~/ 1000;
-  final hopSamples = math.max(1, sampleRate * params.windowHopMs ~/ 1000);
-
-  // 窗口起点。片段比一个窗还短时只取一段（整段），它的时长天生够不着
-  // [ClipAnalysisParams.minEventMs]，于是自然什么都判不出来——这正是应有之义。
-  final starts = <int>[];
-  if (samples.length <= windowSamples) {
-    starts.add(0);
-  } else {
-    for (var s = 0; s + windowSamples <= samples.length; s += hopSamples) {
-      starts.add(s);
-    }
-  }
-
-  final windows = <_WindowVerdict>[];
-  for (final start in starts) {
-    final end = math.min(start + windowSamples, samples.length);
-    final slice = samples.sublist(start, end);
-    final features = measureClip(slice, sampleRate: sampleRate, params: params);
-    final verdict = _strongestRule(features, params);
-    if (verdict == null) continue;
-    // 三条阈值都过、只是余量不够的窗口**不算事件**——见 [ClipAnalysisParams.minMargin]。
-    if (verdict.$2 < params.minMargin) continue;
-    windows.add((
-      startMs: start * 1000 ~/ sampleRate,
-      label: verdict.$1,
-      margin: verdict.$2,
-    ));
-  }
-  if (windows.isEmpty) return const <ClipEvent>[];
-
-  final effectiveWindowMs =
-      math.min(windowSamples, samples.length) * 1000 ~/ sampleRate;
-  return _mergeWindows(windows, effectiveWindowMs, params);
-}
-
-/// 把逐窗结果并成事件：连续同标签的成一段，间隔小于 [ClipAnalysisParams.mergeGapMs]
-/// 的同标签段再并起来（鼾声是一串，中间本来就有停顿）。
-List<ClipEvent> _mergeWindows(
-  List<_WindowVerdict> windows,
-  int windowMs,
-  ClipAnalysisParams params,
-) {
-  final events = <ClipEvent>[];
-  var i = 0;
-  while (i < windows.length) {
-    final label = windows[i].label;
-    var lastStart = windows[i].startMs;
-    var best = windows[i].margin;
-    var j = i + 1;
-    while (j < windows.length) {
-      final gap = windows[j].startMs - (lastStart + windowMs);
-      if (windows[j].label != label || gap > params.mergeGapMs) break;
-      lastStart = windows[j].startMs;
-      if (windows[j].margin > best) best = windows[j].margin;
-      j++;
-    }
-
-    final startMs = windows[i].startMs;
-    final durationMs = lastStart + windowMs - startMs;
-    if (durationMs >= params.minEventMs) {
-      events.add(ClipEvent(
-        label: label,
-        startMs: startMs,
-        durationMs: durationMs,
-        margin: best,
-      ));
-    }
-    i = j;
-  }
-  return events;
-}
-
-/// 一个窗口最够格的那条规则；三条特征阈值都不满足时返回 `null`。
-///
-/// **这里不判余量**，余量由调用方在 [detectEvents] 里单独过一道。分成两道是有后果的：
-/// 「三条阈值都不过」与「三条都过、只是擦边」是两件事——前者是**什么都没测到**，
-/// 后者是**测到了但没把握**。合成一道（把擦边的也收进事件表）就等于让一段勉强够格的
-/// 鼾声拿到标签，而这正是 [ClipAnalysisParams.minMargin] 要挡的。
-///
-/// 两条规则互斥（人声那条要求低频占比低于 [ClipAnalysisParams.voiceLowRatioMax]），
-/// 所以这里不会出现「同一样东西被两条规则同时认领」。真出现（阈值被改到一起去了）
-/// 就取余量高的那条，并且**在测试里钉住互斥性**。
-(AutoLabel, double)? _strongestRule(
-  AudioFeatures f,
-  ClipAnalysisParams p,
-) {
-  final snore = _snoreMargin(f, p);
-  final voice = _voiceMargin(f, p);
-  if (snore == null) return voice == null ? null : (AutoLabel.voice, voice);
-  if (voice == null) return (AutoLabel.snore, snore);
-  return snore >= voice ? (AutoLabel.snore, snore) : (AutoLabel.voice, voice);
-}
-
-/// 判定一段片段。**认不出来返回 `null`**，调用方据此保持「待标注」。
-///
-/// 只有一条通路：**逐窗事件**（频谱判据）。有事件就取**最长**的，同样长取余量高的；
-/// 没有事件就弃权。
-///
-/// ## 两条被拆掉的通路，别当遗漏
-///
-///  * **呼吸带通路**（整段包络的 0.15–0.6 Hz 能量），2026-10-15 当晚拆掉。见
-///    [AudioFeatures.breathBandRatio]：它判不出鼾声，因为它判的其实是「有东西在按
-///    呼吸的节律起伏」，而那个描述同时成立的对象太多——实测纯风扇 34–40%、
-///    风扇+敲桌 45%，比真鼾声那两段（6% / 10%）还高。
-///  * **「没找到事件 = 杂音」的兜底**，2026-10-15 拆掉。见 [AutoLabel.noise]：报杂音
-///    等于同时断言「不是鼾声」「不是人声」，而机器认不出鼾声，没资格下这个否定结论。
-///    使用方当天的原话是「判不出来就留待标注」。
-///
-/// 所以现在的机器**要么给出一个带「疑似」的正向判断，要么什么都不说**。
-/// 代价是覆盖率极低，这是如实的结果，不是可以靠调阈值绕过去的问题。
-AutoVerdict? classifyClip(
-  Float64List samples, {
-  required int sampleRate,
-  ClipAnalysisParams params = const ClipAnalysisParams(),
-}) {
-  final features = measureClip(samples, sampleRate: sampleRate, params: params);
-
-  // 数字静音不参与判定。见 [ClipAnalysisParams.noiseMinDbfs]。
-  if (features.dbfs < params.noiseMinDbfs) return null;
-
-  final events = _detect(samples, sampleRate: sampleRate, params: params);
-  if (events.isEmpty) return null;
-
-  var best = events.first;
-  for (final event in events.skip(1)) {
-    if (event.durationMs > best.durationMs ||
-        (event.durationMs == best.durationMs && event.margin > best.margin)) {
-      best = event;
-    }
-  }
-
-  return AutoVerdict(
-    label: best.label,
-    margin: best.margin.clamp(0.0, 1.0),
-    basis: features.basis,
-    startMs: best.startMs,
-    durationMs: best.durationMs,
-  );
-}
-
-/// 打鼾的余量；不满足返回 `null`。四条必须**同时**成立，取最小余量当结果——
-/// 用最小值而不是平均值，是因为四条里只要有一条只是勉强擦过，这个判断就不该自信。
-double? _snoreMargin(AudioFeatures f, ClipAnalysisParams p) {
-  if (f.lowRatio < p.snoreLowRatio) return null;
-  if (f.spectralCentroid >= p.snoreCentroid) return null;
-  if (f.pitchStrength < p.snorePitchStrength) return null;
-  if (f.spectralPeakShare >= p.snoreMaxPeakShare) return null;
-  return math.min(
-    (f.lowRatio - p.snoreLowRatio) / p.snoreLowRatio,
-    math.min(
-      (p.snoreCentroid - f.spectralCentroid) / p.snoreCentroid,
-      math.min(
-        (f.pitchStrength - p.snorePitchStrength) / p.snorePitchStrength,
-        (p.snoreMaxPeakShare - f.spectralPeakShare) / p.snoreMaxPeakShare,
-      ),
-    ),
-  );
-}
-
-/// 疑似人声的余量；不满足返回 `null`。
-double? _voiceMargin(AudioFeatures f, ClipAnalysisParams p) {
-  if (f.speechRatio < p.voiceSpeechRatio) return null;
-  if (f.spectralCentroid <= p.voiceCentroid) return null;
-  if (f.pitchStrength < p.voicePitchStrength) return null;
-  if (f.lowRatio >= p.voiceLowRatioMax) return null;
-  return math.min(
-    (f.speechRatio - p.voiceSpeechRatio) / p.voiceSpeechRatio,
-    math.min(
-      (f.spectralCentroid - p.voiceCentroid) / p.voiceCentroid,
-      (f.pitchStrength - p.voicePitchStrength) / p.voicePitchStrength,
-    ),
-  );
-}
-
 /// 原地 radix-2 迭代 FFT。`re` / `im` 长度必须相等且是 2 的幂。
 ///
 /// 自己写而不是引 `fftea` / `scidart`：这里只需要一个固定长度的实数 FFT，
@@ -1044,7 +761,12 @@ double _zeroCrossingRate(Float64List samples) {
   return crossings / (samples.length - 1);
 }
 
-double _dbfs(Float64List samples) {
+/// 整段的 RMS 响度（dBFS）。空输入与全零返 −160。
+///
+/// 单独曝出来是因为判定那一边要用它做一道闸：数字静音不能拿到任何标签
+/// ——见 `clip_yamnet.dart` 的 `kSilenceDbfs`。而它比 `measureClip` 便宜得多：
+/// 后者要跑一遍 FFT，而这一条只是一遍求和。
+double rmsDbfs(Float64List samples) {
   if (samples.isEmpty) return -160;
   var sum = 0.0;
   for (final v in samples) {
