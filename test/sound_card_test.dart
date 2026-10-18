@@ -343,10 +343,11 @@ void main() {
       expect(find.textContaining('秒', findRichText: false), findsNothing);
     });
 
-    testWidgets('机器弃权时，展开区明说「看过、没把握」', (tester) async {
-      // 标题上「弃权」与「从没分析过」都是「待标注」，展开区再不多说一句，
+    testWidgets('机器没有结论时，展开区明说看过、但没有读到可判定的声音', (tester) async {
+      // 标题上「没有结论」与「从没分析过」都是「待标注」，展开区再不多说一句，
       // 用户点完「重新分析」看到的就是一个什么都没变的界面——2026-10-16 使用方
-      // 报的正是这个：一晚 27 段全部弃权，屏幕上没有任何地方说机器看过它们。
+      // 报的正是这个。2026-10-18 起有声音的片段一定有结论，这一支只剩数字静音
+      // 与空输入，但「别沉默」这条要求没变。
       await pumpCard(
         tester,
         _clip(
@@ -355,7 +356,8 @@ void main() {
       );
 
       expect(find.textContaining('机器看过这段'), findsOneWidget);
-      // 「没有把握」不许被说成一个结论。
+      expect(find.textContaining('没有读到可判定的声音'), findsOneWidget);
+      // 没有结论时不许摆「自动判断依据」。
       expect(find.text('自动判断依据'), findsNothing);
       expect(find.text('待标注'), findsOneWidget);
     });

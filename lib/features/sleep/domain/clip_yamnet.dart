@@ -24,10 +24,16 @@
 //    模型定位能力差是 2025 年仍在攻的活跃问题。`Snoring` 分数是**片级**的，拿它去画一个
 //    事件区间就是把没量过的东西画出来。`AutoVerdict.startMs` / `durationMs` 因此恒为 0，
 //    那一对字段留着是为了读**旧记录**（旧规则确实产出过区间）。
-//  * **统计量只用整段均分。** 那正是上面那些数字被量出来的口径。取最大、取分位数都要
-//    另一轮实测才作数。
-//  * **不给概率、不拿「杂音」兜底。** 两条都没有变：`margin` 是「越过判定线多少」，
-//    不是「有多大概率」；认不出来就弃权，见 [AutoLabel.noise] 的文档。
+//  * **主判据仍然是整段均分。** 那正是上面那些数字被量出来的口径；取最大、取分位数
+//    都要另一轮实测才作数。**2026-10-18 只加了一条很窄的补充**：鼾声那一路允许
+//    「连续两窗都在像鼾声」的短事件过线——整段均分会把一段 6.8 秒录音里只占 2 秒的
+//    事件摊薄到线下。**单窗最高分仍然不参与判定**：单窗脉冲（敲一下、碰一下）会被它
+//    放大成误报，所以补充判据要求相邻两窗**都**不低于 [kSustainedWindowFloor]。
+//  * **不给概率；「杂音」只作「有声音但没测到鼾声/人声」的兜底。** `margin` 是
+//    「越过判定线多少」，不是「有多大概率」。**2026-10-18 使用方明确要求机器也能
+//    自动标杂音**：片段不是数字静音、两条判定线又都没过，就记 [AutoLabel.noise]。
+//    但**数字静音、读不出来、从没分析过仍然留「待标注」**——那三种「没有」各有各
+//    的说法，不能混成一句「杂音」。依据行摆两类分与判定线，让人能直接否掉。
 //
 // ## 短于一个窗口的片段
 //
@@ -49,6 +55,27 @@ const int kYamnetWindowSamples = 15600;
 /// 窗口步进，取半个窗口。判定要的是「整段均分」，步进大小不影响这个量；
 /// 取一半是为了在片段稍长于一个窗口时也能多拿到几窗，均分不至于被一窗定死。
 const int kYamnetHopSamples = 7800;
+
+/// 补充判据「连续短事件」的窗数：2 窗 ≈ 1.95 秒。
+///
+/// **为什么是 2，而不是 1 或 3**（2026-10-18 在 159 段真实录音上量的）：
+///
+///  * **1 窗（取最高分）会放过单窗脉冲。** 同一晚有一段 6.1 秒的杂音，其中一窗
+///    `Snoring` 到 0.586，但相邻两窗只有 0.008 / 0.004——那是一声闷响，不是鼾声。
+///  * **3 窗会把要救的那段事件重新摊薄。** 04:25 那段 6.8 秒录音里，3.4–5.4 秒是
+///    三窗人声（0.80 / 0.96 / 0.80），5.4–6.3 秒是一窗鼾声（0.92，相邻窗 0.15）。
+///    三窗均值 0.36 仍在线下，两窗均值 0.53 才过 0.40。
+///
+/// 在这 159 段上，两窗判据只翻转**有真实事件的那一段**；三条用户已标「杂音」的
+/// 片段一条都没动。**这不是阈值标定**——判定线仍然用同一档 0.40。
+const int kSustainedSpanWindows = 2;
+
+/// 补充判据里每一窗的最低分。
+///
+/// 它的作用只有一个：**把「一段持续的事件」与「一窗尖峰」分开**。0.10 远低于
+/// 判定线 0.40，不参与「够不够像」的判断，只用来确认相邻那一窗不是静音。
+/// 04:25 那段事件的相邻窗是 0.148，刚好在它上面；上面那声闷响的相邻窗是 0.008。
+const double kSustainedWindowFloor = 0.10;
 
 /// `Snoring` 在 YAMNet 521 类 output 里的下标。
 ///
@@ -82,7 +109,8 @@ class YamnetParams {
   })  : assert(snoreThreshold >= 0 && snoreThreshold <= 1),
         assert(voiceThreshold >= 0 && voiceThreshold <= 1);
 
-  /// 鼾声的判定线：整段 `Snoring` 均分不低于它就算「疑似打鼾」。
+  /// 鼾声的判定线：整段 `Snoring` 均分（或补充判据里连续两窗的均分）不低于它就算
+  /// 「疑似打鼾」。
   ///
   /// **取 0.40 的直接依据是两组实测在同一个区间上给出同一个结论**：
   /// 使用方自己那 3 段是 0.708–0.850、他自己 44 段负样本最高 0.305；ESC-50 那 240 段上
@@ -91,6 +119,10 @@ class YamnetParams {
   ///
   /// **但它不是定稿**：两组加起来只有 43 条正样本。说得出「这条路成立」，
   /// 说不出「0.40 是对的」——本仓的规矩是样本不足不调参。
+  ///
+  /// **补充判据（连续两窗）沿用同一档 0.40，没有另定阈值。** 那条判据是在
+  /// 2026-10-18 的 159 段真实录音上量的（见 [kSustainedSpanWindows]），只负责把
+  /// 被整段均分摊薄的短事件捞回来；判定线一个字没动。
   final double snoreThreshold;
 
   /// 人声的判定线。**比鼾声那条严得多，因为它这条路的证据弱得多。**
@@ -153,13 +185,14 @@ double meanScore(List<double> windowScores) {
 ///
 /// 为什么要摆一个不参与的数：**均分有一个已知的盲区**。一段 11.8 秒的录音里
 /// 只有前 3.5 秒是鼾声，剩下的在翻身——鼾声那几窗能到 0.9，均分却被摊到 0.3 上下，
-/// 于是弃权。这个盲区**不是新引入的**：上面那些把阈值定到 0.40 的数字
-/// （他自己 3 段 0.708–0.850、ESC-50 36/40）**全都是拿均分量出来的**，换成最高分
-/// 就等于换一个没有量过的统计量，本仓不许这么干。
+/// 旧的整段均分判据就判不出来。**2026-10-18 起**，「连续两窗」补充判据会把这种
+/// 跨两窗以上的事件接住；**不足两窗的孤立尖峰仍然不参与判定**（单窗脉冲会被它
+/// 放大成误报）。
 ///
-/// 所以摆出来让人**看得见**它：`均分 0.31、最高 0.91` 一眼就是「这段里有一截很像」，
-/// 而 `均分 0.05、最高 0.09` 是「整段都不像」。什么时候把判定改成按最高分或
-/// 按「连续够长的窗口」，取决于重新量过一次。见验证记录 v3.37 的未验证那一半。
+/// 最高分本身**仍然不是判据**：上面那些把阈值定到 0.40 的数字（他自己 3 段
+/// 0.708–0.850、ESC-50 36/40）全都是拿均分量出来的，换成最高分就等于换一个没有
+/// 量过的统计量。摆出来是让人**看得见**它：`均分 0.31、最高 0.91` 一眼就是
+/// 「这段里有一截很像」，而 `均分 0.05、最高 0.09` 是「整段都不像」。
 double maxScore(List<double> windowScores) {
   if (windowScores.isEmpty) return 0;
   var best = windowScores.first;
@@ -169,16 +202,63 @@ double maxScore(List<double> windowScores) {
   return best;
 }
 
-/// 一段片段的判定结果；**认不出来返回 `null`**（弃权）。
+/// 连续 [span] 窗、且**每一窗都不低于** [floor] 的那一段里，均分最高的一个。
+///
+/// 返回 `null` 表示没有任何一段满足「每一窗都 >= floor」——那说明高分只是孤立的一窗，
+/// 不是一段持续的事件。**这个 `null` 是补充判据的关键**：单窗 0.95 的闷响不该被
+/// 当成 2 秒的鼾声。
+///
+/// [peak] 只用于依据串（「其中最高」），不参与判定。
+({double mean, double peak})? bestSustainedSpan(
+  List<double> windowScores, {
+  int span = kSustainedSpanWindows,
+  double floor = kSustainedWindowFloor,
+}) {
+  if (span < 1 || windowScores.length < span) return null;
+
+  ({double mean, double peak})? best;
+  for (var start = 0; start + span <= windowScores.length; start++) {
+    var sum = 0.0;
+    var peak = 0.0;
+    var qualifies = true;
+    for (var i = start; i < start + span; i++) {
+      final score = windowScores[i];
+      if (score < floor) {
+        qualifies = false;
+        break;
+      }
+      sum += score;
+      if (score > peak) peak = score;
+    }
+    if (!qualifies) continue;
+    final mean = sum / span;
+    if (best == null || mean > best.mean) {
+      best = (mean: mean, peak: peak);
+    }
+  }
+  return best;
+}
+
+/// 一段片段的判定结果；**没有可测的东西时返回 `null`**（空输入或数字静音）。
+///
+/// 鼾声那一路有**两条**入口：整段均分过线（主判据，阈值就是拿这个量出来的），
+/// 或 [bestSustainedSpan] 找到一段「连续两窗都在像鼾声」的短事件（补充判据，
+/// 2026-10-18 加）。两条都用同一个 [YamnetParams.snoreThreshold]。人声那一路
+/// 只有整段均分——理由见函数体里那段注释。
 ///
 /// 顺序是刻意的：先看鼾声，再看人声。鼾声那一路的证据强得多，两边同时过线时
 /// 该听它的。**两条同时成立本身是异常**——`Snoring` 是「呼吸受阻的声音」、
 /// `Speech` 是「说话」，真实的片段极少同时像这两个；但阈值摆在那里就可能发生，
 /// 所以要有确定的先后，而不是让它随窗口顺序漂。
 ///
-/// **永远不会返回 [AutoLabel.noise]**：说「杂音」等于同时断言「不是鼾声」和
-/// 「不是人声」两个否定结论，而模型给的是 521 类的排序，不是这两个否定。这条
-/// 与 2026-10-15 拆掉杂音兜底是同一件事（偏差 #65）。
+/// **两条线都没过时返回 [AutoLabel.noise]**：这是 2026-10-18 使用方明确要求的
+/// 行为——「有声音、但机器没测到鼾声或人声」对使用者来说就是杂音。它说的不是
+/// 「模型断定这不是鼾声」这种逻辑否定，而是**这台机器在整段上没找到够格的证据**；
+/// 依据行把两类分、最高分与判定线都摆出来，就是为了让人能直接否掉它。
+///
+/// **仍然返回 `null` 的只有两种**：一个窗口都没有（没有可测的东西），以及
+/// 数字静音（[kSilenceDbfs] 以下——全零对模型是分布外输入，不能拿它当杂音证据）。
+/// 读不出来由调用方记 `failed`，不经过这个函数。
 AutoVerdict? verdictFromScores(
   ClipScores scores, {
   required double dbfs,
@@ -204,6 +284,25 @@ AutoVerdict? verdictFromScores(
     );
   }
 
+  // 整段均分没过线时，再看有没有**连续两窗都在像鼾声**的短事件。
+  //
+  // **这条只给鼾声，不给「人声」。** 人声那一路的证据本来就弱得多（0.70 这一档是
+  // 使用方明确要求收紧后才取的），把统计量再放宽会让它更容易误报；而鼾声那一路
+  // 在两组实测里都有 0 误报，收紧的是「必须持续」这一条，不是判定线。
+  final snoreSpan = bestSustainedSpan(scores.snore);
+  if (snoreSpan != null && snoreSpan.mean >= params.snoreThreshold) {
+    return AutoVerdict(
+      label: AutoLabel.snore,
+      margin: _margin(snoreSpan.mean, params.snoreThreshold),
+      basis: _spanBasis(
+        scores: scores,
+        span: snoreSpan,
+        loserMean: speechMean,
+        threshold: params.snoreThreshold,
+      ),
+    );
+  }
+
   if (speechMean >= params.voiceThreshold) {
     return AutoVerdict(
       label: AutoLabel.voice,
@@ -218,7 +317,22 @@ AutoVerdict? verdictFromScores(
     );
   }
 
-  return null;
+  // 有声音、但两条线都没过：记「杂音」。
+  //
+  // **数字静音在上面已经被挡掉了**（`dbfs < kSilenceDbfs` 直接返回 null）。
+  // 那不是一个「杂音」，而是「什么都没录到」；把它写成杂音就是把平台没给麦克风
+  // 声音这件事说成一个现场的判断。
+  return AutoVerdict(
+    label: AutoLabel.noise,
+    // 兜底没有「越过哪条线」可言，余量是 0。界面不显示它，只用于排序。
+    margin: 0,
+    basis: _noiseBasis(
+      scores: scores,
+      snoreMean: snoreMean,
+      speechMean: speechMean,
+      params: params,
+    ),
+  );
 }
 
 /// 越过判定线的**相对**余量，不是概率。
@@ -230,7 +344,7 @@ double _margin(double mean, double threshold) {
   return ((mean - threshold) / threshold).clamp(0.0, 1.0);
 }
 
-/// 界面上摆出来的依据串。
+/// 主判据（整段均分）用的依据串。补充判据用 [_spanBasis]。
 ///
 /// 摆五样东西，每一样都是**测出来的**：赢的那个类的均分、它的最高分、整段跑了几个
 /// 窗口、生效的判定线、以及输的那个类的均分。五个都摆是有用的——
@@ -259,4 +373,43 @@ String _basis({
       '（整段 $windows 个窗口均分、最高 ${winnerMax.toStringAsFixed(2)}，'
       '判定线 ${threshold.toStringAsFixed(2)}）'
       '· $loserName分 ${loserMean.toStringAsFixed(2)}';
+}
+
+/// 走补充判据（连续短事件）时的依据串。
+///
+/// **必须把「均分算在哪几个窗口上」说清楚**：同一个 0.53，在读者眼里是「整段均分」
+/// 还是「最像的两窗均分」，含义完全不同。这里摆的是后者的口径，并且把整段窗口数
+/// 一起摆出来——读者才知道这 0.53 是从 12 窗里挑出的 2 窗，不是整段只跑了 2 窗。
+String _spanBasis({
+  required ClipScores scores,
+  required ({double mean, double peak}) span,
+  required double loserMean,
+  required double threshold,
+}) {
+  return 'YAMNet 鼾声分 ${span.mean.toStringAsFixed(2)}'
+      '（最像的连续 $kSustainedSpanWindows 个窗口均分、其中最高 '
+      '${span.peak.toStringAsFixed(2)}，整段 ${scores.windowCount} 个窗口，'
+      '判定线 ${threshold.toStringAsFixed(2)}）'
+      '· 人声分 ${loserMean.toStringAsFixed(2)}';
+}
+
+/// 兜底判「杂音」时的依据串。
+///
+/// **它必须读起来像一个测量结果，而不是一个逻辑否定。** 所以摆的是两类各自的
+/// 整段均分、整段最高分与判定线——读者能一眼看出「机器是在什么数上认输的」。
+/// 这也正是使用者能直接否掉它的依据：任何一项他听着不对，都可以自己改标。
+String _noiseBasis({
+  required ClipScores scores,
+  required double snoreMean,
+  required double speechMean,
+  required YamnetParams params,
+}) {
+  final windows = scores.windowCount;
+  return 'YAMNet 未测到鼾声或人声（整段 $windows 个窗口）：'
+      '鼾声分 ${snoreMean.toStringAsFixed(2)}'
+      '（最高 ${maxScore(scores.snore).toStringAsFixed(2)}，'
+      '判定线 ${params.snoreThreshold.toStringAsFixed(2)}）'
+      '· 人声分 ${speechMean.toStringAsFixed(2)}'
+      '（最高 ${maxScore(scores.speech).toStringAsFixed(2)}，'
+      '判定线 ${params.voiceThreshold.toStringAsFixed(2)}）';
 }

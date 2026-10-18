@@ -233,7 +233,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -321,7 +321,7 @@ class AppDatabase extends _$AppDatabase {
           if (from >= 2 && from < 7) {
             await m.addColumn(soundClips, soundClips.autoAnalysis);
           }
-          // v8 **不是加列，是把旧引擎的判断作废**——这是本文件里唯一一条会改数据的
+          // v8 **不是加列，是把旧引擎的判断作废**——这是本文件第一条会改数据的
           // 迁移，理由要写清楚。
           //
           // 2026-10-16 起机器判定由 YAMNet 给出（`domain/clip_yamnet.dart`），而 v7
@@ -340,6 +340,37 @@ class AppDatabase extends _$AppDatabase {
           // 只碰 `source = 'recording'`：演示数据的 `analysis_status` 是示例数据的
           // 一部分，而补跑按定义不看演示数据，重置了只会让它永远停在 `pending`。
           if (from < 8) {
+            await customStatement(
+              "UPDATE sound_clips SET analysis_status = 'pending', "
+              "auto_analysis = NULL "
+              "WHERE source = 'recording' AND analysis_status = 'analysed'",
+            );
+          }
+          // v9 与 v8 同型：判定口径又变了一次，旧结论要作废重算。
+          //
+          // 2026-10-18 起，鼾声那一路在「整段均分」之外补了一条**连续两窗**的短事件
+          // 判据（`clip_yamnet.dart` 的 `bestSustainedSpan`）。它只**增加**结论，
+          // 不改变已经过线的那些——但已经写进库的「弃权」是旧口径的结果，不重算
+          // 的话，那段 04:25 的录音会永远停在「待标注」，正是这一版要修的事。
+          //
+          // 清法与 v8 逐字一致，理由也一样：**只碰机器那一列**，`kind` /
+          // `labeled_at_utc` / 文件路径一个字节都不动；`failed` 不动（那与引擎换了
+          // 无关）；演示数据不动（补跑按定义不看它）。
+          if (from < 9) {
+            await customStatement(
+              "UPDATE sound_clips SET analysis_status = 'pending', "
+              "auto_analysis = NULL "
+              "WHERE source = 'recording' AND analysis_status = 'analysed'",
+            );
+          }
+          // v10 与 v8/v9 同型：判定口径又变了一次——**有声音、两条线都没过的片段
+          // 由「待标注」改为「杂音」**（2026-10-18 使用方明确要求）。旧结论里那些
+          // 弃权是上一版的产物，不重算的话界面上仍是一堆「待标注」。
+          //
+          // 清法与 v8/v9 逐字一致：只碰机器那一列，人标的 `kind` /
+          // `labeled_at_utc`、文件路径一个字节都不动；`failed` 与演示数据不动。
+          // 数字静音会重算成弃权（不是杂音），这条区分仍由 `kSilenceDbfs` 守着。
+          if (from < 10) {
             await customStatement(
               "UPDATE sound_clips SET analysis_status = 'pending', "
               "auto_analysis = NULL "

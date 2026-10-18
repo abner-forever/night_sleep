@@ -286,7 +286,7 @@ class _SoundCardState extends ConsumerState<SoundCard> {
 
   bool get _isLabeled => _labeledKind != null || _clip.isLabeled;
 
-  /// 机器给的判断（弃权与「没分析过」都是 `null`）。
+  /// 机器给的判断（没有结论与「没分析过」都是 `null`）。
   ///
   /// **人标的优先**：用户标过之后，机器当初猜的是什么都不再显示。那条记录仍然
   /// 留在库里（它是「机器当时看到的是这个」），只是不再参与这张卡的说法。
@@ -307,13 +307,15 @@ class _SoundCardState extends ConsumerState<SoundCard> {
 
   /// 机器对这一段说过什么。`null` = 不必额外说。
   ///
-  /// **「看过但弃权」与「读不出来」都必须说出来。** 这两种在标题上与「从没分析过」
-  /// 长得一模一样（都是「待标注」），含义却完全不同：一个是机器没把握，一个是机器
-  /// 根本没读到音频。沉默的代价 2026-10-16 撞到过——那一晚 27 段全部弃权，用户在详情页
-  /// 点「重新分析」，屏幕上从标题到展开区一个字都没变，看起来就是那个按钮没生效。
+  /// **「没有结论」与「读不出来」都必须说出来。** 这两种在标题上与「从没分析过」
+  /// 长得一模一样（都是「待标注」），含义却完全不同：一个是机器没有可判定的声音
+  /// （数字静音 / 空输入），一个是机器根本没读到音频。沉默的代价 2026-10-16 撞到过
+  /// ——那一晚 27 段全部弃权，用户在详情页点「重新分析」，屏幕上从标题到展开区一个字
+  /// 都没变，看起来就是那个按钮没生效。
   ///
-  /// 有判断时不必说（上面已经有依据那一行），从没分析过时也不必说（展开区末尾
-  /// 本来就有「尚未分析这段录音」那句）。
+  /// 2026-10-18 起有声音的片段一定有结论（鼾声 / 人声 / 杂音），所以「没有结论」这一支
+  /// 实际上只剩数字静音与空输入。有判断时不必说（上面已经有依据那一行），从没分析过时
+  /// 也不必说（展开区末尾本来就有「尚未分析这段录音」那句）。
   String? get _machineNote {
     if (_isLabeled) return null; // 人标的优先，机器说过什么都不再显示
     if (_clip.analysisStatus == SoundAnalysisStatus.failed) {
@@ -321,7 +323,7 @@ class _SoundCardState extends ConsumerState<SoundCard> {
     }
     final analysis = _clip.autoAnalysis;
     if (analysis == null || analysis.verdict != null) return null;
-    return '机器看过这段，没有把握下结论，所以留给你听。';
+    return '机器看过这段，但没有读到可判定的声音，所以留给你听。';
   }
 
   /// 取色与取图标用的 kind。三态：人标的 > 机器判的 > 中性占位。
@@ -904,7 +906,7 @@ class _AutoBasisRow extends StatelessWidget {
           ],
           const SizedBox(height: 6),
           Text(
-            '这是模型对整段声音测出来的分，不是结论。你可以直接改成自己听到的。',
+            '这是模型测出来的分，不是结论。你可以直接改成自己听到的。',
             style:
                 TextStyle(fontSize: 12, height: 1.5, color: tokens.textMuted),
           ),

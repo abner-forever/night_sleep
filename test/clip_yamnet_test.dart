@@ -110,9 +110,12 @@ void main() {
       );
       expect(meanScore(scores.snore), closeTo(0.119, 1e-3));
       expect(maxScore(scores.snore), 0.95);
-      expect(verdictFromScores(scores, dbfs: -30), isNull,
-          reason: '判定用的是均分，所以它弃权——这是**已知且记在案**的盲区，'
-              '不是可以靠偷偷改成最高分绕过去的');
+      final verdict = verdictFromScores(scores, dbfs: -30);
+      expect(verdict?.label, AutoLabel.noise,
+          reason: '单窗 0.95 但相邻窗是 0：补充判据要求连续两窗都不低于 '
+              'kSustainedWindowFloor，所以它不算鼾声；它是有声音的片段，'
+              '于是走「没测到鼾声/人声」的杂音兜底——不是靠把最高分偷偷放进来'
+              '绕过去的');
     });
   });
 
@@ -127,7 +130,9 @@ void main() {
       // 把 `>=` 改成 `>` 会让这条红。
       expect(verdictFromScores(_flat(snore: 0.40), dbfs: -30)?.label,
           AutoLabel.snore);
-      expect(verdictFromScores(_flat(snore: 0.399), dbfs: -30), isNull);
+      expect(verdictFromScores(_flat(snore: 0.399), dbfs: -30)?.label,
+          AutoLabel.noise,
+          reason: '0.399 不算鼾声；有声音但没过线，落到杂音兜底');
     });
 
     test('判定线默认 0.40（实测两组数据在 0.3–0.7 上都成立，取靠严的一头）', () {
@@ -146,6 +151,80 @@ void main() {
     });
   });
 
+  group('补充判据：连续两窗的短事件', () {
+    test('两窗都过底线的短事件能过线——整段均分被长静音摊薄也不影响', () {
+      // 2026-10-18 04:25 那段 6.8 秒录音的实测形状：12 窗里只有 0.15 / 0.92 两窗
+      // 像鼾声，整段均分 0.093。均分判据必然弃权，两窗判据应该接住它。
+      final scores = ClipScores(
+        snore: [0, 0, 0, 0, 0.15, 0.92, 0, 0, 0, 0, 0, 0],
+        speech: List<double>.filled(12, 0.01),
+      );
+      expect(meanScore(scores.snore), lessThan(0.40));
+
+      final verdict = verdictFromScores(scores, dbfs: -36);
+      expect(verdict?.label, AutoLabel.snore);
+      // (0.15 + 0.92) / 2 = 0.535
+      expect(verdict!.basis, contains('YAMNet 鼾声分 0.54'));
+      expect(verdict.basis, contains('最像的连续 2 个窗口均分'));
+      expect(verdict.basis, contains('其中最高 0.92'));
+      expect(verdict.basis, contains('整段 12 个窗口'));
+      // 仍然不给区间：模型是片级的，补充判据也没有定位能力。
+      expect(verdict.startMs, 0);
+      expect(verdict.durationMs, 0);
+    });
+
+    test('单窗脉冲不靠这条补充判据过线——相邻窗低于底线就不是一段事件', () {
+      // 同一晚 06:1x 的 6.1 秒杂音：0.586 那一窗是闷响，相邻两窗只有 0.008 / 0.004。
+      // 取最高分（或把底线删掉）会让它变成一条误报。
+      final scores = ClipScores(
+        snore: [0.008, 0.004, 0.586, 0.004, 0.008],
+        speech: List<double>.filled(5, 0.01),
+      );
+      expect(verdictFromScores(scores, dbfs: -36)?.label, AutoLabel.noise,
+          reason: '不认成鼾声，但也不留「待标注」：有声音就记杂音');
+    });
+
+    test('整段均分过线时仍按整段说——补充判据不抢主判据的说法', () {
+      final verdict = verdictFromScores(
+        ClipScores(snore: [0.6, 0.7, 0.8], speech: [0, 0, 0]),
+        dbfs: -30,
+      )!;
+      expect(verdict.label, AutoLabel.snore);
+      expect(verdict.basis, contains('整段 3 个窗口均分'));
+      expect(verdict.basis, isNot(contains('最像的连续')));
+    });
+
+    test('人声那一路没有这条补充判据——短促人声仍按整段均分', () {
+      // 把同一套放宽用到人声上会让长录音里的短促人声大量过线（159 段实测里
+      // 会从 28 段跳到 53 段），而人声那一路的证据本来就弱得多。这条钉住
+      // 「只有鼾声有补充判据」这个决定。
+      final scores = ClipScores(
+        snore: List<double>.filled(8, 0),
+        speech: [0, 0, 0.9, 0.95, 0, 0, 0, 0],
+      );
+      expect(meanScore(scores.speech), lessThan(0.70));
+      expect(verdictFromScores(scores, dbfs: -30)?.label, AutoLabel.noise,
+          reason: '人声没有补充判据，所以它不算人声；有声音就落到杂音兜底');
+    });
+
+    test('两窗里有一窗低于底线就不算——底线不能删', () {
+      // 把 `kSustainedWindowFloor` 改成 0 会让这条红：0.09 / 0.90 会被当成一段
+      // 持续事件，而 0.09 那一窗其实什么也没有。
+      expect(kSustainedWindowFloor, 0.10);
+      final scores = ClipScores(
+        snore: [0.09, 0.90, 0, 0, 0, 0, 0, 0],
+        speech: List<double>.filled(8, 0.01),
+      );
+      expect(verdictFromScores(scores, dbfs: -30)?.label, AutoLabel.noise);
+    });
+
+    test('窗口数不足两窗时补充判据不开口——一窗片段交给整段均分', () {
+      expect(bestSustainedSpan(const [0.9]), isNull);
+      expect(bestSustainedSpan(const [0.9, 0.9])?.mean, 0.9);
+      expect(bestSustainedSpan(const []), isNull);
+    });
+  });
+
   group('判定：疑似人声', () {
     test('鼾声没过线、人声过了线，就是疑似人声', () {
       final verdict = verdictFromScores(
@@ -158,8 +237,9 @@ void main() {
     test('人声判定线默认 0.70——比鼾声那条严，因为证据弱得多', () {
       // 改 `YamnetParams.voiceThreshold` 的默认值会让这条红。
       expect(const YamnetParams().voiceThreshold, 0.70);
-      expect(verdictFromScores(_flat(snore: 0.1, speech: 0.699), dbfs: -30),
-          isNull);
+      expect(
+          verdictFromScores(_flat(snore: 0.1, speech: 0.699), dbfs: -30)?.label,
+          AutoLabel.noise);
       expect(
           verdictFromScores(_flat(snore: 0.1, speech: 0.70), dbfs: -30)?.label,
           AutoLabel.voice);
@@ -174,17 +254,18 @@ void main() {
     });
   });
 
-  group('判不出来就弃权：机器永不拿「杂音」兜底', () {
-    test('两条都没过线 → `null`', () {
-      expect(verdictFromScores(_flat(snore: 0.30, speech: 0.50), dbfs: -30),
-          isNull);
-      expect(verdictFromScores(_flat(), dbfs: -30), isNull);
+  group('两条线都没过：有声音记杂音，静音与空输入仍然弃权', () {
+    test('两条都没过线、但有声音 → 杂音', () {
+      expect(
+        verdictFromScores(_flat(snore: 0.30, speech: 0.50), dbfs: -30)?.label,
+        AutoLabel.noise,
+      );
+      expect(verdictFromScores(_flat(), dbfs: -30)?.label, AutoLabel.noise);
     });
 
-    test('**任何**分数都不会产出 AutoLabel.noise', () {
-      // 报「杂音」等于同时断言「不是鼾声」和「不是人声」两个否定结论，而模型给的
-      // 是 521 类的排序、不是这两个否定。这条与 2026-10-15 拆掉杂音兜底同源
-      // （偏差 #65），换模型也不许把它放回来。
+    test('有声音的片段一定有结论：鼾声 / 人声 / 杂音三选一', () {
+      // 2026-10-18 起机器不再把有声音的片段留成「待标注」。这条同时钉住
+      // 「兜底只发生在两条线都没过时」——不是随便什么分数都能拿杂音。
       final rng = math.Random(11);
       for (var i = 0; i < 400; i++) {
         final scores = ClipScores(
@@ -192,8 +273,29 @@ void main() {
           speech: List.generate(5, (_) => rng.nextDouble()),
         );
         final verdict = verdictFromScores(scores, dbfs: -30);
-        expect(verdict?.label, isNot(AutoLabel.noise));
+        expect(verdict, isNotNull);
+        expect(
+          verdict!.label,
+          anyOf(AutoLabel.snore, AutoLabel.voice, AutoLabel.noise),
+        );
       }
+    });
+
+    test('杂音的依据串摆两类分与判定线，余量为 0', () {
+      final verdict = verdictFromScores(
+        ClipScores(snore: [0.05, 0.05], speech: [0.02, 0.02]),
+        dbfs: -35,
+      )!;
+      expect(verdict.label, AutoLabel.noise);
+      expect(verdict.margin, 0, reason: '兜底没有「越过哪条线」可言');
+      expect(verdict.basis, contains('未测到鼾声或人声'));
+      expect(verdict.basis, contains('鼾声分 0.05'));
+      expect(verdict.basis, contains('最高 0.05'));
+      expect(verdict.basis, contains('判定线 0.40'));
+      expect(verdict.basis, contains('人声分 0.02'));
+      expect(verdict.basis, contains('判定线 0.70'));
+      expect(verdict.startMs, 0);
+      expect(verdict.durationMs, 0);
     });
 
     test('一个窗口都没有 → 弃权，不是「什么都没有所以是杂音」', () {

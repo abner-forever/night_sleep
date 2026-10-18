@@ -233,7 +233,7 @@ void main() {
     expect(row.analysisStatus, 'analysed');
   });
 
-  test('三个标签各走一遍：鼾声 / 人声 / 弃权', () async {
+  test('三个标签各走一遍：鼾声 / 人声 / 杂音', () async {
     await seedRecord();
     await seedClip('c-snore', localUri: await writeClip('a', _wav(_loud())));
     await seedClip('c-voice', localUri: await writeClip('b', _wav(_noise())));
@@ -266,8 +266,9 @@ void main() {
         .analyseRecord('rec-1');
     rows = await database.allRecordingClips();
     final quiet = rows.firstWhere((r) => r.id == 'c-quiet');
-    expect(AutoAnalysis.decode(quiet.autoAnalysis)?.verdict, isNull,
-        reason: '两条判定线都没过 → 弃权 = 没有判断，不是「杂音」');
+    expect(AutoAnalysis.decode(quiet.autoAnalysis)?.verdict?.label,
+        AutoLabel.noise,
+        reason: '有声音、但两条判定线都没过 → 机器记杂音（2026-10-18 的规则）');
     expect(quiet.analysisStatus, 'analysed', reason: '机器确实看过了，这件事要留下痕迹');
   });
 

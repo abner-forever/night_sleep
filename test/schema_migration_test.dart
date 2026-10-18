@@ -1010,10 +1010,78 @@ void main() {
     }
   }
 
+  /// 写一个停在 v8 的库。夹具与 v7 逐列相同（v8 只改数据），区别只在版本号。
+  ///
+  /// 三条真实片段各代表一种 v9 要区别对待的状态：
+  ///  * `c-analysed` —— YAMNet 跑过、写了结论（**该被清回 pending 重算**）
+  ///  * `c-abstain`  —— YAMNet 跑过、弃权（同样该被清：那也是旧口径的结论）
+  ///  * `c-failed`   —— 音频读不出来（**不该被动**）
+  /// v8 / v9 的列集与数据形状相同（两版都只改数据），只有版本号不同。
+  Future<void> writeV8OrLaterDatabase(int version) async {
+    final db = version == 9
+        ? _V9Database(NativeDatabase(file))
+        : _V8Database(NativeDatabase(file));
+    try {
+      await db.customStatement(
+        "INSERT INTO sleep_records (id, start_at_utc, end_at_utc, time_zone_id, "
+        "quality, notes, tags_json, source, flagged_snore, flagged_talk, "
+        "flagged_restless, flagged_nightmare, created_at, updated_at) "
+        "VALUES ('r1', 1759000000, 1759026000, 'Asia/Shanghai', 4, '', '[]', "
+        "'session', 0, 0, 0, 0, 1759000000, 1759000000)",
+      );
+      for (final row in [
+        (
+          'c-analysed',
+          'snore',
+          'analysed',
+          '\'{"kind":"snore","margin":0.42,'
+              '"basis":"YAMNet 鼾声分 0.85（整段 8 个窗口均分、最高 0.92，'
+              '判定线 0.40）· 人声分 0.02",'
+              '"startMs":0,"durationMs":0,"atUtc":"2026-10-16T08:00:00.000Z"}\''
+        ),
+        (
+          'c-abstain',
+          'noise',
+          'analysed',
+          '\'{"kind":null,"margin":null,"basis":null,"startMs":null,'
+              '"durationMs":null,"atUtc":"2026-10-16T08:00:00.000Z"}\''
+        ),
+        ('c-failed', 'noise', 'failed', 'NULL'),
+        ('c-pending', 'noise', 'pending', 'NULL'),
+      ]) {
+        await db.customStatement(
+          "INSERT INTO sound_clips (id, record_id, kind, started_at_utc, "
+          "duration_ms, local_uri, transcript, analysis, analysis_status, "
+          "source, waveform_envelope, labeled_at_utc, auto_analysis) "
+          "VALUES ('${row.$1}', 'r1', '${row.$2}', 1759000100, 4200, "
+          "'/tmp/clips/${row.$1}.wav', NULL, NULL, '${row.$3}', 'recording', "
+          "'[0.1,0.9]', 1759000200, ${row.$4})",
+        );
+      }
+      // 演示数据：`analysis_status` 是示例数据本身的一部分，不许被清。
+      await db.customStatement(
+        "INSERT INTO sound_clips (id, record_id, kind, started_at_utc, "
+        "duration_ms, local_uri, transcript, analysis, analysis_status, "
+        "source, waveform_envelope, labeled_at_utc, auto_analysis) "
+        "VALUES ('c-demo', 'r1', 'snore', 1759000100, 4200, NULL, NULL, NULL, "
+        "'analysed', 'demo', NULL, NULL, NULL)",
+      );
+    } finally {
+      await db.close();
+    }
+  }
+
+  Future<void> writeV8Database() => writeV8OrLaterDatabase(8);
+
+  Future<void> writeV9Database() => writeV8OrLaterDatabase(9);
+
   // v8 是**本仓第一条改数据的迁移**（其余都是加列）。它要作废的是 2026-10-16 之前
   // 那套手写声学阈值写下的结论——那套规则已被证伪（47 段上覆盖 2% / 准确 0%）。
   // 留着不清的后果很具体：`analysePending` 只捡 `pending`，于是**使用者那 3 段真鼾声
   // 会永远停在「待标注」**，而那正是这一版要修的事。
+  //
+  // **v9 加进来之后，这一组夹具升级到的终点是当前版本**（不再停在 8），但断言只关心
+  // v8 那条分支的行为；v8 清成 pending 之后，v9 只碰 `analysed`，不会再动它们。
   group('v7 → v8', () {
     test('夹具确实是 v7，而升级后停在当前版本', () async {
       await writeV7Database();
@@ -1110,6 +1178,213 @@ void main() {
           .firstWhere((r) => r.id == 'c-analysed');
       expect(row.analysisStatus, 'analysed', reason: '重开一次库不该把新引擎的结论又清掉');
       expect(row.autoAnalysis, contains('YAMNet'));
+    });
+  });
+
+  // v9 与 v8 同型：判定口径又变了一次（整段均分 → 整段均分 + 连续两窗短事件）。
+  // 不清旧的「弃权」，2026-10-18 04:25 那段有真实事件、但被整段均分摊薄的录音
+  // 会永远停在「待标注」——正是这一版要修的事。
+  group('v8 → v9', () {
+    test('夹具确实是 v8，而升级后停在当前版本', () async {
+      await writeV8Database();
+      final v8 = _V8Database(NativeDatabase(file));
+      expect(await userVersion(v8), 8);
+      await v8.customStatement('SELECT 1');
+      await v8.close();
+
+      final db = openCurrent();
+      addTearDown(db.close);
+      await db.allRecords(); // 触发迁移
+      expect(await userVersion(db), db.schemaVersion);
+    });
+
+    test('旧口径的判断被清回 pending，`auto_analysis` 一起清空', () async {
+      await writeV8Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+
+      final rows = await db.allRecordingClips();
+      for (final id in ['c-analysed', 'c-abstain']) {
+        final row = rows.firstWhere((r) => r.id == id);
+        expect(row.analysisStatus, 'pending', reason: '$id 该等着用新口径重算');
+        expect(row.autoAnalysis, isNull, reason: '$id 的旧结论该被清掉');
+      }
+    });
+
+    test('**用户自己的标注一个字节都不动**——清的是机器那一列', () async {
+      await writeV8Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+
+      final row = (await db.allRecordingClips())
+          .firstWhere((r) => r.id == 'c-analysed');
+      expect(row.kind, 'snore', reason: '人标的那个词');
+      expect(row.labeledAtUtc, isNotNull, reason: '标过的时刻');
+      expect(row.waveformEnvelope, '[0.1,0.9]', reason: '实测包络');
+      expect(row.localUri, '/tmp/clips/c-analysed.wav', reason: '音频路径');
+    });
+
+    test('记过 failed 的不动——「音频读不出来」与「判定口径变了」是两件事', () async {
+      await writeV8Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+
+      final row =
+          (await db.allRecordingClips()).firstWhere((r) => r.id == 'c-failed');
+      expect(row.analysisStatus, 'failed');
+    });
+
+    test('原本就 pending 的仍然是 pending——不丢、不重复处理', () async {
+      await writeV8Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+
+      final row =
+          (await db.allRecordingClips()).firstWhere((r) => r.id == 'c-pending');
+      expect(row.analysisStatus, 'pending');
+    });
+
+    test('演示数据不动——补跑按定义不看它，清了就永远没人管', () async {
+      await writeV8Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+
+      final demo = (await db.allClipsByRecord())['r1']!
+          .firstWhere((r) => r.id == 'c-demo');
+      expect(demo.analysisStatus, 'analysed');
+    });
+
+    test('清完之后补跑真的捡得起它们（迁移与补跑是配套的两半）', () async {
+      await writeV8Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+
+      final waiting = await db.clipsAwaitingAnalysis();
+      expect(
+        waiting.map((r) => r.id).toSet(),
+        {'c-analysed', 'c-abstain', 'c-pending'},
+        reason: 'failed 与 demo 都不该在里面',
+      );
+    });
+
+    test('再来一次不重跑（版本已经停在当前版）', () async {
+      await writeV8Database();
+      var db = openCurrent();
+      await db.allRecords();
+      await db.updateClipAutoAnalysis(
+        'c-analysed',
+        payload: '{"kind":"snore","margin":0.9,'
+            '"basis":"YAMNet 鼾声分 0.54（最像的连续 2 个窗口均分）",'
+            '"atUtc":"2026-10-18T08:00:00.000Z"}',
+        status: 'analysed',
+      );
+      await db.close();
+
+      db = openCurrent();
+      addTearDown(db.close);
+      final row = (await db.allRecordingClips())
+          .firstWhere((r) => r.id == 'c-analysed');
+      expect(row.analysisStatus, 'analysed', reason: '重开一次库不该把新口径的结论又清掉');
+      expect(row.autoAnalysis, contains('最像的连续'));
+    });
+  });
+
+  // v10 与 v8/v9 同型：判定口径又变了一次——**有声音、两条线都没过的片段由
+  // 「待标注」改为「杂音」**（2026-10-18 使用方明确要求）。旧结论里那些弃权必须
+  // 重算，否则界面上仍是一堆「待标注」，而这正是这一版要改的事。
+  group('v9 → v10', () {
+    test('夹具确实是 v9，而升级后停在当前版本', () async {
+      await writeV9Database();
+      final v9 = _V9Database(NativeDatabase(file));
+      expect(await userVersion(v9), 9);
+      await v9.customStatement('SELECT 1');
+      await v9.close();
+
+      final db = openCurrent();
+      addTearDown(db.close);
+      await db.allRecords(); // 触发迁移
+      expect(await userVersion(db), db.schemaVersion);
+    });
+
+    test('旧口径的结论被清回 pending，`auto_analysis` 一起清空', () async {
+      await writeV9Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+
+      final rows = await db.allRecordingClips();
+      for (final id in ['c-analysed', 'c-abstain']) {
+        final row = rows.firstWhere((r) => r.id == id);
+        expect(row.analysisStatus, 'pending', reason: '$id 该等着按新口径重算');
+        expect(row.autoAnalysis, isNull, reason: '$id 的旧结论该被清掉');
+      }
+    });
+
+    test('**用户自己的标注一个字节都不动**——清的是机器那一列', () async {
+      await writeV9Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+
+      final row = (await db.allRecordingClips())
+          .firstWhere((r) => r.id == 'c-analysed');
+      expect(row.kind, 'snore', reason: '人标的那个词');
+      expect(row.labeledAtUtc, isNotNull, reason: '标过的时刻');
+      expect(row.waveformEnvelope, '[0.1,0.9]', reason: '实测包络');
+      expect(row.localUri, '/tmp/clips/c-analysed.wav', reason: '音频路径');
+    });
+
+    test('failed / pending / 演示数据都不动', () async {
+      await writeV9Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+
+      final rows = await db.allRecordingClips();
+      expect(
+        rows.firstWhere((r) => r.id == 'c-failed').analysisStatus,
+        'failed',
+        reason: '音频读不出来与判定口径变了无关',
+      );
+      expect(
+        rows.firstWhere((r) => r.id == 'c-pending').analysisStatus,
+        'pending',
+        reason: '原本就 pending 的不丢、不重复处理',
+      );
+      final demo = (await db.allClipsByRecord())['r1']!
+          .firstWhere((r) => r.id == 'c-demo');
+      expect(demo.analysisStatus, 'analysed', reason: '补跑按定义不看演示数据');
+    });
+
+    test('清完之后补跑真的捡得起它们（迁移与补跑是配套的两半）', () async {
+      await writeV9Database();
+      final db = openCurrent();
+      addTearDown(db.close);
+
+      final waiting = await db.clipsAwaitingAnalysis();
+      expect(
+        waiting.map((r) => r.id).toSet(),
+        {'c-analysed', 'c-abstain', 'c-pending'},
+        reason: 'failed 与 demo 都不该在里面',
+      );
+    });
+
+    test('再来一次不重跑（版本已经停在当前版）', () async {
+      await writeV9Database();
+      var db = openCurrent();
+      await db.allRecords();
+      await db.updateClipAutoAnalysis(
+        'c-abstain',
+        payload: '{"kind":"noise","margin":0,'
+            '"basis":"YAMNet 未测到鼾声或人声",'
+            '"atUtc":"2026-10-18T09:00:00.000Z"}',
+        status: 'analysed',
+      );
+      await db.close();
+
+      db = openCurrent();
+      addTearDown(db.close);
+      final row =
+          (await db.allRecordingClips()).firstWhere((r) => r.id == 'c-abstain');
+      expect(row.analysisStatus, 'analysed', reason: '重开一次库不该把新口径的结论又清掉');
+      expect(row.autoAnalysis, contains('未测到鼾声或人声'));
     });
   });
 
@@ -1851,6 +2126,30 @@ class _V7Database extends AppDatabase {
           ''');
         },
       );
+}
+
+/// The schema as it shipped in v8: **与 v7 逐列相同**——v8 只改数据（把旧引擎的
+/// 判断清回 `pending`），不加列。
+///
+/// 直接复用 v7 的 DDL、只改版本号：这个夹具要冻住的是「v9 升级前那一刻」的数据状态
+/// （一份 YAMNet 写下的 `analysed` 结论），列集与 v7 没有差别。
+class _V8Database extends _V7Database {
+  _V8Database(super.executor);
+
+  @override
+  int get schemaVersion => 8;
+}
+
+/// The schema as it shipped in v9: **与 v8 逐列相同**——v9 也只改数据（把 YAMNet
+/// 旧口径的判断清回 `pending`），不加列。
+///
+/// 这个夹具要冻住的是「v10 升级前那一刻」：库里躺着 v9 口径写下的 `analysed`
+/// （其中一批是有声音、但两条线都没过的弃权）。
+class _V9Database extends _V8Database {
+  _V9Database(super.executor);
+
+  @override
+  int get schemaVersion => 9;
 }
 
 /// The schema as it shipped in v5: v4 plus `active_sessions.scene_id`.
