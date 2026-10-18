@@ -29,6 +29,7 @@ class QuietSurface extends StatelessWidget {
     this.onTap,
     this.semanticLabel,
     this.expandWidth = true,
+    this.animateChanges = false,
   });
 
   final Widget child;
@@ -53,6 +54,12 @@ class QuietSurface extends StatelessWidget {
   /// 默认开着，理由与 [GlassSurface.expandWidth] 相同：一列里的卡片是个块级元素。
   final bool expandWidth;
 
+  /// 填充 / 描边变了要不要补一帧过渡。
+  ///
+  /// 默认关掉：大多数卡片的外观不随交互变化。**选中态要开**——四宫格事件卡
+  /// 那种「点一下整张换底换边」如果瞬变，看起来像换了一张卡而不是按了一下。
+  final bool animateChanges;
+
   @override
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
@@ -68,7 +75,11 @@ class QuietSurface extends StatelessWidget {
       child: ClipRRect(
         borderRadius: radius,
         clipBehavior: clipBehavior,
-        child: Container(
+        // 需要过渡时用 `AnimatedContainer`；不需要时它的 duration 是零，
+        // 等价于原来的 `Container`，不会多挂一个不动的 ticker。
+        child: AnimatedContainer(
+          duration: animateChanges ? AppDurations.control : Duration.zero,
+          curve: AppMotion.standardCurve,
           decoration: BoxDecoration(
             color: tint ?? tokens.quietFill,
             borderRadius: radius,

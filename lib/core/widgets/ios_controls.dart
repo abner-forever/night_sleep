@@ -11,7 +11,11 @@ import 'quiet_surface.dart';
 /// The prototype animates the thumb with a springy curve and briefly widens it
 /// while pressed; both are reproduced here because they are the most tactile
 /// detail in the settings screen.
-class IosToggle extends StatelessWidget {
+///
+/// **开关可以拖。** 按住滑块横向拖动，滑块跟着手指走，松手时按位置与甩动速度
+/// 决定开 / 关；中途跨过中线补一次轻微触感。点击仍然是切换，两条路共用
+/// [_IosToggleState._commit]——否则「点」与「拖」会在父层拒绝时给出两种不同的收尾。
+class IosToggle extends StatefulWidget {
   const IosToggle({
     super.key,
     required this.value,
@@ -24,70 +28,198 @@ class IosToggle extends StatelessWidget {
   final String? semanticLabel;
 
   @override
+  State<IosToggle> createState() => _IosToggleState();
+}
+
+class _IosToggleState extends State<IosToggle> with TickerProviderStateMixin {
+  /// 轨道内宽减去滑块后的行程：52 - 3×2 - 26。
+  static const double _travel = 20;
+
+  /// 拖拽时滑块最多横向拉长多少（iOS 那种「被拉出来一截」的手感）。
+  static const double _maxStretch = 7;
+
+  /// 甩动超过这个速度（逻辑像素/秒）就直接按方向判，不看松手位置。
+  static const double _flingVelocity = 260;
+
+  /// 0 = 关、1 = 开。拖拽时直接写值，点击与外部改值走动画。
+  late final AnimationController _progress = AnimationController(
+    vsync: this,
+    value: widget.value ? 1 : 0,
+    duration: AppDurations.springy,
+  );
+
+  /// 滑块横向拉伸的独立进度：按下拉长，松手缩回。
+  late final AnimationController _stretch = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 180),
+  );
+
+  late final Listenable _repaint = Listenable.merge([_progress, _stretch]);
+
+  /// 这次拖拽是否已经跨过中线。跨过时补一次触感，一来一回只响两次。
+  bool _crossed = false;
+
+  bool get _enabled => widget.onChanged != null;
+
+  @override
+  void didUpdateWidget(covariant IosToggle oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.value != oldWidget.value) {
+      _animateTo(widget.value ? 1 : 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _progress.dispose();
+    _stretch.dispose();
+    super.dispose();
+  }
+
+  void _animateTo(double target) {
+    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) {
+      _progress.value = target;
+      return;
+    }
+    _progress.animateTo(
+      target,
+      duration: AppDurations.springy,
+      curve: AppMotion.springyCurve,
+    );
+  }
+
+  /// 提交一个目标值。
+  ///
+  /// 先让滑块朝目标走，再通知父层。**父层没接住就弹回去**——权限被拒、写库失败
+  /// 时界面必须回到库里那个值，不能停在一个只是「看起来打开了」的位置。
+  void _commit(bool target) {
+    final previous = widget.value;
+    _animateTo(target ? 1 : 0);
+    if (target == previous) return;
+    AppHaptics.select();
+    widget.onChanged?.call(target);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (widget.value == previous) _animateTo(previous ? 1 : 0);
+    });
+  }
+
+  void _onDragStart(DragStartDetails details) {
+    if (!_enabled) return;
+    _progress.stop();
+    _crossed = _progress.value >= 0.5;
+    _stretch.forward();
+  }
+
+  void _onDragUpdate(DragUpdateDetails details) {
+    if (!_enabled) return;
+    final next = (_progress.value + details.delta.dx / _travel).clamp(0.0, 1.0);
+    _progress.value = next;
+    if ((next >= 0.5) != _crossed) {
+      _crossed = next >= 0.5;
+      AppHaptics.select();
+    }
+  }
+
+  void _onDragEnd(DragEndDetails details) {
+    if (!_enabled) return;
+    _stretch.reverse();
+    final velocity = details.primaryVelocity ?? 0;
+    final target = velocity.abs() >= _flingVelocity
+        ? velocity > 0
+        : _progress.value >= 0.5;
+    _commit(target);
+  }
+
+  void _onDragCancel() {
+    if (!_enabled) return;
+    _stretch.reverse();
+    _animateTo(widget.value ? 1 : 0);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
-    final enabled = onChanged != null;
+    final enabled = _enabled;
 
     return Semantics(
-      label: semanticLabel,
-      toggled: value,
+      label: widget.semanticLabel,
+      toggled: widget.value,
+      enabled: enabled,
       child: Opacity(
         opacity: enabled ? 1 : 0.5,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onTap: enabled
-              ? () {
-                  AppHaptics.select();
-                  onChanged!(!value);
-                }
-              : null,
+          onTap: enabled ? () => _commit(!widget.value) : null,
+          onHorizontalDragStart: enabled ? _onDragStart : null,
+          onHorizontalDragUpdate: enabled ? _onDragUpdate : null,
+          onHorizontalDragEnd: enabled ? _onDragEnd : null,
+          onHorizontalDragCancel: enabled ? _onDragCancel : null,
           child: SizedBox(
             width: 52,
             height: 32,
-            child: AnimatedContainer(
-              duration: AppDurations.springy,
-              curve: AppMotion.standardCurve,
-              decoration: BoxDecoration(
-                color: value ? tokens.accent : const Color(0x52787880),
-                borderRadius: BorderRadius.circular(AppRadii.pill),
-                border: Border.all(
-                  color: value
-                      ? Colors.transparent
-                      : Colors.white.withValues(alpha: 0.34),
-                ),
-                boxShadow: value
-                    ? [
-                        BoxShadow(
-                          color: tokens.accent.withValues(alpha: 0.28),
-                          blurRadius: 9,
-                          offset: const Offset(0, 3),
+            child: AnimatedBuilder(
+              animation: _repaint,
+              builder: (context, _) {
+                // 拉伸只在拖拽时出现。位置按「轨道内剩余行程」算，于是滑块
+                // 拉长时两端仍然不会越界——拉长的是滑块，不是轨道。
+                final knobWidth = 26 + _maxStretch * _stretch.value;
+                final t = _progress.value.clamp(0.0, 1.0);
+                final left = 3 + t * (46 - knobWidth);
+                final trackColor = Color.lerp(
+                  const Color(0x52787880),
+                  tokens.accent,
+                  t,
+                )!;
+                final borderColor = Color.lerp(
+                  Colors.white.withValues(alpha: 0.34),
+                  Colors.transparent,
+                  t,
+                )!;
+
+                return Stack(
+                  children: [
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: trackColor,
+                          borderRadius: BorderRadius.circular(AppRadii.pill),
+                          border: Border.all(color: borderColor),
+                          boxShadow: t <= 0
+                              ? null
+                              : [
+                                  BoxShadow(
+                                    color: tokens.accent
+                                        .withValues(alpha: 0.28 * t),
+                                    blurRadius: 9,
+                                    offset: const Offset(0, 3),
+                                  ),
+                                ],
                         ),
-                      ]
-                    : null,
-              ),
-              child: AnimatedAlign(
-                duration: AppDurations.springy,
-                curve: AppMotion.springyCurve,
-                alignment: value ? Alignment.centerRight : Alignment.centerLeft,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 3),
-                  child: Container(
-                    width: 26,
-                    height: 26,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.24),
-                          blurRadius: 3,
-                          offset: const Offset(0, 1),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                ),
-              ),
+                    Positioned(
+                      left: left,
+                      top: 3,
+                      width: knobWidth,
+                      height: 26,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(AppRadii.pill),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.24),
+                              blurRadius: 3,
+                              offset: const Offset(0, 1),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ),
@@ -241,13 +373,18 @@ class _Segment extends StatelessWidget {
         width: width,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          child: Text(
-            label,
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          // 文字颜色跟着胶囊一起走，而不是等胶囊落位后「啪」地换色。
+          child: AnimatedDefaultTextStyle(
+            duration: AppDurations.control,
+            curve: AppMotion.standardCurve,
             style: _kSegmentTextStyle.copyWith(
               color: active ? tokens.textPrimary : tokens.textMuted,
+            ),
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ),
@@ -331,7 +468,11 @@ class IosListGroup extends StatelessWidget {
 }
 
 /// `ios-list-item` — a 56px minimum row with a 12px internal gap.
-class IosListItem extends StatelessWidget {
+///
+/// 可点的行在按下时垫一层淡色底（iOS 表格那种按压反馈）。底色是矩形的，
+/// 但行总是住在 `IosListGroup` 的圆角裁剪里，首行 / 末行的圆角由容器裁出来，
+/// 这里不需要知道自己在组里的位置。
+class IosListItem extends StatefulWidget {
   const IosListItem({
     super.key,
     required this.child,
@@ -348,21 +489,40 @@ class IosListItem extends StatelessWidget {
   final bool haptic;
 
   @override
+  State<IosListItem> createState() => _IosListItemState();
+}
+
+class _IosListItemState extends State<IosListItem> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed == value) return;
+    setState(() => _pressed = value);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final row = Container(
-      constraints: BoxConstraints(minHeight: minHeight),
-      padding:
-          padding ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-      child: child,
+    final tokens = AppTokens.of(context);
+    final row = AnimatedContainer(
+      duration: const Duration(milliseconds: 140),
+      curve: AppMotion.standardCurve,
+      constraints: BoxConstraints(minHeight: widget.minHeight),
+      padding: widget.padding ??
+          const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+      color: _pressed ? tokens.bgInput : Colors.transparent,
+      child: widget.child,
     );
 
-    if (onTap == null) return row;
+    if (widget.onTap == null) return row;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => _setPressed(true),
+      onTapCancel: () => _setPressed(false),
+      onTapUp: (_) => _setPressed(false),
       onTap: () {
-        if (haptic) AppHaptics.tap();
-        onTap!();
+        if (widget.haptic) AppHaptics.tap();
+        widget.onTap!();
       },
       child: row,
     );

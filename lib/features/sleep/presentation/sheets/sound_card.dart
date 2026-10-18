@@ -251,7 +251,8 @@ class SoundCard extends ConsumerStatefulWidget {
   ConsumerState<SoundCard> createState() => _SoundCardState();
 }
 
-class _SoundCardState extends ConsumerState<SoundCard> {
+class _SoundCardState extends ConsumerState<SoundCard>
+    with SingleTickerProviderStateMixin {
   /// 标注写回库之后，卡片自己记住新的 kind。
   ///
   /// 详情页拿到的是一条**值**（`SleepEntry`），不是流：`sleepEntriesProvider`
@@ -263,6 +264,16 @@ class _SoundCardState extends ConsumerState<SoundCard> {
   /// `dispose` 时收尾——`dispose` 里再 `ref.read` 有生命周期风险。
   late final ClipPlaybackController _playback;
 
+  /// 展开区的开出 / 收起。
+  ///
+  /// 从条件插入改成高度过渡之后，点标题行时下面那块是「长出来」而不是
+  /// 整张卡突然变高——这一层里最常被点的东西就是它。
+  late final AnimationController _expand = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 260),
+    value: widget.expanded ? 1 : 0,
+  );
+
   @override
   void initState() {
     super.initState();
@@ -270,12 +281,35 @@ class _SoundCardState extends ConsumerState<SoundCard> {
   }
 
   @override
+  void didUpdateWidget(covariant SoundCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.expanded == oldWidget.expanded) return;
+    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) {
+      _expand.value = widget.expanded ? 1 : 0;
+      return;
+    }
+    if (widget.expanded) {
+      _expand.forward();
+    } else {
+      // 收起跑完之后要重建一次，才能把已经缩到零高度的展开区从树上摘掉。
+      // 展开方向不需要：`widget.expanded` 已经为真，区域本来就该在。
+      _expand.reverse().whenComplete(() {
+        if (mounted) setState(() {});
+      });
+    }
+  }
+
+  @override
   void dispose() {
     // 详情页关掉时，如果正是这段在播，停掉它——页面关了不该还有声音。
     // 用 `detach`：此刻别的卡片也在拆解，不能再通知它们重建。
     _playback.detach(widget.clip.id);
+    _expand.dispose();
     super.dispose();
   }
+
+  /// 收起动画跑完之前仍要把展开区留在树上，否则高度会先塌掉再淡出。
+  bool get _showExpandedBody => widget.expanded || _expand.isAnimating;
 
   SoundClip get _clip => widget.clip;
 
@@ -402,16 +436,28 @@ class _SoundCardState extends ConsumerState<SoundCard> {
         : 0.0;
     final failed = playback.failed(clip.id);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: tokens.bgRaised,
-        borderRadius: BorderRadius.circular(AppRadii.panel),
-        border: Border.all(
-          color:
-              widget.expanded ? color.withValues(alpha: 0.27) : tokens.border,
+    // 用 `TweenAnimationBuilder` 而不是 `AnimatedContainer`：后者会在树里多出
+    // 一个 `AnimatedContainer`，而波形测试正是靠「树里只有 38 个波形条」在数
+    // 形状（`test/sound_card_test.dart` 的 `heights`）。
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(end: widget.expanded ? 1 : 0),
+      duration: AppDurations.control,
+      curve: AppMotion.standardCurve,
+      builder: (context, expandedAmount, child) => Container(
+        decoration: BoxDecoration(
+          color: tokens.bgRaised,
+          borderRadius: BorderRadius.circular(AppRadii.panel),
+          border: Border.all(
+            color: Color.lerp(
+              tokens.border,
+              color.withValues(alpha: 0.27),
+              expandedAmount,
+            )!,
+          ),
         ),
+        clipBehavior: Clip.antiAlias,
+        child: child,
       ),
-      clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
           GestureDetector(
@@ -576,128 +622,139 @@ class _SoundCardState extends ConsumerState<SoundCard> {
               ],
             ),
           ),
-          if (widget.expanded)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-              decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: tokens.border)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 机器给的依据摆在最上面：那几个数是**测出来的**，读者可以据此
-                  // 自己判断机器说的对不对，而不是只能接受一个标签。
-                  if (_autoBasis case final basis?) ...[
-                    _AutoBasisRow(basis: basis, span: _autoSpan),
-                    const SizedBox(height: 14),
-                  ],
-                  if (_machineNote case final note?) ...[
-                    _MachineNoteRow(note: note),
-                    const SizedBox(height: 14),
-                  ],
-                  _LabelChooser(
-                    selected: _isLabeled ? _kind : null,
-                    onSelect: _label,
-                  ),
-                  const SizedBox(height: 14),
-                  if (clip.transcript != null) ...[
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: tokens.bgMuted,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '语音转录',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0.96,
-                              color: tokens.textMuted,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            clip.transcript!,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontStyle: FontStyle.italic,
-                              height: 1.5,
-                              color: tokens.textPrimary,
-                            ),
-                          ),
-                        ],
-                      ),
+          if (_showExpandedBody)
+            // 收起时高度与透明一起走：只缩高度会让内容像被压扁，
+            // 只淡出则会在卡片底部留一块空白。
+            ClipRect(
+              child: SizeTransition(
+                sizeFactor: _expand,
+                alignment: Alignment.topCenter,
+                child: FadeTransition(
+                  opacity: _expand,
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                    decoration: BoxDecoration(
+                      border: Border(top: BorderSide(color: tokens.border)),
                     ),
-                    const SizedBox(height: 10),
-                  ],
-                  if (clip.analysis != null)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: tokens.accentSoft,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 机器给的依据摆在最上面：那几个数是**测出来的**，读者可以据此
+                        // 自己判断机器说的对不对，而不是只能接受一个标签。
+                        if (_autoBasis case final basis?) ...[
+                          _AutoBasisRow(basis: basis, span: _autoSpan),
+                          const SizedBox(height: 14),
+                        ],
+                        if (_machineNote case final note?) ...[
+                          _MachineNoteRow(note: note),
+                          const SizedBox(height: 14),
+                        ],
+                        _LabelChooser(
+                          selected: _isLabeled ? _kind : null,
+                          onSelect: _label,
+                        ),
+                        const SizedBox(height: 14),
+                        if (clip.transcript != null) ...[
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: tokens.bgMuted,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '语音转录',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 0.96,
+                                    color: tokens.textMuted,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  clip.transcript!,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontStyle: FontStyle.italic,
+                                    height: 1.5,
+                                    color: tokens.textPrimary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                        ],
+                        if (clip.analysis != null)
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: tokens.accentSoft,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    AppIcons.ai(
+                                        size: 13,
+                                        color: tokens.accent,
+                                        strokeWidth: 1.8),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      '睡眠洞察',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        letterSpacing: 0.72,
+                                        color: tokens.accent,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  clip.analysis!,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    height: 1.5,
+                                    color: tokens.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        if (clip.transcript == null &&
+                            clip.analysis == null &&
+                            clip.analysisStatus == SoundAnalysisStatus.pending)
                           Row(
                             children: [
-                              AppIcons.ai(
-                                  size: 13,
-                                  color: tokens.accent,
-                                  strokeWidth: 1.8),
-                              const SizedBox(width: 6),
-                              Text(
-                                '睡眠洞察',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: 0.72,
-                                  color: tokens.accent,
+                              AppIcons.sparkle(
+                                size: 14,
+                                color: tokens.textMuted,
+                                strokeWidth: 1.8,
+                              ),
+                              const SizedBox(width: 8),
+                              Flexible(
+                                child: Text(
+                                  '尚未分析这段录音，因此没有转录或洞察。',
+                                  style: TextStyle(
+                                      fontSize: 12, color: tokens.textMuted),
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 6),
-                          Text(
-                            clip.analysis!,
-                            style: TextStyle(
-                              fontSize: 14,
-                              height: 1.5,
-                              color: tokens.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  if (clip.transcript == null &&
-                      clip.analysis == null &&
-                      clip.analysisStatus == SoundAnalysisStatus.pending)
-                    Row(
-                      children: [
-                        AppIcons.sparkle(
-                          size: 14,
-                          color: tokens.textMuted,
-                          strokeWidth: 1.8,
-                        ),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: Text(
-                            '尚未分析这段录音，因此没有转录或洞察。',
-                            style: TextStyle(
-                                fontSize: 12, color: tokens.textMuted),
-                          ),
-                        ),
                       ],
                     ),
-                ],
+                  ),
+                ),
               ),
             ),
         ],
@@ -1008,22 +1065,40 @@ class _LabelChoice extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? color.withValues(alpha: 0.14) : tokens.bgMuted,
-          borderRadius: BorderRadius.circular(AppRadii.pill),
-          border: Border.all(
-            color: selected ? color.withValues(alpha: 0.55) : tokens.border,
+      // 与卡片本体同一个理由：这里不能出现 `AnimatedContainer`，否则波形测试
+      // 数「树里有多少个 AnimatedContainer」就会把它算进去。
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(end: selected ? 1 : 0),
+        duration: AppDurations.control,
+        curve: AppMotion.standardCurve,
+        builder: (context, selectedAmount, child) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: Color.lerp(
+              tokens.bgMuted,
+              color.withValues(alpha: 0.14),
+              selectedAmount,
+            ),
+            borderRadius: BorderRadius.circular(AppRadii.pill),
+            border: Border.all(
+              color: Color.lerp(
+                tokens.border,
+                color.withValues(alpha: 0.55),
+                selectedAmount,
+              )!,
+            ),
           ),
+          child: child,
         ),
-        child: Text(
-          kind.label,
+        child: AnimatedDefaultTextStyle(
+          duration: AppDurations.control,
+          curve: AppMotion.standardCurve,
           style: TextStyle(
             fontSize: 13,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
             color: selected ? color : tokens.textSecondary,
           ),
+          child: Text(kind.label),
         ),
       ),
     );

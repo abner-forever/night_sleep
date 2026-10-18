@@ -102,7 +102,9 @@ class _ChoicePill extends StatelessWidget {
           scale: selected ? 1.1 : 1,
           duration: AppDurations.springy,
           curve: AppMotion.springyCurve,
-          child: Container(
+          child: AnimatedContainer(
+            duration: AppDurations.control,
+            curve: AppMotion.standardCurve,
             // 未选中时描边取透明而不是不画：否则选中那一刻整枚会跳 1.5px。
             //
             // 左右各 9px 是量出来的：五个药丸加四道 6px 间隔在 390 宽的手机上
@@ -116,13 +118,15 @@ class _ChoicePill extends StatelessWidget {
                 color: selected ? color : Colors.transparent,
               ),
             ),
-            child: Text(
-              quality.label,
+            child: AnimatedDefaultTextStyle(
+              duration: AppDurations.control,
+              curve: AppMotion.standardCurve,
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
                 color: selected ? color : tokens.textSecondary,
               ),
+              child: Text(quality.label),
             ),
           ),
         ),

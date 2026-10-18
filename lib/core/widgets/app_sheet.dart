@@ -27,34 +27,53 @@ const double kPanelDismissFraction = 0.28;
 
 /// Opens a bottom sheet styled like the prototype's `.sheet-panel`.
 ///
-/// Built on [showGeneralDialog] rather than [showModalBottomSheet] for two
-/// reasons:
+/// Built on a dialog route rather than [showModalBottomSheet] for two reasons:
 ///
 ///  * the design blurs its own scrim (`backdrop-filter: blur(14px)`), and
 ///    `showModalBottomSheet` gives no way to blur the barrier;
 ///  * the scrim has to **fade**, not ride up with the panel. When the scrim is
 ///    a child of the sheet, it inherits the sheet's slide transition and appears
 ///    to be dragged in from the bottom edge.
+///
+/// [_SheetRoute] 只是 `RawDialogRoute` 加了一条「退场时长」。`showGeneralDialog`
+/// 不暴露那个参数，而进场 340ms / 退场 240ms 的差别正是「升起来从容、收回去干脆」
+/// 的来处——两者共用一个时长时，关闭看起来像先愣了一下再走。
 Future<T?> showAppSheet<T>({
   required BuildContext context,
   required WidgetBuilder builder,
   bool isDismissible = true,
 }) {
-  return showGeneralDialog<T>(
-    context: context,
-    barrierDismissible: isDismissible,
-    barrierLabel: '关闭',
-    // The host paints the blurred scrim itself — a barrier colour would be an
-    // opaque layer *over* that blur. Transparent keeps the route's own modal
-    // semantics and focus handling without painting anything.
-    barrierColor: Colors.transparent,
-    transitionDuration: const Duration(milliseconds: 320),
-    pageBuilder: (context, animation, secondaryAnimation) => _SheetHost(
-      animation: animation,
-      isDismissible: isDismissible,
-      child: Builder(builder: builder),
+  // `rootNavigator: true` 与原来的 `showGeneralDialog` 默认值一致：弹层挂在根
+  // Navigator 上，不随调用点的局部 Navigator 走。
+  return Navigator.of(context, rootNavigator: true).push<T>(
+    _SheetRoute<T>(
+      barrierDismissible: isDismissible,
+      barrierLabel: '关闭',
+      // The host paints the blurred scrim itself — a barrier colour would be an
+      // opaque layer *over* that blur. Transparent keeps the route's own modal
+      // semantics and focus handling without painting anything.
+      barrierColor: Colors.transparent,
+      transitionDuration: AppDurations.sheetIn,
+      pageBuilder: (context, animation, secondaryAnimation) => _SheetHost(
+        animation: animation,
+        isDismissible: isDismissible,
+        child: Builder(builder: builder),
+      ),
     ),
   );
+}
+
+class _SheetRoute<T> extends RawDialogRoute<T> {
+  _SheetRoute({
+    required super.pageBuilder,
+    required super.barrierDismissible,
+    required super.barrierColor,
+    required super.barrierLabel,
+    required super.transitionDuration,
+  });
+
+  @override
+  Duration get reverseTransitionDuration => AppDurations.sheetOut;
 }
 
 /// Lets any [AppSheet] nested in the host wire its drag handle to the host's
@@ -93,9 +112,31 @@ class _SheetHost extends StatefulWidget {
   State<_SheetHost> createState() => _SheetHostState();
 }
 
-class _SheetHostState extends State<_SheetHost> {
-  /// How far the user has pulled the panel down, in logical pixels.
-  double _dragOffset = 0;
+class _SheetHostState extends State<_SheetHost>
+    with SingleTickerProviderStateMixin {
+  /// 进场 / 退场各用各的曲线。`FadeTransition` 与 `SlideTransition` 共用它，
+  /// 蒙层才不会在面板收回去之后还多留一截。
+  late final CurvedAnimation _curved = CurvedAnimation(
+    parent: widget.animation,
+    curve: AppMotion.sheetEnterCurve,
+    reverseCurve: AppMotion.sheetExitCurve,
+  );
+
+  /// 面板的下拉位移（逻辑像素，正数向下）。
+  ///
+  /// 用控制器而不是 `setState` 的数字：松手没够着关闭阈值时要**弹回去**，
+  /// 直接赋 0 是瞬移，没有回弹。
+  late final AnimationController _drag = AnimationController.unbounded(
+    vsync: this,
+    value: 0,
+  );
+
+  /// 进场时面板从 98.5% 长到 100%，落位有一点「压下来」的重量感。
+  late final Animation<double> _scale = Tween<double>(
+    begin: 0.985,
+    end: 1,
+  ).animate(_curved);
+
   double _panelHeight = 0;
 
   @override
@@ -109,6 +150,8 @@ class _SheetHostState extends State<_SheetHost> {
     // Paired with `initState` rather than with the route future, so the count
     // cannot drift if a host goes away without being popped.
     _adjustSheetCount(-1);
+    _curved.dispose();
+    _drag.dispose();
     super.dispose();
   }
 
@@ -129,25 +172,35 @@ class _SheetHostState extends State<_SheetHost> {
 
   void _onDragUpdate(double delta) {
     if (!widget.isDismissible) return;
-    setState(
-        () => _dragOffset = (_dragOffset + delta).clamp(0.0, double.infinity));
+    // 下拉时直接跟手，不经过动画——中间那一帧的延迟会被手指看成「粘」。
+    _drag.stop();
+    _drag.value = (_drag.value + delta).clamp(0.0, double.infinity);
   }
 
   void _onDragEnd(double velocity) {
     if (!widget.isDismissible) return;
     final flung = velocity > kPanelDismissVelocity;
     final pulled =
-        _panelHeight > 0 && _dragOffset > _panelHeight * kPanelDismissFraction;
+        _panelHeight > 0 && _drag.value > _panelHeight * kPanelDismissFraction;
     if (flung || pulled) {
+      // 不复位位移：路由的退场动画接着从这里往下滑走。复位会让面板先跳回
+      // 原位再下滑，是一次看得见的闪跳。
       Navigator.of(context).pop();
       return;
     }
-    setState(() => _dragOffset = 0);
+    // 没够着阈值：弹回原位，而不是瞬移回去。
+    _drag.animateTo(
+      0,
+      duration: AppDurations.sheetSettle,
+      curve: AppMotion.standardCurve,
+    );
   }
 
   void _dismiss() {
     if (!widget.isDismissible) return;
     AppHaptics.tap();
+    // 点蒙层 / 点把手时可能还有一次回弹在跑，先停下，退场动画自己会接管。
+    _drag.stop();
     Navigator.of(context).pop();
   }
 
@@ -159,7 +212,7 @@ class _SheetHostState extends State<_SheetHost> {
 
     // The scrim fades. Only the panel slides.
     final scrim = FadeTransition(
-      opacity: widget.animation,
+      opacity: _curved,
       child: BackdropFilter(
         filter: ui.ImageFilter.blur(sigmaX: 14, sigmaY: 14),
         child: ColoredBox(color: tokens.overlayScrim),
@@ -181,34 +234,39 @@ class _SheetHostState extends State<_SheetHost> {
             position: Tween<Offset>(
               begin: const Offset(0, 1),
               end: Offset.zero,
-            ).animate(
-              CurvedAnimation(
-                parent: widget.animation,
-                curve: AppMotion.standardCurve,
+            ).animate(_curved),
+            // 位移在缩放的**外面**：拖拽跟手的是屏幕像素，不该被进场时那
+            // 1.5% 的缩放折算一遍。
+            child: AnimatedBuilder(
+              animation: _drag,
+              builder: (context, child) => Transform.translate(
+                offset: Offset(0, _drag.value),
+                child: child,
               ),
-            ),
-            child: Transform.translate(
-              offset: Offset(0, _dragOffset),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  _panelHeight = constraints.maxHeight;
-                  return ConstrainedBox(
-                    // 宽屏限宽，但**下沿一律贴屏幕底**。原型那条「宽屏浮起
-                    // 24px」是桌面浏览器的规则：这里照搬会在面板下缘留出
-                    // 一条遮罩，面板像是悬空断在屏幕底之上（使用方在 iPad
-                    // 横屏上实测后裁定，见规格第 8 章）。
-                    constraints: BoxConstraints(
-                      maxWidth: isWide ? 560 : double.infinity,
-                      maxHeight: media.size.height * 0.92,
-                    ),
-                    child: _SheetDragScope(
-                      onDragUpdate: _onDragUpdate,
-                      onDragEnd: _onDragEnd,
-                      onHandleTap: _dismiss,
-                      child: widget.child,
-                    ),
-                  );
-                },
+              child: ScaleTransition(
+                scale: _scale,
+                alignment: Alignment.bottomCenter,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    _panelHeight = constraints.maxHeight;
+                    return ConstrainedBox(
+                      // 宽屏限宽，但**下沿一律贴屏幕底**。原型那条「宽屏浮起
+                      // 24px」是桌面浏览器的规则：这里照搬会在面板下缘留出
+                      // 一条遮罩，面板像是悬空断在屏幕底之上（使用方在 iPad
+                      // 横屏上实测后裁定，见规格第 8 章）。
+                      constraints: BoxConstraints(
+                        maxWidth: isWide ? 560 : double.infinity,
+                        maxHeight: media.size.height * 0.92,
+                      ),
+                      child: _SheetDragScope(
+                        onDragUpdate: _onDragUpdate,
+                        onDragEnd: _onDragEnd,
+                        onHandleTap: _dismiss,
+                        child: widget.child,
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
           ),

@@ -94,7 +94,9 @@ class NoiseTile extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: Container(
+      child: AnimatedContainer(
+        duration: AppDurations.control,
+        curve: AppMotion.standardCurve,
         width: width,
         padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: BoxDecoration(
@@ -111,13 +113,15 @@ class NoiseTile extends StatelessWidget {
           children: [
             option.icon(22, color),
             const SizedBox(height: 8),
-            Text(
-              option.label,
+            AnimatedDefaultTextStyle(
+              duration: AppDurations.control,
+              curve: AppMotion.standardCurve,
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: active ? FontWeight.w600 : FontWeight.w400,
                 color: color,
               ),
+              child: Text(option.label),
             ),
           ],
         ),
@@ -259,20 +263,24 @@ class TimerChip extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: Container(
+      child: AnimatedContainer(
+        duration: AppDurations.control,
+        curve: AppMotion.standardCurve,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         decoration: BoxDecoration(
           color: selected ? tokens.accent : tokens.bgMuted,
           borderRadius: BorderRadius.circular(AppRadii.panel),
         ),
-        child: Text(
-          label,
+        child: AnimatedDefaultTextStyle(
+          duration: AppDurations.control,
+          curve: AppMotion.standardCurve,
           style: AppTheme.num(
             context,
             size: 14,
             weight: selected ? FontWeight.w600 : FontWeight.w400,
             color: selected ? Colors.white : tokens.textSecondary,
           ),
+          child: Text(label),
         ),
       ),
     );

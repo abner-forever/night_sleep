@@ -357,17 +357,39 @@ class _TabItem extends StatelessWidget {
               SizedBox(
                 width: 25,
                 height: 28,
-                child: Center(child: glyph),
+                child: Center(
+                  // 实心 / 线框字形之间淡入淡出，而不是「啪」地换一个符号。
+                  // 位移胶囊已经在滑，图标跟着换颜色与形状，整条标签才像一次动作。
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 180),
+                    switchInCurve: Curves.easeOut,
+                    switchOutCurve: Curves.easeIn,
+                    transitionBuilder: (child, animation) => FadeTransition(
+                      opacity: animation,
+                      child: ScaleTransition(
+                        scale: Tween<double>(begin: 0.88, end: 1)
+                            .animate(animation),
+                        child: child,
+                      ),
+                    ),
+                    child: KeyedSubtree(
+                      key: ValueKey('${tab.id}-$active'),
+                      child: glyph,
+                    ),
+                  ),
+                ),
               ),
               const SizedBox(height: 2),
-              Text(
-                tab.label,
+              AnimatedDefaultTextStyle(
+                duration: AppDurations.control,
+                curve: AppMotion.standardCurve,
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: active ? FontWeight.w700 : FontWeight.w500,
                   letterSpacing: -0.2,
                   color: color,
                 ),
+                child: Text(tab.label),
               ),
             ],
           ),
@@ -568,13 +590,15 @@ class _SidebarItem extends StatelessWidget {
             _strokedGlyph(
                 tab, active ? tokens.accent : tokens.textMuted, active),
             const SizedBox(width: 12),
-            Text(
-              tab.label,
+            AnimatedDefaultTextStyle(
+              duration: AppDurations.control,
+              curve: AppMotion.standardCurve,
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
                 color: color,
               ),
+              child: Text(tab.label),
             ),
           ],
         ),

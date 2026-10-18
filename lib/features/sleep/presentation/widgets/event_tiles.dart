@@ -40,6 +40,9 @@ class EventTile extends StatelessWidget {
     return QuietSurface(
       borderRadius: BorderRadius.circular(AppRadii.panel),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      // 选中态是「整张换底换边」：补一帧过渡，按下才像按了一下，
+      // 而不是像在两张卡之间瞬切。
+      animateChanges: true,
       tint: selected
           ? Color.alphaBlend(color.withValues(alpha: 0.11), tokens.bgCard)
           : null,

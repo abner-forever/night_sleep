@@ -73,34 +73,41 @@ class _ToastOverlayState extends ConsumerState<ToastOverlay> {
           child: AnimatedOpacity(
             duration: const Duration(milliseconds: 180),
             opacity: visible ? 1 : 0,
-            child: Center(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(AppRadii.pill),
-                child: BackdropFilter(
-                  filter: ui.ImageFilter.blur(sigmaX: 28, sigmaY: 28),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: tokens.bgCardSolid,
-                      borderRadius: BorderRadius.circular(AppRadii.pill),
-                      border: Border.all(color: tokens.glassBorder),
-                      boxShadow: [
-                        BoxShadow(
-                          color:
-                              const Color(0xFF16285B).withValues(alpha: 0.18),
-                          blurRadius: 30,
-                          offset: const Offset(0, 12),
+            // 从下方顶上来时顺带「长开」一点：只有位移与淡入的话，
+            // 一颗胶囊看起来像被搬进来，而不是弹出来。
+            child: AnimatedScale(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              scale: visible ? 1 : 0.94,
+              child: Center(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(AppRadii.pill),
+                  child: BackdropFilter(
+                    filter: ui.ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: tokens.bgCardSolid,
+                        borderRadius: BorderRadius.circular(AppRadii.pill),
+                        border: Border.all(color: tokens.glassBorder),
+                        boxShadow: [
+                          BoxShadow(
+                            color:
+                                const Color(0xFF16285B).withValues(alpha: 0.18),
+                            blurRadius: 30,
+                            offset: const Offset(0, 12),
+                          ),
+                        ],
+                      ),
+                      child: Text(
+                        message ?? '',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: tokens.textPrimary,
                         ),
-                      ],
-                    ),
-                    child: Text(
-                      message ?? '',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: tokens.textPrimary,
                       ),
                     ),
                   ),

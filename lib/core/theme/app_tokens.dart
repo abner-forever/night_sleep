@@ -290,11 +290,32 @@ abstract final class AppDurations {
   static const springy = Duration(milliseconds: 200);
 
   static const selection = Duration(milliseconds: 360);
+
+  /// 选中态底色 / 描边的过渡。比 `standard` 短：控件状态要跟手，不能拖。
+  static const control = Duration(milliseconds: 200);
+
+  /// 底部弹层进场。比退场慢一点——进场是「升起来」，退场要「走得干脆」。
+  static const sheetIn = Duration(milliseconds: 340);
+
+  /// 底部弹层退场（点蒙层、点把手、下滑甩走都走它）。
+  static const sheetOut = Duration(milliseconds: 240);
+
+  /// 弹层被拉下一截、没够着关闭阈值后弹回原位。
+  static const sheetSettle = Duration(milliseconds: 260);
 }
 
 abstract final class AppMotion {
   static const standardCurve = Cubic(0.22, 1, 0.36, 1);
   static const springyCurve = Cubic(0.34, 1.56, 0.64, 1);
+
+  /// 弹层进场：起手快、落定稳（ease-out-expo 一类）。
+  ///
+  /// **不带回弹。** 面板下沿贴着屏幕底，任何过冲都会把它抬起一条缝，
+  /// 露出后面的画面——那不是弹簧，是断片。
+  static const sheetEnterCurve = Cubic(0.16, 1, 0.3, 1);
+
+  /// 弹层退场：加速离场，不拖泥带水。
+  static const sheetExitCurve = Cubic(0.4, 0, 1, 1);
 }
 
 /// Width at which the shell swaps its floating tab bar for a sidebar and widens
