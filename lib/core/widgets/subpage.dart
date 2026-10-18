@@ -4,9 +4,9 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../platform/haptics.dart';
 import '../theme/app_tokens.dart';
 import 'atmosphere.dart';
+import 'liquid_glass.dart';
 
 /// Shared chrome for a page pushed **over** the tab shell: a back pill, the page
 /// title, and a scrolling content column.
@@ -199,40 +199,36 @@ class _SubpageHeaderDelegate extends SliverPersistentHeaderDelegate {
   Widget _headerRow(BuildContext context) {
     return Row(
       children: [
-        // **只有图标，没有文字标签。** 读屏靠这一层 label 说明它是返回；
+        // **只有图标，没有文字标签。** 读屏靠 `semanticLabel` 说明它是返回；
         // 删掉文字之后不能让无障碍跟着一起消失。
-        Semantics(
-          label: '返回',
-          button: true,
-          child: GestureDetector(
-            key: const ValueKey('subpage-back'),
-            behavior: HitTestBehavior.opaque,
-            onTap: () {
-              AppHaptics.tap();
-              if (context.canPop()) {
-                context.pop();
-              } else {
-                context.go('/');
-              }
-            },
-            child: Container(
-              width: 36,
-              height: 36,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: tokens.material,
-                borderRadius: BorderRadius.circular(AppRadii.pill),
-                border: Border.all(color: tokens.glassBorder),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF1C2C52).withValues(alpha: 0.10),
-                    blurRadius: 7,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              // The chevron is drawn inline as the prototype does, so it
-              // keeps its 2.2 stroke and tight 9×15 proportion.
+        LiquidGlass(
+          key: const ValueKey('subpage-back'),
+          borderRadius: BorderRadius.circular(AppRadii.pill),
+          blur: 18,
+          saturation: 1.4,
+          tint: tokens.material,
+          expandWidth: false,
+          semanticLabel: '返回',
+          shadow: [
+            BoxShadow(
+              color: const Color(0xFF1C2C52).withValues(alpha: 0.10),
+              blurRadius: 7,
+              offset: const Offset(0, 2),
+            ),
+          ],
+          onTap: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/');
+            }
+          },
+          // The chevron is drawn inline as the prototype does, so it
+          // keeps its 2.2 stroke and tight 9×15 proportion.
+          child: SizedBox(
+            width: 36,
+            height: 36,
+            child: Center(
               child: SizedBox(
                 width: 9,
                 height: 15,

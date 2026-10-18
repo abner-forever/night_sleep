@@ -9,6 +9,7 @@ import '../core/theme/app_tokens.dart';
 import '../core/widgets/app_icons.dart';
 import '../core/widgets/app_sheet.dart' show openSheetCount;
 import '../core/widgets/bottom_fade.dart';
+import '../core/widgets/liquid_glass.dart';
 import '../core/widgets/top_fade.dart';
 
 /// The four primary destinations. Order matches the prototype's `NAV`.
@@ -243,83 +244,97 @@ class _TabBar extends StatelessWidget {
         right: padding.right > 12 ? padding.right : 12,
         bottom: tabBarFloat(context),
       ),
-      // The shadow sits outside the clip: declared inside `ClipRRect` it is
-      // simply discarded, which left the bar looking pasted on.
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(AppRadii.tabBar),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF1F2D51).withValues(alpha: 0.06),
-              blurRadius: 30,
-              offset: const Offset(0, -8),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(AppRadii.tabBar),
-          child: BackdropFilter(
-            filter: ui.ImageFilter.blur(sigmaX: 28, sigmaY: 28),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-              decoration: BoxDecoration(
-                color: tokens.bgNavbar,
-                borderRadius: BorderRadius.circular(AppRadii.tabBar),
-                border: Border.all(color: tokens.glassBorder, width: 0.5),
-              ),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final slot = constraints.maxWidth / tabs.length;
-                  return Stack(
-                    children: [
-                      // Sliding accent capsule behind the active tab.
-                      AnimatedPositioned(
-                        duration: const Duration(milliseconds: 420),
-                        curve: AppMotion.standardCurve,
-                        left: index * slot,
-                        top: 3,
-                        bottom: 3,
-                        width: slot,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: tokens.accent.withValues(alpha: 0.14),
-                            borderRadius: BorderRadius.circular(28),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFF1F3970)
-                                    .withValues(alpha: 0.08),
-                                blurRadius: 3,
-                                offset: const Offset(0, 1),
-                              ),
-                            ],
-                          ),
+      // 液态玻璃整块托底：阴影在裁剪之外，否则会被自己的 `ClipRRect` 丢掉。
+      child: LiquidGlass(
+        borderRadius: BorderRadius.circular(AppRadii.tabBar),
+        blur: 28,
+        saturation: 1.6,
+        tint: tokens.bgNavbar,
+        // 比旧 Container 的 4 / 6 各多半像素：旧描边占掉的 0.5px 现在由
+        // painter 画在内侧，不再参与布局；补回来胶囊总高才仍是 65。
+        padding: const EdgeInsets.symmetric(horizontal: 6.5, vertical: 4.5),
+        shadow: [
+          BoxShadow(
+            color: const Color(0xFF1F2D51).withValues(alpha: 0.08),
+            blurRadius: 34,
+            offset: const Offset(0, -8),
+          ),
+        ],
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final slot = constraints.maxWidth / tabs.length;
+            return Stack(
+              children: [
+                // Sliding accent capsule behind the active tab.
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 420),
+                  curve: AppMotion.standardCurve,
+                  left: index * slot,
+                  top: 3,
+                  bottom: 3,
+                  width: slot,
+                  child: _ActiveTabCapsule(color: tokens.accent),
+                ),
+                Row(
+                  children: [
+                    for (final tab in tabs)
+                      Expanded(
+                        child: _TabItem(
+                          tab: tab,
+                          active: tab == current,
+                          onTap: () => onSelect(tab),
                         ),
                       ),
-                      Row(
-                        children: [
-                          for (final tab in tabs)
-                            Expanded(
-                              child: _TabItem(
-                                tab: tab,
-                                active: tab == current,
-                                onTap: () => onSelect(tab),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ),
-          ),
+                  ],
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
   }
 }
 
-class _TabItem extends StatelessWidget {
+/// 选中标签背后的玻璃胶囊。
+///
+/// 与外层标签条共用一套「上亮下暗」的语言：底色是从 accent 淡到更淡的两段
+/// 渐变，加一条 0.5px 的内缘描边——它不再是一块实色块，而是被点亮的一小片玻璃。
+///
+/// **不要在胶囊顶部再画一条 1px 镜面线。** 浅色模式下白线压在蓝色胶囊上是一根
+/// 实打实的硬边，看着像贴纸；渐变底色本身已经让上半部分更亮，足够了。
+class _ActiveTabCapsule extends StatelessWidget {
+  const _ActiveTabCapsule({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            color.withValues(alpha: 0.20),
+            color.withValues(alpha: 0.10),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: color.withValues(alpha: 0.12), width: 0.5),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF1F3970).withValues(alpha: 0.08),
+            blurRadius: 3,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TabItem extends StatefulWidget {
   const _TabItem(
       {required this.tab, required this.active, required this.onTap});
 
@@ -328,8 +343,17 @@ class _TabItem extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
+  State<_TabItem> createState() => _TabItemState();
+}
+
+class _TabItemState extends State<_TabItem> {
+  bool _pressed = false;
+
+  @override
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
+    final tab = widget.tab;
+    final active = widget.active;
     final color = active ? tokens.accent : tokens.textMuted;
 
     // Home, Log and Statistics swap in a filled glyph when active; Settings has
@@ -345,53 +369,61 @@ class _TabItem extends StatelessWidget {
       label: tab.label,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => setState(() => _pressed = true),
+        onTapUp: (_) => setState(() => _pressed = false),
+        onTapCancel: () => setState(() => _pressed = false),
         onTap: () {
           AppHaptics.select();
-          onTap();
+          widget.onTap();
         },
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 56),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              SizedBox(
-                width: 25,
-                height: 28,
-                child: Center(
-                  // 实心 / 线框字形之间淡入淡出，而不是「啪」地换一个符号。
-                  // 位移胶囊已经在滑，图标跟着换颜色与形状，整条标签才像一次动作。
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 180),
-                    switchInCurve: Curves.easeOut,
-                    switchOutCurve: Curves.easeIn,
-                    transitionBuilder: (child, animation) => FadeTransition(
-                      opacity: animation,
-                      child: ScaleTransition(
-                        scale: Tween<double>(begin: 0.88, end: 1)
-                            .animate(animation),
-                        child: child,
+        child: AnimatedScale(
+          scale: _pressed ? 0.94 : 1,
+          duration: const Duration(milliseconds: 160),
+          curve: AppMotion.standardCurve,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 56),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 25,
+                  height: 28,
+                  child: Center(
+                    // 实心 / 线框字形之间淡入淡出，而不是「啪」地换一个符号。
+                    // 位移胶囊已经在滑，图标跟着换颜色与形状，整条标签才像一次动作。
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 180),
+                      switchInCurve: Curves.easeOut,
+                      switchOutCurve: Curves.easeIn,
+                      transitionBuilder: (child, animation) => FadeTransition(
+                        opacity: animation,
+                        child: ScaleTransition(
+                          scale: Tween<double>(begin: 0.88, end: 1)
+                              .animate(animation),
+                          child: child,
+                        ),
                       ),
-                    ),
-                    child: KeyedSubtree(
-                      key: ValueKey('${tab.id}-$active'),
-                      child: glyph,
+                      child: KeyedSubtree(
+                        key: ValueKey('${tab.id}-$active'),
+                        child: glyph,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 2),
-              AnimatedDefaultTextStyle(
-                duration: AppDurations.control,
-                curve: AppMotion.standardCurve,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                  letterSpacing: -0.2,
-                  color: color,
+                const SizedBox(height: 2),
+                AnimatedDefaultTextStyle(
+                  duration: AppDurations.control,
+                  curve: AppMotion.standardCurve,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                    letterSpacing: -0.2,
+                    color: color,
+                  ),
+                  child: Text(tab.label),
                 ),
-                child: Text(tab.label),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

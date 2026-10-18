@@ -4,6 +4,7 @@ import '../platform/haptics.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_tokens.dart';
 import 'glass_surface.dart';
+import 'liquid_glass.dart';
 import 'quiet_surface.dart';
 
 /// `ios-toggle` — a 52×32 track with a 26px thumb that travels 20px.
@@ -290,55 +291,79 @@ class SegmentedControl<T> extends StatelessWidget {
 
         final totalWidth = segmentWidth * segments.length + 6;
 
-        return Container(
+        return SizedBox(
           width: totalWidth,
-          padding: const EdgeInsets.all(3),
-          decoration: BoxDecoration(
-            color: const Color(0x1F767680),
+          child: LiquidGlass(
             borderRadius: BorderRadius.circular(10),
-          ),
-          child: Stack(
-            children: [
-              AnimatedPositioned(
-                duration: AppDurations.selection,
-                curve: AppMotion.standardCurve,
-                left: activeIndex * segmentWidth,
-                top: 0,
-                bottom: 0,
-                width: segmentWidth,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: tokens.bgCardSolid,
-                    borderRadius: BorderRadius.circular(8),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.14),
-                        blurRadius: 5,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
+            blur: 18,
+            saturation: 1.45,
+            tint: tokens.bgInput,
+            // 小控件上整圈白边会显得太粗；留一点轮廓就够了。
+            rimOpacity: 0.6,
+            // 轨道是「凹进去」的，不跟内容卡共用那层大阴影。
+            shadow: const [],
+            expandWidth: false,
+            padding: const EdgeInsets.all(3),
+            child: Stack(
+              children: [
+                AnimatedPositioned(
+                  duration: AppDurations.selection,
+                  curve: AppMotion.standardCurve,
+                  left: activeIndex * segmentWidth,
+                  top: 0,
+                  bottom: 0,
+                  width: segmentWidth,
+                  child: _SegmentCapsule(tokens: tokens),
                 ),
-              ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (final segment in segments)
-                    _Segment(
-                      label: segment.label,
-                      active: segment.value == selected,
-                      width: segmentWidth,
-                      onTap: () {
-                        AppHaptics.select();
-                        onChanged(segment.value);
-                      },
-                    ),
-                ],
-              ),
-            ],
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final segment in segments)
+                      _Segment(
+                        label: segment.label,
+                        active: segment.value == selected,
+                        width: segmentWidth,
+                        onTap: () {
+                          AppHaptics.select();
+                          onChanged(segment.value);
+                        },
+                      ),
+                  ],
+                ),
+              ],
+            ),
           ),
         );
       },
+    );
+  }
+}
+
+/// 分段控件里那块会被推着走的选中片。
+///
+/// 它不单独做背景模糊：玻璃叠玻璃既读不清、又白花一次采样。改为一块
+/// 「抬起来的」实面——外圈一条内缘亮边，底部一点投影；**顶部不画 1px 镜面线**，
+/// 浅色模式下那条白线会在胶囊上缘留下一道硬边。
+class _SegmentCapsule extends StatelessWidget {
+  const _SegmentCapsule({required this.tokens});
+
+  final AppTokens tokens;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: tokens.bgCardSolid,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: tokens.liquidRim, width: 0.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.14),
+            blurRadius: 5,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
     );
   }
 }

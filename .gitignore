@@ -9,6 +9,9 @@ ios/Pods/
 ios/.symlinks/
 android/.gradle/
 android/local.properties
+# 某些 Flutter/Gradle 组合会把这两样生成在 app/ 下，同样是本机状态
+android/app/.gradle/
+android/app/local.properties
 lib/**/*.g.dart
 # Widget Preview related
 .widget_preview/

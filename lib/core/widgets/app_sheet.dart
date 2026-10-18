@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../platform/haptics.dart';
 import '../theme/app_tokens.dart';
+import 'liquid_glass.dart';
 
 /// How many bottom sheets are on screen.
 ///
@@ -382,41 +383,35 @@ class AppSheet extends StatelessWidget {
       content = padded;
     }
 
-    final panel = ClipRRect(
+    final panel = LiquidGlass(
       borderRadius: BorderRadius.vertical(top: radius),
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 38, sigmaY: 38),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: tokens.sheetBg,
-            borderRadius: BorderRadius.vertical(top: radius),
-            border: Border(
-              top: BorderSide(color: tokens.glassBorder),
-              left: BorderSide(color: tokens.glassBorder),
-              right: BorderSide(color: tokens.glassBorder),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: isWide ? 0.18 : 0.14),
-                blurRadius: 44,
-                offset: const Offset(0, -14),
-              ),
-            ],
-          ),
-          // A sheet is not a `Dialog`, and `showGeneralDialog` — unlike
-          // `showDialog` — wraps its route in nothing. Without a `Material`
-          // ancestor every `Text` in here falls back to Flutter's error style,
-          // which renders as a yellow double underline under all of it.
-          child: Material(
-            type: MaterialType.transparency,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (showHandle) const _SheetHandle(),
-                Flexible(child: content),
-              ],
-            ),
-          ),
+      blur: 38,
+      saturation: 1.35,
+      tint: tokens.sheetBg,
+      // 弹层按内容收放：不要像卡片那样强行撑满宿主宽度。
+      expandWidth: false,
+      // 下沿贴着屏幕底，不需要再加一条底边亮线。
+      bottomEdge: false,
+      // 阴影放在裁剪之外才不会被丢掉；原先写在 `ClipRRect` 里面，实际是看不见的。
+      shadow: [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: isWide ? 0.18 : 0.14),
+          blurRadius: 44,
+          offset: const Offset(0, -14),
+        ),
+      ],
+      // A sheet is not a `Dialog`, and `showGeneralDialog` — unlike
+      // `showDialog` — wraps its route in nothing. Without a `Material`
+      // ancestor every `Text` in here falls back to Flutter's error style,
+      // which renders as a yellow double underline under all of it.
+      child: Material(
+        type: MaterialType.transparency,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (showHandle) const _SheetHandle(),
+            Flexible(child: content),
+          ],
         ),
       ),
     );

@@ -219,6 +219,40 @@ class AppTokens extends ThemeExtension<AppTokens> {
               color: Color(0x0E24355B), blurRadius: 18, offset: Offset(0, 5))
         ];
 
+  // ── 液态玻璃（导航 / 控件层） ──────────────────────────────────────────────
+  //
+  // 这些值只给 `LiquidGlass` 用。与 `specular` / `glassBorder` 分开，是因为
+  // 液态玻璃要的是一圈**有厚度的**边缘：浅色底上纯白描边会整条消失，必须
+  // 另配一条深色外缘线；深色底上则反过来，只留一层很淡的白边。
+
+  /// 顶部内缘的镜面高光——比 [specular] 更亮、更集中。
+  Color get liquidSpecular =>
+      this == dark ? const Color(0x33FFFFFF) : const Color(0xE6FFFFFF);
+
+  /// 外缘细线。浅色模式用深灰，否则白线落在浅色页面上等于没有边界。
+  Color get liquidEdge =>
+      this == dark ? const Color(0x24FFFFFF) : const Color(0x293C3C43);
+
+  /// 内缘描边的过渡色（从顶部高光走到这里，再收到底部）。
+  Color get liquidRim =>
+      this == dark ? const Color(0x1FFFFFFF) : const Color(0xB3FFFFFF);
+
+  /// 底部 / 侧边的收边，比 [liquidRim] 暗一档。
+  Color get liquidRimSoft =>
+      this == dark ? const Color(0x0FFFFFFF) : const Color(0x4DFFFFFF);
+
+  /// 内缘那圈宽而模糊的柔光，模拟光在玻璃厚度里散开。
+  Color get liquidGlow =>
+      this == dark ? const Color(0x14FFFFFF) : const Color(0x33FFFFFF);
+
+  /// 色散边缘的冷色。只用在斜向扫光最淡的那一角，别把整圈染色。
+  Color get liquidFringeCool =>
+      this == dark ? const Color(0x1464D2FF) : const Color(0x1A5AC8FA);
+
+  /// 色散边缘的暖色，与 [liquidFringeCool] 相对。
+  Color get liquidFringeWarm =>
+      this == dark ? const Color(0x12BF5AF2) : const Color(0x145856D6);
+
   @override
   AppTokens copyWith() => this;
 

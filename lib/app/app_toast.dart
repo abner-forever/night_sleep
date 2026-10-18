@@ -1,9 +1,8 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme/app_tokens.dart';
+import '../core/widgets/liquid_glass.dart';
 
 /// The most recent transient message, or null. Set it from anywhere with
 /// `ref.read(toastProvider.notifier).show('...')`.
@@ -80,35 +79,30 @@ class _ToastOverlayState extends ConsumerState<ToastOverlay> {
               curve: Curves.easeOutCubic,
               scale: visible ? 1 : 0.94,
               child: Center(
-                child: ClipRRect(
+                child: LiquidGlass(
                   borderRadius: BorderRadius.circular(AppRadii.pill),
-                  child: BackdropFilter(
-                    filter: ui.ImageFilter.blur(sigmaX: 28, sigmaY: 28),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: tokens.bgCardSolid,
-                        borderRadius: BorderRadius.circular(AppRadii.pill),
-                        border: Border.all(color: tokens.glassBorder),
-                        boxShadow: [
-                          BoxShadow(
-                            color:
-                                const Color(0xFF16285B).withValues(alpha: 0.18),
-                            blurRadius: 30,
-                            offset: const Offset(0, 12),
-                          ),
-                        ],
-                      ),
-                      child: Text(
-                        message ?? '',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: tokens.textPrimary,
-                        ),
-                      ),
+                  blur: 28,
+                  saturation: 1.5,
+                  // 旧实现是「模糊 + 不透明底」，模糊其实被底盖住了；
+                  // 换成半透明的强材质，背景才真的透得进来。
+                  tint: tokens.materialStrong,
+                  expandWidth: false,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  shadow: [
+                    BoxShadow(
+                      color: const Color(0xFF16285B).withValues(alpha: 0.18),
+                      blurRadius: 30,
+                      offset: const Offset(0, 12),
+                    ),
+                  ],
+                  child: Text(
+                    message ?? '',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: tokens.textPrimary,
                     ),
                   ),
                 ),
