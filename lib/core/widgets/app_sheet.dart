@@ -320,18 +320,37 @@ class _SheetHandle extends StatelessWidget {
 class AppSheet extends StatelessWidget {
   const AppSheet({
     super.key,
-    required this.child,
+    this.child,
+    this.slivers,
     this.showHandle = true,
     this.padding,
     this.scrollable = false,
-  });
+    this.heightFactor,
+  }) : assert(
+          (child == null) != (slivers == null),
+          'AppSheet 要么给 child，要么给 slivers——两者只能有一个。',
+        );
 
-  final Widget child;
+  final Widget? child;
   final bool showHandle;
   final EdgeInsetsGeometry? padding;
 
   /// Wraps [child] in a scroll view; used by the tall detail sheet.
   final bool scrollable;
+
+  /// 面板高度 = 屏幕高度 × 这个比例；`null` = 按内容收放（上限仍是宿主的 92%）。
+  ///
+  /// 睡眠详情页用 2/3 固定一个「半弹窗」：内容多了在面板里滚，内容少了面板也不缩。
+  final double? heightFactor;
+
+  /// 直接由 sliver 组成的正文，与 [child] 二选一。
+  ///
+  /// 详情页的片段列表可能上百条，`SingleChildScrollView` + `Column` 会一次建完
+  /// **整份**内容（每张卡还带 38 根波形条），弹窗第一帧因此被拖到动画都看不见。
+  /// 改由 sliver 列表按需构建，只有真正进到视口里的卡片才存在。
+  ///
+  /// 走这条路时面板占满宿主给的可用高度（详情页再按 [heightFactor] 定成 2/3 屏）。
+  final List<Widget>? slivers;
 
   @override
   Widget build(BuildContext context) {
@@ -340,18 +359,30 @@ class AppSheet extends StatelessWidget {
     final isWide = media.size.width >= 640;
     final radius = Radius.circular(isWide ? AppRadii.sheet : AppRadii.sheet);
 
-    Widget content = Padding(
-      padding: padding ?? EdgeInsets.zero,
-      child: child,
-    );
-    if (scrollable) {
-      content = SingleChildScrollView(
-        padding: EdgeInsets.only(bottom: media.padding.bottom),
-        child: content,
+    final Widget content;
+    if (slivers != null) {
+      content = CustomScrollView(
+        slivers: [
+          ...slivers!,
+          // 安全区留白放在滚动内容**里面**，与 `scrollable` 那条路同一个口径。
+          SliverToBoxAdapter(child: SizedBox(height: media.padding.bottom)),
+        ],
       );
+    } else {
+      Widget padded = Padding(
+        padding: padding ?? EdgeInsets.zero,
+        child: child!,
+      );
+      if (scrollable) {
+        padded = SingleChildScrollView(
+          padding: EdgeInsets.only(bottom: media.padding.bottom),
+          child: padded,
+        );
+      }
+      content = padded;
     }
 
-    return ClipRRect(
+    final panel = ClipRRect(
       borderRadius: BorderRadius.vertical(top: radius),
       child: BackdropFilter(
         filter: ui.ImageFilter.blur(sigmaX: 38, sigmaY: 38),
@@ -389,6 +420,9 @@ class AppSheet extends StatelessWidget {
         ),
       ),
     );
+
+    if (heightFactor == null) return panel;
+    return SizedBox(height: media.size.height * heightFactor!, child: panel);
   }
 }
 

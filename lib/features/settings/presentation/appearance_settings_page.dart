@@ -46,7 +46,6 @@ class AppearanceSettingsPage extends ConsumerWidget {
 
     return Subpage(
       title: '外观',
-      backLabel: '设置',
       children: [
         const SectionHeader('显示模式'),
         IosListGroup(

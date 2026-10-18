@@ -76,7 +76,8 @@ final _router = GoRouter(
           builder: (context, state) => const ExportPage(),
         ),
         // 导出页的表格预览（v3.31）。与导出页平级，不嵌成它的子路由：
-        // 这一页的返回目标是导出页，而它的位置由 `Subpage` 的返回胶囊自己说明。
+        // 返回目标是导出页，靠栈里的上一页（`Subpage` 的返回按钮 `pop`），
+        // 不是靠路径层级。
         GoRoute(
           path: 'settings/export/preview',
           builder: (context, state) => const ExportPreviewPage(),

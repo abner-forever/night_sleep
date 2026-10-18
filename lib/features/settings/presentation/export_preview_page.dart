@@ -62,7 +62,6 @@ class _ExportPreviewPageState extends ConsumerState<ExportPreviewPage> {
 
   /// 加载 / 出错 / 有数据三态共用同一副外壳与标题。
   Widget _shell(List<Widget> children) => Subpage(
-        backLabel: '导出',
         title: '表格预览',
         children: children,
       );

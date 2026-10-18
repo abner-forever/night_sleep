@@ -22,11 +22,13 @@ import 'package:night_sleep/core/database/app_database.dart'
         SoundClipsCompanion,
         databaseProvider;
 import 'package:night_sleep/core/theme/app_theme.dart';
+import 'package:night_sleep/core/widgets/app_sheet.dart';
 import 'package:night_sleep/features/settings/data/insight_credentials.dart';
 import 'package:night_sleep/features/sleep/data/clip_analyzer.dart';
 import 'package:night_sleep/features/sleep/data/sleep_repository.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_entry.dart';
 import 'package:night_sleep/features/sleep/presentation/sheets/detail_sheet.dart';
+import 'package:night_sleep/features/sleep/presentation/sheets/sound_card.dart';
 
 /// 假的声学分析器：**不碰磁盘、不开 isolate**。
 ///
@@ -101,8 +103,9 @@ void main() {
     WidgetTester tester,
     SleepEntry entry, {
     required ClipAnalyzer analyzer,
+    Size size = const Size(430, 2600),
   }) async {
-    tester.view.physicalSize = const Size(430, 2600);
+    tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
@@ -191,6 +194,60 @@ void main() {
           .read(toastProvider),
       contains('没有可分析的片段'),
     );
+  });
+
+  testWidgets('面板高度固定为屏幕的三分之二，与内容多少无关', (tester) async {
+    for (final clips in [0, 2]) {
+      final entry = await seedNight(clips: clips);
+      await pumpSheet(
+        tester,
+        entry,
+        analyzer: _StubAnalyzer(database, clips),
+        size: const Size(430, 900),
+      );
+
+      expect(
+        tester.getSize(find.byType(AppSheet)).height,
+        closeTo(900 * 2 / 3, 0.5),
+        reason: '$clips 段时面板没有落在 2/3 屏',
+      );
+
+      tester
+          .state<NavigatorState>(find.byType(Navigator).first)
+          .popUntil((route) => route.isFirst);
+      await tester.pumpAndSettle();
+    }
+  });
+
+  // 2026-10-18 使用方报的：手机上最近两晚录音很多，打开详情弹窗几乎看不到
+  // 进场动画。病灶是 `SingleChildScrollView` + `Column` 一次把**所有**卡片
+  // 建完，每张卡再带上千根波形条。这里钉住两条：首帧只建视口里的那几张；
+  // 滚动之后后面的卡片仍然能建出来。
+  testWidgets('片段很多时按需构建：首帧只建视口里的卡，滚动后仍能读到末尾', (tester) async {
+    final entry = await seedNight(clips: 60);
+    await pumpSheet(
+      tester,
+      entry,
+      analyzer: _StubAnalyzer(database, 60),
+      size: const Size(430, 932),
+    );
+
+    // 视口约 850 逻辑像素，一张卡约 110px；60 张卡铺开是它的三倍多。
+    expect(
+      find.byType(SoundCard).evaluate().length,
+      lessThan(20),
+      reason: '首帧把 60 张卡全建了——又回到打开卡顿的老路',
+    );
+    // sliver 路径的左右留白与整块滚动那条路一致（430 − 20 × 2）。
+    expect(tester.getSize(find.byType(SoundCard).first).width, 390);
+
+    await tester.scrollUntilVisible(
+      find.text('编辑记录'),
+      600,
+      scrollable: find.byType(Scrollable).first,
+      maxScrolls: 80,
+    );
+    expect(find.text('编辑记录'), findsOneWidget);
   });
 
   testWidgets('分析抛错时给出「分析失败」，不静默', (tester) async {

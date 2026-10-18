@@ -258,7 +258,6 @@ class SleepSettingsPage extends ConsumerWidget {
 
     return Subpage(
       title: '睡眠设置',
-      backLabel: '设置',
       children: [
         // ── 每晚睡眠目标 ─────────────────────────────────────────────────────
         const SectionHeader('每晚睡眠目标'),

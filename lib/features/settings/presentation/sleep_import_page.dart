@@ -40,7 +40,6 @@ class _SleepImportPageState extends State<SleepImportPage> {
     final tokens = AppTokens.of(context);
 
     return Subpage(
-      backLabel: '设置',
       title: '睡眠数据导入',
       children: [
         GlassSurface(

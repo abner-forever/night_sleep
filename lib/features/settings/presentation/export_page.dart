@@ -92,7 +92,6 @@ class _ExportPageState extends ConsumerState<ExportPage> {
 
   /// 加载 / 出错 / 有数据三态共用同一副外壳与标题。
   Widget _shell(List<Widget> children) => Subpage(
-        backLabel: '设置',
         title: '睡眠数据导出',
         children: children,
       );

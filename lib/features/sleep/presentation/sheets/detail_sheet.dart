@@ -32,6 +32,12 @@ import '../widgets/stage_chart.dart';
 import '../widgets/stage_style.dart';
 import 'sound_card.dart';
 
+/// 详情面板的高度 = 屏幕高度 × 这个比例（2/3 的「半弹窗」）。
+///
+/// 定高之后内容一律在面板里滚：内容多的记录不会把面板顶到满高，内容少的
+/// 也不会缩成一个矮条——同一个入口每次点开都是同一块地方。
+const double _kSheetHeightFactor = 2 / 3;
+
 /// Opens the detail sheet for [entry].
 Future<void> showSleepDetailSheet(BuildContext context, SleepEntry entry) {
   return showAppSheet<void>(
@@ -57,6 +63,28 @@ class DetailSheet extends ConsumerStatefulWidget {
 
 class _DetailSheetState extends ConsumerState<DetailSheet> {
   String? _expandedClipId;
+
+  /// 播放控制器的引用，只在 `dispose` 里用来停掉正在播的那一段。
+  ///
+  /// **「页面关了还在响」这件事由详情页负责，不是每张卡片自己负责。** 片段列表
+  /// 改成按需构建之后，卡片滚出视口也会被拆解；如果还留在卡片里，滚动就会掐断
+  /// 正在播的声音。
+  late final ClipPlaybackController _playback;
+
+  @override
+  void initState() {
+    super.initState();
+    _playback = ref.read(clipPlaybackProvider);
+  }
+
+  @override
+  void dispose() {
+    final playing = _playback.playingClipId;
+    // `detach` 而不是 `stop`：此刻别的卡片也在拆解，`notifyListeners` 会去
+    // `markNeedsBuild` 已卸载的元素。
+    if (playing != null) _playback.detach(playing);
+    super.dispose();
+  }
 
   /// The sheet's own copy of the entry. Regenerating an insight writes to the
   /// database *and* here: the sheet was handed a value, not a stream, so
@@ -277,457 +305,457 @@ class _DetailSheetState extends ConsumerState<DetailSheet> {
       appSettings,
     );
 
-    return AppSheet(
-      scrollable: true,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+    final blocks = <Widget>[
+      // ── Title + score ──────────────────────────────────────────────
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  entry.dateLabel,
+                  style: AppTheme.num(
+                    context,
+                    size: 12,
+                    color: tokens.textMuted,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '睡眠详情',
+                  style: TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.9,
+                    color: tokens.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (score != null) ...[
+            const SizedBox(width: 12),
+            ScoreRing(score: score),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '睡眠评分',
+                  style: TextStyle(fontSize: 12, color: tokens.textMuted),
+                ),
+                Text(
+                  score >= 85
+                      ? '优秀'
+                      : score >= 70
+                          ? '良好'
+                          : '一般',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: score >= 85 ? tokens.accentViolet : tokens.accent,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+      const SizedBox(height: 16),
+
+      // ── Bedtime / duration / wake ──────────────────────────────────
+      Row(
+        children: [
+          _StatTile(
+            label: '入睡',
+            value: entry.bedtimeLabel,
+            color: tokens.accent,
+          ),
+          const SizedBox(width: 8),
+          _StatTile(
+            label: '时长',
+            value: _durationLabel(entry),
+            color: tokens.textPrimary,
+          ),
+          const SizedBox(width: 8),
+          _StatTile(
+            label: '起床',
+            value: entry.wakeLabel,
+            color: tokens.accentViolet,
+          ),
+        ],
+      ),
+
+      // ── Hypnogram ──────────────────────────────────────────────────
+      if (entry.hasStages) ...[
+        const SizedBox(height: 16),
+        InsetPanel(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '睡眠阶段',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 1.14,
+                  color: tokens.textMuted,
+                ),
+              ),
+              const SizedBox(height: 12),
+              StageBarChart(
+                stages: entry.stages,
+                height: 56,
+                legend: true,
+                caption:
+                    '${entry.bedtimeLabel} 入睡 → ${entry.wakeLabel} 起床 · 柱高代表睡眠阶段',
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  for (final stage in SleepStageType.charted) ...[
+                    Expanded(
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 3),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: tokens.bgCard,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          children: [
+                            Text(
+                              stage.label,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: tokens.textMuted,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${entry.stagePercent(stage)}%',
+                              style: AppTheme.num(
+                                context,
+                                size: 18,
+                                weight: FontWeight.w700,
+                                color: stageColor(tokens, stage),
+                              ),
+                            ),
+                            Text(
+                              '${entry.minutesFor(stage)}m',
+                              style: AppTheme.num(
+                                context,
+                                size: 12,
+                                color: tokens.textMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+
+      // ── Sound events ───────────────────────────────────────────────
+      const SizedBox(height: 16),
+      Row(
+        children: [
+          Expanded(
+            child: Text(
+              entry.hasSoundEvents
+                  ? '声音记录 · ${entry.soundClips.length}条'
+                  : '声音记录 · 无片段',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 1.14,
+                color: tokens.textMuted,
+              ),
+            ),
+          ),
+          // **与下面那个「重新生成」是两件事，措辞必须能分开。**
+          // 这一个在本机跑声学特征：不联网、不花 API 钱、随时可以重跑。
+          // 它只在真有片段可分析时出现——没录到东西时点它没有任何意义。
+          if (entry.hasSoundEvents)
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _analysingSounds ? null : _reanalyseSounds,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 4,
+                  vertical: 2,
+                ),
+                child: Text(
+                  _analysingSounds ? '分析中…' : '重新分析',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: _analysingSounds ? tokens.textMuted : tokens.accent,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      if (!entry.hasSoundEvents)
+        InsetPanel(
+          child: Row(
+            children: [
+              AppIcons.moon(
+                  size: 22, color: tokens.textMuted, strokeWidth: 1.5),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // **不下没有依据的结论。** 原先这里写「全程安静，无异常
+                    // 声音」，把「跑过检测、结论是没有」与「这一晚根本没录」
+                    // 说成了同一件事——使用方就曾被它误导（他在 iPad 上以为
+                    // 录音开着，界面却像检测完了一样下了「安静」的结论）。
+                    // 零片段在两种情形下都是真的，所以只说零片段。
+                    Text(
+                      '这一晚没有声音片段',
+                      style: TextStyle(fontSize: 14, color: tokens.textMuted),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '可能是整夜安静，也可能是没有录音。',
+                      style: TextStyle(fontSize: 12, color: tokens.textMuted),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        )
+      else
+        for (final clip in entry.soundClips) ...[
+          SoundCard(
+            clip: clip,
+            expanded: _expandedClipId == clip.id,
+            onToggle: () => setState(
+              () =>
+                  _expandedClipId = _expandedClipId == clip.id ? null : clip.id,
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+
+      // ── Insight ────────────────────────────────────────────────────
+      //
+      // 常显，不再是「有内容才出现」：这一块现在挂着「重新生成」入口，
+      // 而最需要它的场景恰恰是「这一晚还什么都没有」的记录。
+      const SizedBox(height: 16),
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: tokens.accentSoft,
+          borderRadius: BorderRadius.circular(AppRadii.panel),
+          border: Border.all(color: tokens.accent.withValues(alpha: 0.19)),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Title + score ──────────────────────────────────────────────
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        entry.dateLabel,
-                        style: AppTheme.num(
-                          context,
-                          size: 12,
-                          color: tokens.textMuted,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '睡眠详情',
-                        style: TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.9,
-                          color: tokens.textPrimary,
-                        ),
-                      ),
-                    ],
+                AppIcons.ai(size: 15, color: tokens.accent, strokeWidth: 1.8),
+                const SizedBox(width: 8),
+                Text(
+                  '睡眠洞察',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: tokens.accent,
                   ),
                 ),
-                if (score != null) ...[
-                  const SizedBox(width: 12),
-                  ScoreRing(score: score),
-                  const SizedBox(width: 10),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        '睡眠评分',
-                        style: TextStyle(fontSize: 12, color: tokens.textMuted),
-                      ),
-                      Text(
-                        score >= 85
-                            ? '优秀'
-                            : score >= 70
-                                ? '良好'
-                                : '一般',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color:
-                              score >= 85 ? tokens.accentViolet : tokens.accent,
-                        ),
-                      ),
-                    ],
+                if (isModelInsight || entry.isEstimated) ...[
+                  const SizedBox(width: 8),
+                  Tag(
+                    label: isModelInsight ? '模型生成' : '本地估算',
+                    background: tokens.bgMuted,
+                    foreground: tokens.textMuted,
+                    fontSize: 12,
                   ),
                 ],
               ],
             ),
-            const SizedBox(height: 16),
-
-            // ── Bedtime / duration / wake ──────────────────────────────────
-            Row(
-              children: [
-                _StatTile(
-                  label: '入睡',
-                  value: entry.bedtimeLabel,
-                  color: tokens.accent,
-                ),
-                const SizedBox(width: 8),
-                _StatTile(
-                  label: '时长',
-                  value: _durationLabel(entry),
-                  color: tokens.textPrimary,
-                ),
-                const SizedBox(width: 8),
-                _StatTile(
-                  label: '起床',
-                  value: entry.wakeLabel,
-                  color: tokens.accentViolet,
-                ),
-              ],
-            ),
-
-            // ── Hypnogram ──────────────────────────────────────────────────
-            if (entry.hasStages) ...[
-              const SizedBox(height: 16),
-              InsetPanel(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '睡眠阶段',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 1.14,
-                        color: tokens.textMuted,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    StageBarChart(
-                      stages: entry.stages,
-                      height: 56,
-                      legend: true,
-                      caption:
-                          '${entry.bedtimeLabel} 入睡 → ${entry.wakeLabel} 起床 · 柱高代表睡眠阶段',
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        for (final stage in SleepStageType.charted) ...[
-                          Expanded(
-                            child: Container(
-                              margin: const EdgeInsets.symmetric(horizontal: 3),
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: tokens.bgCard,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Column(
-                                children: [
-                                  Text(
-                                    stage.label,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: tokens.textMuted,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    '${entry.stagePercent(stage)}%',
-                                    style: AppTheme.num(
-                                      context,
-                                      size: 18,
-                                      weight: FontWeight.w700,
-                                      color: stageColor(tokens, stage),
-                                    ),
-                                  ),
-                                  Text(
-                                    '${entry.minutesFor(stage)}m',
-                                    style: AppTheme.num(
-                                      context,
-                                      size: 12,
-                                      color: tokens.textMuted,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ],
-                ),
+            if (isModelInsight && entry.providerLabel.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                '${entry.providerLabel} · ${entry.insight?.model ?? ''}',
+                style: TextStyle(fontSize: 11, color: tokens.textMuted),
               ),
             ],
-
-            // ── Sound events ───────────────────────────────────────────────
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    entry.hasSoundEvents
-                        ? '声音记录 · ${entry.soundClips.length}条'
-                        : '声音记录 · 无片段',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 1.14,
-                      color: tokens.textMuted,
-                    ),
-                  ),
-                ),
-                // **与下面那个「重新生成」是两件事，措辞必须能分开。**
-                // 这一个在本机跑声学特征：不联网、不花 API 钱、随时可以重跑。
-                // 它只在真有片段可分析时出现——没录到东西时点它没有任何意义。
-                if (entry.hasSoundEvents)
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: _analysingSounds ? null : _reanalyseSounds,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 4,
-                        vertical: 2,
-                      ),
-                      child: Text(
-                        _analysingSounds ? '分析中…' : '重新分析',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: _analysingSounds
-                              ? tokens.textMuted
-                              : tokens.accent,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
+            const SizedBox(height: 8),
+            Text(
+              insightText ?? '这一晚还没有洞察。',
+              style: TextStyle(
+                fontSize: 14,
+                height: 1.5,
+                color: insightText == null
+                    ? tokens.textMuted
+                    : tokens.textSecondary,
+              ),
             ),
+            if (isModelInsight) ...[
+              const SizedBox(height: 10),
+              Text(
+                '由 ${entry.providerLabel} 生成，属模型推断，不构成医疗建议。',
+                style: TextStyle(fontSize: 12, color: tokens.textMuted),
+              ),
+            ] else if (entry.isEstimated) ...[
+              const SizedBox(height: 10),
+              Text(
+                '该评分为本地规则估算，不构成医疗建议。',
+                style: TextStyle(fontSize: 12, color: tokens.textMuted),
+              ),
+            ],
             const SizedBox(height: 12),
-            if (!entry.hasSoundEvents)
-              InsetPanel(
-                child: Row(
-                  children: [
-                    AppIcons.moon(
-                        size: 22, color: tokens.textMuted, strokeWidth: 1.5),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // **不下没有依据的结论。** 原先这里写「全程安静，无异常
-                          // 声音」，把「跑过检测、结论是没有」与「这一晚根本没录」
-                          // 说成了同一件事——使用方就曾被它误导（他在 iPad 上以为
-                          // 录音开着，界面却像检测完了一样下了「安静」的结论）。
-                          // 零片段在两种情形下都是真的，所以只说零片段。
-                          Text(
-                            '这一晚没有声音片段',
-                            style: TextStyle(
-                                fontSize: 14, color: tokens.textMuted),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '可能是整夜安静，也可能是没有录音。',
-                            style: TextStyle(
-                                fontSize: 12, color: tokens.textMuted),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              )
-            else
-              for (final clip in entry.soundClips) ...[
-                SoundCard(
-                  clip: clip,
-                  expanded: _expandedClipId == clip.id,
-                  onToggle: () => setState(
-                    () => _expandedClipId =
-                        _expandedClipId == clip.id ? null : clip.id,
-                  ),
-                ),
-                const SizedBox(height: 8),
-              ],
-
-            // ── Insight ────────────────────────────────────────────────────
-            //
-            // 常显，不再是「有内容才出现」：这一块现在挂着「重新生成」入口，
-            // 而最需要它的场景恰恰是「这一晚还什么都没有」的记录。
-            const SizedBox(height: 16),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: tokens.accentSoft,
-                borderRadius: BorderRadius.circular(AppRadii.panel),
-                border:
-                    Border.all(color: tokens.accent.withValues(alpha: 0.19)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      AppIcons.ai(
-                          size: 15, color: tokens.accent, strokeWidth: 1.8),
-                      const SizedBox(width: 8),
-                      Text(
-                        '睡眠洞察',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: tokens.accent,
-                        ),
-                      ),
-                      if (isModelInsight || entry.isEstimated) ...[
-                        const SizedBox(width: 8),
-                        Tag(
-                          label: isModelInsight ? '模型生成' : '本地估算',
-                          background: tokens.bgMuted,
-                          foreground: tokens.textMuted,
-                          fontSize: 12,
-                        ),
-                      ],
-                    ],
-                  ),
-                  if (isModelInsight && entry.providerLabel.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      '${entry.providerLabel} · ${entry.insight?.model ?? ''}',
-                      style: TextStyle(fontSize: 11, color: tokens.textMuted),
-                    ),
-                  ],
-                  const SizedBox(height: 8),
-                  Text(
-                    insightText ?? '这一晚还没有洞察。',
-                    style: TextStyle(
-                      fontSize: 14,
-                      height: 1.5,
-                      color: insightText == null
-                          ? tokens.textMuted
-                          : tokens.textSecondary,
-                    ),
-                  ),
-                  if (isModelInsight) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      '由 ${entry.providerLabel} 生成，属模型推断，不构成医疗建议。',
-                      style: TextStyle(fontSize: 12, color: tokens.textMuted),
-                    ),
-                  ] else if (entry.isEstimated) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      '该评分为本地规则估算，不构成医疗建议。',
-                      style: TextStyle(fontSize: 12, color: tokens.textMuted),
-                    ),
-                  ],
-                  const SizedBox(height: 12),
-                  // **按钮常驻**。此前是「跑不了就整个不渲染」，结果用户填好了
-                  // key 也只看到一行字，无从判断是自己没配对还是功能没做
-                  // —— 这条被连着报回来两次。改成一个变灰的按钮 + 下方一句
-                  // 指名道姓的说明，与 `PrimaryAction` 的禁用态同一套做法：
-                  // 不假装可用，但把入口和原因都摆在明面上。
-                  _InsightAction(
-                    label: _generating ? '生成中…' : '重新生成',
-                    busy: _generating,
-                    enabled: generation != null,
-                    // 生成中禁用，避免连点发出多次计费请求。
-                    onTap:
-                        _generating || generation == null ? null : _regenerate,
-                  ),
-                  if (generation == null) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      _blockedReason(appSettings),
-                      style: TextStyle(
-                        fontSize: 12,
-                        height: 1.5,
-                        color: tokens.textMuted,
-                      ),
-                    ),
-                  ],
-                  if (_generateError != null) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      _generateError!,
-                      style: TextStyle(
-                        fontSize: 12,
-                        height: 1.5,
-                        color: tokens.danger,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
+            // **按钮常驻**。此前是「跑不了就整个不渲染」，结果用户填好了
+            // key 也只看到一行字，无从判断是自己没配对还是功能没做
+            // —— 这条被连着报回来两次。改成一个变灰的按钮 + 下方一句
+            // 指名道姓的说明，与 `PrimaryAction` 的禁用态同一套做法：
+            // 不假装可用，但把入口和原因都摆在明面上。
+            _InsightAction(
+              label: _generating ? '生成中…' : '重新生成',
+              busy: _generating,
+              enabled: generation != null,
+              // 生成中禁用，避免连点发出多次计费请求。
+              onTap: _generating || generation == null ? null : _regenerate,
             ),
-
-            // ── Notes ──────────────────────────────────────────────────────
-            if (entry.notes.trim().isNotEmpty) ...[
-              const SizedBox(height: 16),
-              InsetPanel(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '备注',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: tokens.textMuted,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      entry.notes,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontStyle: FontStyle.italic,
-                        height: 1.5,
-                        color: tokens.textPrimary,
-                      ),
-                    ),
-                  ],
+            if (generation == null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _blockedReason(appSettings),
+                style: TextStyle(
+                  fontSize: 12,
+                  height: 1.5,
+                  color: tokens.textMuted,
                 ),
               ),
             ],
-
-            // ── Actions ────────────────────────────────────────────────────
-            const SizedBox(height: 24),
-            if (_isEditable)
-              Row(
-                children: [
-                  Expanded(
-                    child: _SheetAction(
-                      label: '编辑记录',
-                      icon: AppIcons.pen(
-                          size: 16, color: tokens.accent, strokeWidth: 2),
-                      foreground: tokens.accent,
-                      background: tokens.accentSoft,
-                      onTap: _edit,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _SheetAction(
-                      label: '删除记录',
-                      icon: AppIcons.trash(
-                          size: 16, color: tokens.danger, strokeWidth: 2),
-                      foreground: tokens.danger,
-                      background: tokens.danger.withValues(alpha: 0.12),
-                      onTap: _delete,
-                    ),
-                  ),
-                ],
-              )
-            else
-              InsetPanel(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    AppIcons.sparkle(
-                        size: 16, color: tokens.textMuted, strokeWidth: 1.8),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        '这是演示数据，不能编辑或删除。可在「设置 › 演示数据」中一次性清除。',
-                        style: TextStyle(
-                          fontSize: 12,
-                          height: 1.5,
-                          color: tokens.textMuted,
-                        ),
-                      ),
-                    ),
-                  ],
+            if (_generateError != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                _generateError!,
+                style: TextStyle(
+                  fontSize: 12,
+                  height: 1.5,
+                  color: tokens.danger,
                 ),
               ),
+            ],
           ],
         ),
       ),
+
+      // ── Notes ──────────────────────────────────────────────────────
+      if (entry.notes.trim().isNotEmpty) ...[
+        const SizedBox(height: 16),
+        InsetPanel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '备注',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: tokens.textMuted,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                entry.notes,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontStyle: FontStyle.italic,
+                  height: 1.5,
+                  color: tokens.textPrimary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+
+      // ── Actions ────────────────────────────────────────────────────
+      const SizedBox(height: 24),
+      if (_isEditable)
+        Row(
+          children: [
+            Expanded(
+              child: _SheetAction(
+                label: '编辑记录',
+                icon: AppIcons.pen(
+                    size: 16, color: tokens.accent, strokeWidth: 2),
+                foreground: tokens.accent,
+                background: tokens.accentSoft,
+                onTap: _edit,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _SheetAction(
+                label: '删除记录',
+                icon: AppIcons.trash(
+                    size: 16, color: tokens.danger, strokeWidth: 2),
+                foreground: tokens.danger,
+                background: tokens.danger.withValues(alpha: 0.12),
+                onTap: _delete,
+              ),
+            ),
+          ],
+        )
+      else
+        InsetPanel(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AppIcons.sparkle(
+                  size: 16, color: tokens.textMuted, strokeWidth: 1.8),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '这是演示数据，不能编辑或删除。可在「设置 › 演示数据」中一次性清除。',
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.5,
+                    color: tokens.textMuted,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+    ];
+
+    // 面板定高，正文一律**按需构建**：第一帧只建视口里那几张卡，不再把整晚的
+    // 卡片连同各自的 38 根波形条一次建完——那一步会把弹层的进场动画整个吃掉。
+    return AppSheet(
+      heightFactor: _kSheetHeightFactor,
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => blocks[index],
+              childCount: blocks.length,
+            ),
+          ),
+        ),
+      ],
     );
   }
 

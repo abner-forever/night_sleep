@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -18,34 +21,38 @@ import 'atmosphere.dart';
 ///  * no padding → content jams against the screen edges and the status bar.
 ///
 /// Every page reached by a push goes through here so that stays in one place.
+///
+/// 顶部那行（返回胶囊 + 标题）**上滑吸顶**：它随内容一起往上走一小段，随后钉在
+/// 顶部，内容从它下面滚过去；吸顶时补一层玻璃底板，字不会和滚上来的内容叠在一起。
 class Subpage extends StatelessWidget {
   const Subpage({
     super.key,
     required this.title,
     required this.children,
-    this.backLabel = '返回',
   });
 
   final String title;
   final List<Widget> children;
-  final String backLabel;
 
   @override
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
-
-    final isWide = MediaQuery.sizeOf(context).width >= kWideLayoutBreakpoint;
 
     return Atmosphere(
       child: Scaffold(
         // Transparent so the atmosphere shows through; the Scaffold is here for
         // the Material ancestor and the keyboard inset handling, not its colour.
         backgroundColor: Colors.transparent,
+        // **顶部不躲开状态栏**：吸顶条要铺到状态栏背后，滚起来之后和状态栏
+        // 连成一块；状态栏的高度改由吸顶头自己算进去（见 `statusBarInset`）。
+        // 左右与底部照旧交给 SafeArea。
         body: SafeArea(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 720),
-              child: _content(context, tokens, isWide),
+          top: false,
+          child: LayoutBuilder(
+            builder: (context, constraints) => _content(
+              context,
+              tokens,
+              constraints.maxWidth,
             ),
           ),
         ),
@@ -53,88 +60,213 @@ class Subpage extends StatelessWidget {
     );
   }
 
-  Widget _content(BuildContext context, AppTokens tokens, bool isWide) {
+  Widget _content(BuildContext context, AppTokens tokens, double width) {
+    final isWide = width >= kWideLayoutBreakpoint;
     final horizontal = isWide ? 52.0 : 16.0;
+    final topPadding = isWide ? 48.0 : 24.0;
 
-    return ListView(
-      padding: EdgeInsets.fromLTRB(
-        horizontal,
-        isWide ? 48 : 24,
-        horizontal,
-        40,
-      ),
-      children: [
-        Row(
-          children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () {
-                AppHaptics.tap();
-                if (context.canPop()) {
-                  context.pop();
-                } else {
-                  context.go('/');
-                }
-              },
-              child: Container(
-                constraints: const BoxConstraints(minHeight: 36),
-                padding: const EdgeInsets.only(left: 12, right: 16),
-                decoration: BoxDecoration(
-                  color: tokens.material,
-                  borderRadius: BorderRadius.circular(AppRadii.pill),
-                  border: Border.all(color: tokens.glassBorder),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF1C2C52).withValues(alpha: 0.10),
-                      blurRadius: 7,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // The chevron is drawn inline as the prototype does, so it
-                    // keeps its 2.2 stroke and tight 9×15 proportion.
-                    SizedBox(
-                      width: 9,
-                      height: 15,
-                      child:
-                          CustomPaint(painter: _ChevronPainter(tokens.accent)),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      backLabel,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: -0.375,
-                        color: tokens.accent,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                title,
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.6,
-                  color: tokens.textPrimary,
-                ),
-              ),
-            ),
-          ],
+    // 内容仍是「最宽 720、居中」，只是把限宽从 `ConstrainedBox` 换成了左右留白，
+    // 好让吸顶条的玻璃底板可以铺满整个宽度（含状态栏背后），不被 720 截断。
+    final sideInset = (width - math.min(720.0, width)) / 2 + horizontal;
+
+    // 吸顶头的边界是固定值，行高必须跟着系统字号走——写死 36 的话，用户把字号
+    // 调大之后标题会把这一行顶出边界。返回键是定长图标，不参与换算。
+    final textScaler = MediaQuery.textScalerOf(context);
+    final rowHeight = math.max(36.0, textScaler.scale(22) * 1.3);
+
+    return CustomScrollView(
+      slivers: [
+        SliverPersistentHeader(
+          pinned: true,
+          delegate: _SubpageHeaderDelegate(
+            tokens: tokens,
+            title: title,
+            sideInset: sideInset,
+            statusBarInset: MediaQuery.paddingOf(context).top,
+            topPadding: topPadding,
+            rowHeight: rowHeight,
+          ),
         ),
-        const SizedBox(height: 20),
-        ...children,
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(sideInset, 0, sideInset, 40),
+          sliver: SliverList(
+            delegate: SliverChildListDelegate(children),
+          ),
+        ),
       ],
     );
   }
+}
+
+/// 吸顶的顶部导航。
+///
+/// [maxExtent] 是「还没滚」的高度：状态栏 + 上留白 + 标题行 + 下留白，和第 0 屏
+/// 的旧排法一个数；[minExtent] 是吸顶后的高度：状态栏 + 标题行 + 上下各 12px。
+/// 滚动时这段差值被吃掉，标题行因此先随页面上移、再钉住。
+///
+/// **状态栏那一截算在头部里**：页面铺到屏幕物理边缘（Android 也是 edge-to-edge），
+/// 底板因此能画到状态栏背后。少了这一截，吸顶条和状态栏之间会留一条底色不同的
+/// 横带——深色模式下一眼就能看见。
+class _SubpageHeaderDelegate extends SliverPersistentHeaderDelegate {
+  _SubpageHeaderDelegate({
+    required this.tokens,
+    required this.title,
+    required this.sideInset,
+    required this.statusBarInset,
+    required this.topPadding,
+    required this.rowHeight,
+  });
+
+  final AppTokens tokens;
+  final String title;
+
+  /// 标题行离屏幕左右边缘的距离（已含内容限宽的居中留白）。
+  final double sideInset;
+
+  /// 状态栏高度；没有状态栏（macOS / Web）时为 0。
+  final double statusBarInset;
+
+  final double topPadding;
+
+  /// 返回胶囊 / 标题行的高度（已按系统字号换算过）。
+  final double rowHeight;
+
+  /// 未滚动时标题行下方的间距，与改动前一致。
+  static const double _bottomGap = 20;
+
+  /// 吸顶后胶囊上下的呼吸空间。
+  ///
+  /// 吸顶条要像一条导航栏，而不是把胶囊挤在两条边上；加上状态栏那一截
+  /// （安卓约 24–30px），整条在手机上约 84–90px 高。
+  static const double _pinnedInset = 12;
+
+  @override
+  double get maxExtent => statusBarInset + topPadding + rowHeight + _bottomGap;
+
+  @override
+  double get minExtent => statusBarInset + _pinnedInset * 2 + rowHeight;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    // 0 = 还没滚，1 = 已经钉住。底板与下留白都跟着它走。
+    final collapse = (shrinkOffset / (maxExtent - minExtent)).clamp(0.0, 1.0);
+    final bottomInset = _bottomGap + (_pinnedInset - _bottomGap) * collapse;
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // **底板只在被推上去之后出现**：停在第 0 屏时页面保持原来的透明观感，
+        // 一滚起来再淡入，玻璃下面压的是刚滚过去的内容。
+        //
+        // 透明度为 0 时 `Opacity` 根本不会画这棵子树，没滚动就没有模糊的开销。
+        Opacity(
+          key: const ValueKey('subpage-header-band'),
+          opacity: collapse,
+          child: ClipRect(
+            child: BackdropFilter(
+              filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      tokens.bgBase.withValues(alpha: 0.94),
+                      tokens.bgBase.withValues(alpha: 0.86),
+                      tokens.bgBase.withValues(alpha: 0),
+                    ],
+                    stops: const [0.0, 0.68, 1.0],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          left: sideInset,
+          right: sideInset,
+          bottom: bottomInset,
+          child: _headerRow(context),
+        ),
+      ],
+    );
+  }
+
+  Widget _headerRow(BuildContext context) {
+    return Row(
+      children: [
+        // **只有图标，没有文字标签。** 读屏靠这一层 label 说明它是返回；
+        // 删掉文字之后不能让无障碍跟着一起消失。
+        Semantics(
+          label: '返回',
+          button: true,
+          child: GestureDetector(
+            key: const ValueKey('subpage-back'),
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              AppHaptics.tap();
+              if (context.canPop()) {
+                context.pop();
+              } else {
+                context.go('/');
+              }
+            },
+            child: Container(
+              width: 36,
+              height: 36,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: tokens.material,
+                borderRadius: BorderRadius.circular(AppRadii.pill),
+                border: Border.all(color: tokens.glassBorder),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF1C2C52).withValues(alpha: 0.10),
+                    blurRadius: 7,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              // The chevron is drawn inline as the prototype does, so it
+              // keeps its 2.2 stroke and tight 9×15 proportion.
+              child: SizedBox(
+                width: 9,
+                height: 15,
+                child: CustomPaint(painter: _ChevronPainter(tokens.accent)),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.6,
+              color: tokens.textPrimary,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _SubpageHeaderDelegate oldDelegate) =>
+      oldDelegate.tokens != tokens ||
+      oldDelegate.title != title ||
+      oldDelegate.sideInset != sideInset ||
+      oldDelegate.statusBarInset != statusBarInset ||
+      oldDelegate.topPadding != topPadding ||
+      oldDelegate.rowHeight != rowHeight;
 }
 
 class _ChevronPainter extends CustomPainter {

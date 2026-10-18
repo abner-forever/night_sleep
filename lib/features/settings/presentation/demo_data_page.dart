@@ -97,7 +97,6 @@ class _DemoDataPageState extends ConsumerState<DemoDataPage> {
     final realCount = entries.length - demoCount;
 
     return Subpage(
-      backLabel: '设置',
       title: '演示数据',
       children: [
         GlassSurface(

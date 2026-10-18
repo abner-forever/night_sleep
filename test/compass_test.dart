@@ -182,7 +182,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('0°'), findsOneWidget);
     expect(tester.takeException(), isNull);
-    await tester.drag(find.byType(ListView), const Offset(0, -600));
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -600));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());

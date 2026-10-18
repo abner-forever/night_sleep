@@ -242,7 +242,6 @@ class _InsightConfigPageState extends ConsumerState<InsightConfigPage> {
     final keySet = ref.watch(insightApiKeyProvider).trim().isNotEmpty;
 
     return Subpage(
-      backLabel: '设置',
       title: '洞察服务配置',
       children: [
         GlassSurface(

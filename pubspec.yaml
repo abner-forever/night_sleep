@@ -1,7 +1,7 @@
 name: night_sleep
 description: 夜深：本地优先的睡眠记录应用。
 publish_to: "none"
-version: 0.46.0+1
+version: 0.48.0+1
 
 environment:
   sdk: ">=3.3.0 <4.0.0"

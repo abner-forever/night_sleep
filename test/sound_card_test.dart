@@ -197,10 +197,13 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  List<double> heights(WidgetTester tester) => tester
-      .widgetList<AnimatedContainer>(find.byType(AnimatedContainer))
-      .map((widget) => tester.getSize(find.byWidget(widget)).height)
-      .toList();
+  /// 波形现在是**一次绘制**，不再由 38 个控件组成——直接读画笔算出来的条高。
+  List<double> heights(WidgetTester tester) {
+    final paint = tester.widget<CustomPaint>(
+      find.byKey(const ValueKey('clip-waveform')),
+    );
+    return (paint.painter! as WaveformBarsPainter).barHeights;
+  }
 
   group('标注', () {
     testWidgets('未标注显示「待标注」，标成「梦话」后显示「梦话」而不是退回「待标注」', (tester) async {

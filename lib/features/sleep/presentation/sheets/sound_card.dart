@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -252,7 +253,7 @@ class SoundCard extends ConsumerStatefulWidget {
 }
 
 class _SoundCardState extends ConsumerState<SoundCard>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   /// 标注写回库之后，卡片自己记住新的 kind。
   ///
   /// 详情页拿到的是一条**值**（`SleepEntry`），不是流：`sleepEntriesProvider`
@@ -260,9 +261,13 @@ class _SoundCardState extends ConsumerState<SoundCard>
   /// 还是「待标注」，会以为没生效。
   SoundEventKind? _labeledKind;
 
-  /// 播放在 [clipPlaybackProvider] 里，卡片只订阅它。这里抓住引用，好在
-  /// `dispose` 时收尾——`dispose` 里再 `ref.read` 有生命周期风险。
-  late final ClipPlaybackController _playback;
+  /// 标过的那张卡活到详情页关闭为止。
+  ///
+  /// 片段列表按需构建，卡片滚出视口会被拆解；而「用户刚标的是什么」只记在
+  /// 这一格里（详情页拿到的是值，不是流）。不钉住的话，往下滚再滚回来，
+  /// 刚标好的那段会退回「待标注」。
+  @override
+  bool get wantKeepAlive => _labeledKind != null;
 
   /// 展开区的开出 / 收起。
   ///
@@ -273,12 +278,6 @@ class _SoundCardState extends ConsumerState<SoundCard>
     duration: const Duration(milliseconds: 260),
     value: widget.expanded ? 1 : 0,
   );
-
-  @override
-  void initState() {
-    super.initState();
-    _playback = ref.read(clipPlaybackProvider);
-  }
 
   @override
   void didUpdateWidget(covariant SoundCard oldWidget) {
@@ -301,9 +300,9 @@ class _SoundCardState extends ConsumerState<SoundCard>
 
   @override
   void dispose() {
-    // 详情页关掉时，如果正是这段在播，停掉它——页面关了不该还有声音。
-    // 用 `detach`：此刻别的卡片也在拆解，不能再通知它们重建。
-    _playback.detach(widget.clip.id);
+    // **这里不碰播放器。** 详情页的片段列表是按需构建的：卡片滚出视口也会被
+    // 拆解，若在这里 `detach`，往下滚一下就会掐断正在播的那段。「关掉详情页
+    // 就停声」由详情页自己的 `dispose` 负责。
     _expand.dispose();
     super.dispose();
   }
@@ -424,6 +423,7 @@ class _SoundCardState extends ConsumerState<SoundCard>
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final tokens = AppTokens.of(context);
     final clip = _clip;
     final color = soundEventColor(tokens, _displayKind);
@@ -436,9 +436,6 @@ class _SoundCardState extends ConsumerState<SoundCard>
         : 0.0;
     final failed = playback.failed(clip.id);
 
-    // 用 `TweenAnimationBuilder` 而不是 `AnimatedContainer`：后者会在树里多出
-    // 一个 `AnimatedContainer`，而波形测试正是靠「树里只有 38 个波形条」在数
-    // 形状（`test/sound_card_test.dart` 的 `heights`）。
     return TweenAnimationBuilder<double>(
       tween: Tween<double>(end: widget.expanded ? 1 : 0),
       duration: AppDurations.control,
@@ -827,12 +824,12 @@ class _WaveformTrack extends StatelessWidget {
 
   final List<double>? envelope;
 
-  static const double _maxBarHeight = 26;
-  static const double _neutralBarHeight = 8;
+  static const double _trackHeight = 28;
 
   @override
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
+    final trackColor = tokens.borderStrong.withValues(alpha: 0.48);
 
     return Row(
       children: [
@@ -851,32 +848,22 @@ class _WaveformTrack extends StatelessWidget {
                 onHorizontalDragUpdate:
                     onSeek == null ? null : (d) => seekTo(d.localPosition.dx),
                 child: SizedBox(
-                  height: 28,
-                  child: Row(
-                    children: [
-                      for (var i = 0; i < SoundClip.waveformBarCount; i++) ...[
-                        if (i > 0) const SizedBox(width: 1),
-                        Expanded(
-                          child: Align(
-                            alignment: Alignment.center,
-                            child: AnimatedContainer(
-                              duration: AppDurations.springy,
-                              curve: AppMotion.standardCurve,
-                              height: _heightAt(i),
-                              decoration: BoxDecoration(
-                                color: (i + 0.5) / SoundClip.waveformBarCount <=
-                                        progress
-                                    ? color
-                                    : tokens.borderStrong
-                                        .withValues(alpha: 0.48),
-                                borderRadius:
-                                    BorderRadius.circular(AppRadii.pill),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
+                  height: _trackHeight,
+                  child: TweenAnimationBuilder<double>(
+                    // 进度一条一条地来。整条轨道只有**一个**动画值，颜色分界
+                    // 跟着它滑，而不是给 38 根条各配一个动画控制器。
+                    tween: Tween<double>(end: progress),
+                    duration: AppDurations.springy,
+                    curve: AppMotion.standardCurve,
+                    builder: (context, animatedProgress, child) => CustomPaint(
+                      key: const ValueKey('clip-waveform'),
+                      painter: WaveformBarsPainter(
+                        envelope: envelope,
+                        progress: animatedProgress,
+                        color: color,
+                        trackColor: trackColor,
+                      ),
+                    ),
                   ),
                 ),
               );
@@ -895,17 +882,92 @@ class _WaveformTrack extends StatelessWidget {
       ],
     );
   }
+}
 
-  /// A missing envelope falls back to a flat, evenly-spaced row: it shows how
-  /// far along the clip is without asserting a shape.
+/// 波形条：一次画完 38 根。
+///
+/// 曾经是 38 个 `AnimatedContainer`——每根都带一个动画控制器，一晚几十段
+/// 录音就是上千个。详情弹窗打开时那一帧全花在建这些控件上，进场动画直接
+/// 被吃掉。这里把它们合并成一次绘制：同样的包络、同样的间距、同样的圆角，
+/// 控件数从 38 降到 1。
+class WaveformBarsPainter extends CustomPainter {
+  WaveformBarsPainter({
+    required this.envelope,
+    required this.progress,
+    required this.color,
+    required this.trackColor,
+  });
+
+  /// 与 `SoundClip.waveformBarCount` 一致。
+  static const int barCount = SoundClip.waveformBarCount;
+
+  /// 最高一根的高度（逻辑像素）。
+  static const double maxBarHeight = 26;
+
+  /// 没有包络时那根等高轨道的高度。
+  static const double neutralBarHeight = 8;
+
+  /// 条与条之间的空隙。
+  static const double gap = 1;
+
+  /// Normalised 0–1 amplitude per bar; null → flat track.
+  final List<double>? envelope;
+
+  /// 0–1，已经走过的比例。
+  final double progress;
+
+  final Color color;
+
+  /// 尚未走到的那些条的颜色。
+  final Color trackColor;
+
+  /// 每根条的高度。**用例直接读这里**，不依赖渲染树里的控件个数。
+  ///
+  /// A missing envelope falls back to a flat row: it shows how far along the
+  /// clip is without asserting a shape.
+  List<double> get barHeights =>
+      List<double>.generate(barCount, (index) => _heightAt(index));
+
   double _heightAt(int index) {
     final bars = envelope;
-    if (bars == null || index >= bars.length) return _neutralBarHeight;
+    if (bars == null || index >= bars.length) return neutralBarHeight;
     final amplitude = bars[index].clamp(0.0, 1.0);
     // A floor keeps the quietest bar visible rather than collapsing to a dot.
-    return (_neutralBarHeight * 0.45 + _maxBarHeight * amplitude * 0.72)
-        .clamp(4.0, _maxBarHeight);
+    return (neutralBarHeight * 0.45 + maxBarHeight * amplitude * 0.72)
+        .clamp(4.0, maxBarHeight);
   }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // 与原先 `Row` + 37 个 1px `SizedBox` 的分法一致。
+    final barWidth = (size.width - gap * (barCount - 1)) / barCount;
+    if (barWidth <= 0) return;
+
+    final paint = Paint()..style = PaintingStyle.fill;
+    for (var i = 0; i < barCount; i++) {
+      final height = _heightAt(i);
+      final left = i * (barWidth + gap);
+      final top = (size.height - height) / 2;
+      paint.color = (i + 0.5) / barCount <= progress ? color : trackColor;
+      // `BorderRadius.circular(AppRadii.pill)` 在这么小的盒子上会被夹到
+      // 短边的一半，画出来就是一根胶囊。
+      final radius = Radius.circular(math.min(barWidth, height) / 2);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(left, top, barWidth, height),
+          radius,
+        ),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant WaveformBarsPainter oldDelegate) =>
+      oldDelegate.progress != progress ||
+      oldDelegate.envelope != envelope ||
+      oldDelegate.color != color ||
+      oldDelegate.trackColor != trackColor;
 }
 
 /// 机器判定所依据的实测数。
@@ -1065,8 +1127,6 @@ class _LabelChoice extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      // 与卡片本体同一个理由：这里不能出现 `AnimatedContainer`，否则波形测试
-      // 数「树里有多少个 AnimatedContainer」就会把它算进去。
       child: TweenAnimationBuilder<double>(
         tween: Tween<double>(end: selected ? 1 : 0),
         duration: AppDurations.control,

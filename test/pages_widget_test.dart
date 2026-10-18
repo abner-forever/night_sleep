@@ -20,6 +20,7 @@ import 'package:night_sleep/core/widgets/app_menu_field.dart';
 import 'package:night_sleep/core/widgets/glass_surface.dart';
 import 'package:night_sleep/core/widgets/hero_surface.dart';
 import 'package:night_sleep/core/widgets/ios_controls.dart';
+import 'package:night_sleep/core/widgets/subpage.dart';
 import 'package:night_sleep/core/widgets/top_fade.dart';
 import 'package:night_sleep/features/home/presentation/home_page.dart';
 import 'package:night_sleep/features/compass/presentation/compass_page.dart';
@@ -671,8 +672,8 @@ void main() {
 
       expect(find.byType(AllSleepDataPage), findsOneWidget);
       expect(find.byType(AppShell), findsNothing, reason: '二级页要盖住标签条');
-      // 这一页的返回胶囊写的是「统计」（它从统计页推入），不是默认的「返回」。
-      await tester.tap(find.text('统计'));
+      // 返回键只有图标，没有文字标签——按控件认，不按文字认。
+      await tester.tap(find.byKey(const ValueKey('subpage-back')));
       await tester.pumpAndSettle();
       expect(find.byType(StatsPage), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
@@ -710,7 +711,7 @@ void main() {
       expect(find.byType(CompassPage), findsOneWidget);
       expect(find.byType(AppShell), findsNothing);
       expect(find.text('天池罗盘'), findsOneWidget);
-      await tester.tap(find.text('返回'));
+      await tester.tap(find.byKey(const ValueKey('subpage-back')));
       await tester.pumpAndSettle();
       expect(find.byType(CompassPage), findsNothing);
       expect(find.byType(SettingsPage), findsOneWidget);
@@ -907,6 +908,82 @@ void main() {
         (expected as SvgPicture).bytesLoader,
         reason: '这一行画的不是垃圾桶图标',
       );
+    });
+  });
+
+  group('二级页顶部导航', () {
+    testWidgets('上滑吸顶：返回胶囊先随页面上移，随后钉在顶部', (tester) async {
+      // 模拟安卓的状态栏（24px）：吸顶条必须铺到它背后，而不是从它下面才开始。
+      tester.view.padding = const FakeViewPadding(top: 24);
+      addTearDown(tester.view.resetPadding);
+
+      await pumpWithOverrides(
+        tester,
+        Subpage(
+          title: '测试标题',
+          children: [
+            for (var i = 0; i < 30; i++)
+              SizedBox(height: 80, child: Text('第 $i 行')),
+          ],
+        ),
+        surface: const Size(430, 800),
+      );
+
+      final pill = find.byKey(const ValueKey('subpage-back'));
+      expect(
+        tester.getTopLeft(pill).dy,
+        24 + 24,
+        reason: '第 0 屏：状态栏 + 原来的顶部留白',
+      );
+
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -400));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.getTopLeft(pill).dy,
+        24 + 12,
+        reason: '吸顶后胶囊在状态栏下方 12px——吸顶条比原先高，不再贴着状态栏',
+      );
+      expect(find.text('测试标题'), findsOneWidget, reason: '标题也要跟着吸顶');
+
+      // 底板从屏幕最顶上开始画，状态栏那一截是它的一部分——深色模式下不能有
+      // 一条底色不同的横带把导航和状态栏切开。
+      final band = tester.getRect(
+        find.byKey(const ValueKey('subpage-header-band')),
+      );
+      expect(band.top, 0, reason: '吸顶底板没有铺到状态栏背后');
+      expect(
+        band.height,
+        24 + 12 * 2 + 36,
+        reason: '吸顶底板高度 = 状态栏 + 胶囊行 + 上下各 12px',
+      );
+
+      // 再滚一段：仍然钉在原处，不是滚到某个位置才生效一次。
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -400));
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(pill).dy, 24 + 12);
+    });
+
+    testWidgets('返回键只有图标，没有文字标签；读屏仍然知道它是返回', (tester) async {
+      await pumpWithOverrides(
+        tester,
+        const Subpage(
+          title: '测试标题',
+          children: [SizedBox(height: 400)],
+        ),
+        surface: const Size(430, 800),
+      );
+
+      final back = find.byKey(const ValueKey('subpage-back'));
+      expect(back, findsOneWidget);
+      // 删掉文案标签之后，胶囊里不该再有任何文字。
+      expect(
+        find.descendant(of: back, matching: find.byType(Text)),
+        findsNothing,
+        reason: '返回键里还剩文字标签',
+      );
+      // 但无障碍不能跟着一起消失。
+      expect(tester.getSemantics(back).label, contains('返回'));
     });
   });
 
@@ -1154,7 +1231,7 @@ void main() {
 
       expect(find.byType(ExportPreviewPage), findsOneWidget);
       expect(find.text('日期'), findsOneWidget, reason: '预览里是记录表的表头');
-      await tester.tap(find.text('导出'));
+      await tester.tap(find.byKey(const ValueKey('subpage-back')));
       await tester.pumpAndSettle();
       expect(find.byType(ExportPreviewPage), findsNothing);
       expect(find.byType(ExportPage), findsOneWidget);

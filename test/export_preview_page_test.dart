@@ -50,7 +50,7 @@ void main() {
   Future<void> pumpRoute(
     WidgetTester tester, {
     List<SleepEntry> entries = const [],
-    // 表格是**一个**子项：`Subpage` 的 ListView 只会整块建它，而表格下面那几行
+    // 表格是**一个**子项：`Subpage` 的滚动视图只会整块建它，而表格下面那几行
     // 说明要等它建完才轮得到。行多的时候得把视口开高，否则说明还没被建出来
     // ——那不是「没写」，只是「还没滚到」。
     Size surface = const Size(430, 2600),
