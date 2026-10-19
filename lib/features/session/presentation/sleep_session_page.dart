@@ -251,7 +251,13 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage>
           offset: Offset(0, _drag.value),
           child: child,
         ),
-        child: page,
+        // 背景与内容一起裁剪，圆角随面板进退场和下拉移动。
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(AppRadii.sheet),
+          ),
+          child: page,
+        ),
       ),
     );
   }
