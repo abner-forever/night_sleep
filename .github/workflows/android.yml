@@ -1,0 +1,68 @@
+name: Android · APK 试用构建
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'lib/**'
+      - 'assets/**'
+      - 'android/**'
+      - 'test/**'
+      - 'pubspec.*'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GRADLE_OPTS: '-Dorg.gradle.jvmargs="-Xmx4G -XX:MaxMetaspaceSize=1G -XX:ReservedCodeCacheSize=256m" -Dorg.gradle.workers.max=2'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: 安装项目所需 Android SDK
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.2.13676358'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - name: 解析依赖并生成 Drift 代码
+        run: |
+          flutter pub get --enforce-lockfile
+          dart run build_runner build --delete-conflicting-outputs
+      - name: 静态检查和测试
+        run: |
+          flutter analyze
+          flutter test
+      - name: 构建 Android release APK（测试签名，关闭演示数据）
+        run: flutter build apk --release --no-pub --dart-define=DEMO_DATA=false
+      - name: 检查安装包与签名并生成校验文件
+        shell: bash
+        run: |
+          mkdir -p artifacts/android
+          cp build/app/outputs/flutter-apk/app-release.apk artifacts/android/night-sleep-preview.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs artifacts/android/night-sleep-preview.apk > artifacts/android/signature.txt
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging artifacts/android/night-sleep-preview.apk > artifacts/android/package-info.txt
+          cd artifacts/android
+          sha256sum night-sleep-preview.apk > SHA256SUMS.txt
+          printf '%s\n' '夜深 Android 试用包' '使用测试签名，非长期发布签名；演示数据关闭。' '包名暂为 com.example.night_sleep。' '助眠录音与模型授权说明请阅读仓库 README。' '尚未验证本次 APK 的真机安装、锁屏录音及升级覆盖。' 'CI 重新生成测试证书时，旧包可能需先卸载；卸载会删除本地数据，请先导出。' > README.txt
+          cat package-info.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: night-sleep-android-preview-${{ github.run_number }}
+          path: artifacts/android/
+          if-no-files-found: error
+          retention-days: 30
