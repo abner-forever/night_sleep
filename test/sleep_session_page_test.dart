@@ -25,6 +25,7 @@ import 'package:night_sleep/features/session/presentation/sleep_session_page.dar
 import 'package:night_sleep/features/session/presentation/widgets/hold_to_finish_button.dart';
 import 'package:night_sleep/features/session/presentation/widgets/night_backdrop.dart';
 import 'package:night_sleep/features/session/presentation/widgets/night_scene_picker.dart';
+import 'package:night_sleep/features/session/presentation/widgets/session_events_card.dart';
 import 'package:night_sleep/features/sleep/data/clip_analyzer.dart';
 import 'package:night_sleep/features/sleep/data/night_recorder.dart';
 import 'package:night_sleep/features/sleep/data/noise_player.dart';
@@ -35,6 +36,7 @@ import 'package:night_sleep/features/sleep/domain/clip_journal.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_entry.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_quality.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_session.dart';
+import 'package:night_sleep/features/sleep/presentation/widgets/noise_controls.dart';
 
 import 'system_bar_probe.dart';
 
@@ -307,6 +309,79 @@ void main() {
     await gesture.up();
     await tester.pumpAndSettle();
   }
+
+  group('进行中页面一屏展示', () {
+    Future<void> pumpPhone(WidgetTester tester, Size size,
+        {bool noiseEnabled = false, double textScale = 1}) async {
+      tester.view.padding = const FakeViewPadding(top: 59, bottom: 34);
+      tester.platformDispatcher.textScaleFactorTestValue = textScale;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      final start = DateTime(2026, 8, 30, 23, 14);
+      await pumpSession(
+        tester,
+        size: size,
+        session: sessionAt(start, alarmEnabled: true),
+        now: start.add(const Duration(hours: 1)),
+      );
+      if (noiseEnabled) {
+        final container = ProviderScope.containerOf(
+            tester.element(find.byType(SleepSessionPage)));
+        await container.read(noiseSessionControllerProvider).select(
+            kNoiseOptions.firstWhere((option) => option.id == 'stream'));
+        await tester.pumpAndSettle();
+      }
+    }
+
+    ScrollPosition verticalPosition(WidgetTester tester) => tester
+        .stateList<ScrollableState>(find.byType(Scrollable))
+        .singleWhere((state) => state.position.axis == Axis.vertical)
+        .position;
+
+    void expectButtonVisible(WidgetTester tester, Size size) {
+      final button = find.byType(HoldToFinishButton);
+      final rect = tester.getRect(button);
+      expect(rect.top, greaterThan(59));
+      expect(rect.bottom, lessThanOrEqualTo(size.height - 34 - 12));
+      expect(button.hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    }
+
+    for (final size in const [Size(393, 852), Size(402, 874), Size(430, 932)]) {
+      for (final noiseEnabled in [false, true]) {
+        testWidgets('$size，白噪音 $noiseEnabled：事件和结束按钮一屏放下', (tester) async {
+          await pumpPhone(tester, size, noiseEnabled: noiseEnabled);
+
+          expectButtonVisible(tester, size);
+          expect(verticalPosition(tester).maxScrollExtent, 0);
+          expect(
+              tester.getRect(find.byType(SessionEventsCard)).bottom,
+              lessThanOrEqualTo(
+                  tester.getRect(find.byType(HoldToFinishButton)).top));
+          expect(find.text(ReminderScheduler.wakeAlarmDeliveryNote),
+              findsOneWidget);
+        });
+      }
+    }
+
+    for (final textScale in [1.0, 1.5]) {
+      testWidgets('375×667，字号 $textScale：内容可滚动，结束按钮始终可点', (tester) async {
+        const size = Size(375, 667);
+        await pumpPhone(tester, size, noiseEnabled: true, textScale: textScale);
+
+        expectButtonVisible(tester, size);
+        expect(verticalPosition(tester).maxScrollExtent, greaterThan(0));
+        final before = tester.getRect(find.byType(HoldToFinishButton));
+        await tester.drag(
+            find.byType(SingleChildScrollView), const Offset(0, -220));
+        await tester.pumpAndSettle();
+        expect(verticalPosition(tester).pixels, greaterThan(0));
+        expect(tester.getRect(find.byType(HoldToFinishButton)), before);
+        expectButtonVisible(tester, size);
+        await holdToFinish(tester);
+        expect(find.text('昨晚睡得怎么样？'), findsOneWidget);
+      });
+    }
+  });
 
   testWidgets('显示当前时刻、已过时长与设定的起床时间', (tester) async {
     final start = DateTime(2026, 8, 30, 23, 14);

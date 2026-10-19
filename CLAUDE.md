@@ -322,7 +322,8 @@ Drift + SQLite，**`schemaVersion => 8`**（`core/database/app_database.dart`）
    下载被截断。判断「已装好」的可靠依据是 `platforms/android-3X/android.jar`（27 MB 上下）在不在
    ——失败的安装会留下一个只有 `.installer` 的空目录。
 
-**iOS / macOS**：Flutter 3.47 用 Swift Package Manager 解析插件依赖，**本机实测直连即可跑通**，
+**iOS / macOS**：`tflite_flutter` 尚不支持 Swift Package Manager，项目在 `pubspec.yaml` 中关闭
+SwiftPM，使用 CocoaPods 解析插件依赖，需要安装 CocoaPods。**本机实测直连即可跑通**，
 代理是可选的（`127.0.0.1:7890` 终验时并没有在监听）。`sqlite3` 的构建钩子偶发 GitHub Releases
 下载超时，原样重跑即过。`flutter build ios --simulator --no-codesign` 无需签名。
 

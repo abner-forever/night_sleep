@@ -524,25 +524,42 @@ class _SessionBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      controller: scrollController,
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+    return Column(
       children: [
-        SessionHeader.live(
-          onCollapse: onCollapse,
-          onDragUpdate: onHeaderDragUpdate,
-          onDragEnd: onHeaderDragEnd,
-          onDragCancel: onHeaderDragCancel,
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, upper) {
+              // 量的是扣掉安全区和结束按钮后的高度；手机上先收紧装饰与留白，
+              // 小屏和大字体仍可滚动查看完整事件，按钮始终留在视口内。
+              final compact = upper.maxHeight < 760;
+              return SingleChildScrollView(
+                controller: scrollController,
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+                child: Column(
+                  children: [
+                    SessionHeader.live(
+                      onCollapse: onCollapse,
+                      onDragUpdate: onHeaderDragUpdate,
+                      onDragEnd: onHeaderDragEnd,
+                      onDragCancel: onHeaderDragCancel,
+                    ),
+                    const SizedBox(height: 4),
+                    _TimerBlock(session: session, now: now, compact: compact),
+                    SizedBox(height: compact ? 8 : 12),
+                    NightScenePicker(scene: scene, onChanged: onSceneChanged),
+                    SizedBox(height: compact ? 8 : 12),
+                    SessionEventsCard(
+                        session: session, now: now, compact: compact),
+                  ],
+                ),
+              );
+            },
+          ),
         ),
-        const SizedBox(height: 4),
-        _TimerBlock(session: session, now: now),
-        const SizedBox(height: 12),
-        NightScenePicker(scene: scene, onChanged: onSceneChanged),
-        const SizedBox(height: 12),
-        SessionEventsCard(session: session, now: now),
-        const SizedBox(height: 20),
-        // 结束按钮在事件卡下方：它是这一页唯一的出口，也是拇指最顺的位置。
-        HoldToFinishButton(onFinish: onFinish, onHint: onFinishHint),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+          child: HoldToFinishButton(onFinish: onFinish, onHint: onFinishHint),
+        ),
       ],
     );
   }
@@ -550,10 +567,15 @@ class _SessionBody extends StatelessWidget {
 
 /// 中央：月亮 + 当前时刻 + `HH:MM:SS` + 「已进入睡眠模式」。
 class _TimerBlock extends StatelessWidget {
-  const _TimerBlock({required this.session, required this.now});
+  const _TimerBlock({
+    required this.session,
+    required this.now,
+    required this.compact,
+  });
 
   final SleepSession session;
   final DateTime now;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -561,22 +583,26 @@ class _TimerBlock extends StatelessWidget {
     final hhmm = '${clock.hour.toString().padLeft(2, '0')}:'
         '${clock.minute.toString().padLeft(2, '0')}';
     final elapsed = session.elapsedClockAt(now);
+    final clockLabel = Text(
+      hhmm,
+      style: const TextStyle(
+        fontSize: 13,
+        letterSpacing: 1.6,
+        color: NightStyle.clockText,
+      ),
+    );
+    const modeLabel = Text(
+      '已进入睡眠模式',
+      style: TextStyle(fontSize: 12, color: NightStyle.textFaint),
+    );
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 24),
+      padding: EdgeInsets.symmetric(vertical: compact ? 8 : 24),
       child: Column(
         children: [
-          const SleepMoonOrbit(size: 132, live: true),
-          const SizedBox(height: 24),
-          Text(
-            hhmm,
-            style: const TextStyle(
-              fontSize: 13,
-              letterSpacing: 1.6,
-              color: NightStyle.clockText,
-            ),
-          ),
-          const SizedBox(height: 7),
+          SleepMoonOrbit(size: compact ? 80 : 132, live: true),
+          SizedBox(height: compact ? 10 : 24),
+          if (!compact) ...[clockLabel, const SizedBox(height: 7)],
           Text(
             elapsed,
             style: AppTheme.num(
@@ -587,11 +613,18 @@ class _TimerBlock extends StatelessWidget {
               color: NightStyle.textPrimary,
             ),
           ),
-          const SizedBox(height: 10),
-          const Text(
-            '已进入睡眠模式',
-            style: TextStyle(fontSize: 12, color: NightStyle.textFaint),
-          ),
+          SizedBox(height: compact ? 4 : 10),
+          if (compact)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                clockLabel,
+                const SizedBox(width: 12),
+                modeLabel,
+              ],
+            )
+          else
+            modeLabel,
         ],
       ),
     );

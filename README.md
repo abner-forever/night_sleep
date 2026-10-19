@@ -111,8 +111,8 @@ Android 真机上把循环换成 `adb exec-out screencap -p > /tmp/tour/$i.png` 
 ### 环境要求
 
 - **Flutter stable**，本仓基线 `3.47.5`（Dart `3.13.4`）
-- **iOS / macOS**：需要 Xcode。**当前不需要 CocoaPods**——Flutter 3.47 改用 Swift Package
-  Manager 解析插件依赖
+- **iOS / macOS**：需要 Xcode 和 CocoaPods。`tflite_flutter` 尚不支持 Swift Package
+  Manager，项目通过 `pubspec.yaml` 关闭 SwiftPM，使用 CocoaPods 解析插件依赖
 - **Android**：需要 Android SDK 与 **JDK 17**（`flutter_local_notifications` 要求 Java 17）。
   Android Studio 不是必需的，有 SDK + JDK 就能 `flutter build apk`
 

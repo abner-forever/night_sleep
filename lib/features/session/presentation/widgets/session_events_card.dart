@@ -36,10 +36,14 @@ class SessionEventsCard extends ConsumerStatefulWidget {
     super.key,
     required this.session,
     required this.now,
+    this.compact = false,
   });
 
   final SleepSession session;
   final DateTime now;
+
+  /// 高度受限时收紧行间距，文字和状态保持完整。
+  final bool compact;
 
   @override
   ConsumerState<SessionEventsCard> createState() => _SessionEventsCardState();
@@ -138,7 +142,9 @@ class _SessionEventsCardState extends ConsumerState<SessionEventsCard> {
         borderRadius: BorderRadius.circular(NightStyle.cardRadius),
         border: Border.all(color: NightStyle.cardStroke),
       ),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      padding: widget.compact
+          ? const EdgeInsets.fromLTRB(14, 8, 14, 8)
+          : const EdgeInsets.fromLTRB(16, 14, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -167,6 +173,7 @@ class _SessionEventsCardState extends ConsumerState<SessionEventsCard> {
 
           // ── 开始睡眠 ──────────────────────────────────────────────────
           _EventRow(
+            compact: widget.compact,
             icon: AppIcons.moon(
                 size: 18, color: NightStyle.iconInk, strokeWidth: 1.5),
             title: '开始睡眠',
@@ -183,6 +190,7 @@ class _SessionEventsCardState extends ConsumerState<SessionEventsCard> {
           // 我们并未追踪的状态（偏差 #33）。
           if (noise.activeId != null)
             _EventRow(
+              compact: widget.compact,
               icon: AppIcons.music(
                   size: 18, color: NightStyle.iconInk, strokeWidth: 1.5),
               title: noise.activeOption?.label ?? '白噪音',
@@ -203,6 +211,7 @@ class _SessionEventsCardState extends ConsumerState<SessionEventsCard> {
           // 一个只会一直计时的页面上。右侧这时不写「已设置」——那会是假话。
           if (session.alarmEnabled || session.overdueAt(widget.now))
             _EventRow(
+              compact: widget.compact,
               icon: AppIcons.clock(
                   size: 18, color: NightStyle.iconInk, strokeWidth: 1.5),
               title: '$wake 起床闹钟',
@@ -228,6 +237,7 @@ class _SessionEventsCardState extends ConsumerState<SessionEventsCard> {
 
           // ── 鼾声检测 ──────────────────────────────────────────────────
           _EventRow(
+            compact: widget.compact,
             icon: AppIcons.snore(
                 size: 18, color: NightStyle.iconInk, strokeWidth: 1.5),
             title: '鼾声/梦话记录',
@@ -278,6 +288,7 @@ class _EventRow extends StatelessWidget {
     required this.trailing,
     this.isLast = false,
     this.live = false,
+    this.compact = false,
   });
 
   /// 真在录的时候挂一盏灯。
@@ -285,6 +296,7 @@ class _EventRow extends StatelessWidget {
   /// **只在录音服务确实处于录音态时为真**，不是把那个开关回显一遍——一盏写着
   /// 「正在聆听」却什么都没在听的灯，正是偏差 #31 当初要挡的东西。
   final bool live;
+  final bool compact;
 
   /// 直接给一个 `Widget` 而不是构造器：「开始睡眠」「记录中」那几行本来能写成
   /// `const`，但 `AppIcons.*` 是普通函数、不是常量表达式，硬要留 `const` 就得给
@@ -300,8 +312,8 @@ class _EventRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints:
-          const BoxConstraints(minHeight: NightStyle.eventRowMinHeight),
+      constraints: BoxConstraints(
+          minHeight: compact ? 48 : NightStyle.eventRowMinHeight),
       decoration: BoxDecoration(
         border: isLast
             ? null
@@ -327,12 +339,14 @@ class _EventRow extends StatelessWidget {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: NightStyle.textStrong,
+                    Flexible(
+                      child: Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: NightStyle.textStrong,
+                        ),
                       ),
                     ),
                     if (live) ...[

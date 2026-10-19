@@ -29,6 +29,10 @@ class NightScenePicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 标签随系统字号增高，给横向列表同步留高，避免大字体时被固定高度裁切。
+    final labelExtra = (MediaQuery.textScalerOf(context).scale(10) - 10)
+            .clamp(0.0, double.infinity) *
+        1.2;
     if (compact) {
       return Container(
         padding: const EdgeInsets.fromLTRB(0, 10, 0, 3),
@@ -38,7 +42,7 @@ class NightScenePicker extends StatelessWidget {
           border: Border.all(color: NightStyle.pickerStroke),
         ),
         child: SizedBox(
-          height: NightStyle.scenePreviewHeight + 34,
+          height: NightStyle.scenePreviewHeight + 34 + labelExtra,
           child: _list(const EdgeInsets.fromLTRB(12, 5, 12, 10)),
         ),
       );
@@ -87,7 +91,7 @@ class NightScenePicker extends StatelessWidget {
           ),
         ),
         SizedBox(
-          height: NightStyle.scenePreviewHeight + 33,
+          height: NightStyle.scenePreviewHeight + 33 + labelExtra,
           child: _list(EdgeInsets.fromLTRB(listGutter, 5, listGutter, 10)),
         ),
       ],

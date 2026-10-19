@@ -45,6 +45,8 @@ dev_dependencies:
   flutter_lints: ^4.0.0
 
 flutter:
+  config:
+    enable-swift-package-manager: false
   uses-material-design: true
   assets:
     # 助眠音效的五条循环素材。由 tool/generate_noise_assets.dart 生成，

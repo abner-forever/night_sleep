@@ -14,6 +14,17 @@
 
 ---
 
+## 0.49.1（2026-10-19）
+
+修复 iOS 启动时 `tflite_flutter` 与 Flutter 3.47 Swift Package Manager 不兼容的问题：在
+`pubspec.yaml` 中关闭 SwiftPM，改用 CocoaPods 集成插件。
+
+补齐 CocoaPods 配置：显式声明最低 iOS 15.0，并让 Profile 加载对应的 Pods 配置，
+同时保留 Flutter 生成配置，消除 `pod install` 的平台与基础配置警告。
+
+修复睡眠进行中页面的底部按钮被挤出屏幕：结束按钮固定在安全区上方，
+手机上收紧月亮区与事件卡间距，常见屏幕一屏展示；小屏和大字体可滚动查看内容。
+
 ## 0.49（2026-10-18）
 
 使用方要求把底部 tab、统计页的 tab、二级页返回按钮这些组件改成液态玻璃。
