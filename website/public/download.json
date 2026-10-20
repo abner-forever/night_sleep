@@ -1,4 +1,8 @@
 {
-  "available": false,
-  "reason": "Android 安装包正在内部验证，尚未开放公开下载。"
+  "available": true,
+  "url": "https://github.com/abner-forever/night_sleep/releases/download/v0.49.0-preview.1/night-sleep-preview.apk",
+  "version": "0.49.0-preview.1",
+  "sha256": "920693df0754823a44dfb71512ba170d2d730f166fed6862eed7c5fcf7d0fe35",
+  "size": 95617457,
+  "channel": "preview"
 }

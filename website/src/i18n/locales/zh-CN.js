@@ -180,7 +180,7 @@ export default {
       },
       {
         q: '现在能下载哪些版本？',
-        a: '首版只推进 Android APK，目前处于试用构建与验证阶段。公开下载开放后会更新下载页；iOS、macOS 等平台暂未提供下载。',
+        a: '现已提供 Android 7.0 及以上的试用 APK，可在下载页获取。试用包使用测试签名，本次安装包仍需真机验证；iOS、macOS 等平台暂未提供下载。',
       },
     ],
   },
@@ -199,7 +199,7 @@ export default {
     title: '从今晚开始，好好休息',
     subtitle: 'Android 先行。无需注册，从一晚真实的记录开始。',
     scanTitle: '把夜深带到手机上',
-    scanHint: '扫描二维码打开下载页面。当前未提供公开 APK。',
+    scanHint: '扫描二维码打开下载页，获取 Android 试用版。',
     qrAlt: '{platform}二维码',
     android: {
       name: 'Android 版',

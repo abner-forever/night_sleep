@@ -57,12 +57,12 @@ export default function Download() {
               <div className="dl-card__actions">
                 <span className="release-badge">
                   {state.download
-                    ? `v${state.download.version}`
+                    ? `Android 试用版 · v${state.download.version}`
                     : '试用构建阶段'}
                 </span>
                 <h3>
                   {state.download
-                    ? '准备好，开始记录今晚。'
+                    ? '从第一晚，开始记录。'
                     : 'Android 版本准备中'}
                 </h3>
                 <p>
@@ -81,6 +81,12 @@ export default function Download() {
                   <button disabled className="btn btn--primary btn--lg">
                     {state.loading ? '正在检查版本…' : '尚未开放公开下载'}
                   </button>
+                )}
+                {state.download && (
+                  <p className="dl-card__req">
+                    试用包使用测试签名，本次安装、整夜录音与升级覆盖尚未完成真机验证。
+                    后续签名更换可能需卸载重装，请先导出记录。
+                  </p>
                 )}
                 <p className="dl-card__req">iOS / macOS 等平台暂未提供下载</p>
                 {state.download && (

@@ -50,7 +50,7 @@ Vite 使用相对资源路径；HashRouter 提供 `/#/download` 下载页，直�
 
 只接受 HTTPS APK 链接、有效版本号、文件大小和完整 SHA-256。元数据错误、请求失败或未发布时保持不可下载；不使用 App Store、Google Play 或第三方演示地址。发布后页面自动将按钮与二维码同步为 APK 直链。
 
-本次仅构建 Android 试用包，不自动开放公开下载；详见 `../docs/release-plan.md`。
+当前提供 `v0.49.0-preview.1` Android 试用包，使用测试签名，本次安装包尚未完成真机安装和整夜录音验证。后续 CI 不自动发布 Release；核验产物并上传后再更新元数据。详见 `../docs/release-plan.md`。
 
 ## 迁移来源
 
