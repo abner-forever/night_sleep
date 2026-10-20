@@ -4,10 +4,10 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#ffffff" />
+    <meta name="theme-color" content="#f2f2f7" />
     <meta
       name="description"
-      content="夜深是一款本地优先的睡眠记录应用：睡前氛围、夜间声音记录、回顾与趋势，帮助你了解自己的作息。Android 版本先行。"
+      content="夜深是一款本地优先的睡眠记录应用：睡前氛围、夜间声音记录、回顾与趋势，帮助你了解自己的作息。"
     />
     <title>夜深 — 读懂每一夜的睡眠</title>
 
@@ -27,6 +27,10 @@
               : 'light'
           }
           document.documentElement.setAttribute('data-theme', theme)
+          document.querySelector('meta[name="theme-color"]').setAttribute(
+            'content',
+            theme === 'dark' ? '#000000' : '#f2f2f7',
+          )
         } catch (e) {
           document.documentElement.setAttribute('data-theme', 'light')
         }

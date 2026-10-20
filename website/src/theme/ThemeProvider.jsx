@@ -52,7 +52,10 @@ export function ThemeProvider({ children }) {
 
     const meta = document.querySelector('meta[name="theme-color"]')
     if (meta)
-      meta.setAttribute('content', resolved === 'dark' ? '#170f11' : '#ffffff')
+      meta.setAttribute(
+        'content',
+        getComputedStyle(root).getPropertyValue('--bg').trim(),
+      )
   }, [resolved])
 
   const setMode = useCallback((next) => {

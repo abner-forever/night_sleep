@@ -29,6 +29,25 @@
 ## 后续正式发布
 
 - 确认或替换五条助眠录音的分发授权，补齐模型转换件许可证说明。
-- 采用正式包名与长期保管的签名证书，在 GitHub Secrets 配置签名；不要提交私钥、口令或 `.jks`。
+- 正式包名仍待确定；`0.49.0-beta.2+3` 起已配置长期签名，私钥通过 GitHub Secrets 加密保存，具体保管与恢复见 `android-signing.md`。
 - 真机验证首次安装、空数据启动、录音权限、锁屏录音、通知、导出和升级覆盖。
-- 将已验证 APK 放入公开 Release，维护 `website/public/download.json`；网站才开启 APK 下载与直链二维码。
+- 官网直接读取公开 GitHub Releases，发布新 APK 后无需修改官网文件或重新部署。使用 Release 列表包含预发布；版本、附件大小、直链及 SHA-256 来自 GitHub。未上传完成或缺少校验值的附件不开放下载。
+
+## Beta 版本与后续自动发布
+
+- `pubspec.yaml` 是唯一构建版本来源：`0.49.0-beta.1+2` 对应 Android `versionName=0.49.0-beta.1`、`versionCode=2`；后续如 `0.49.0-beta.2+3`。`versionCode` 必须大于所有已分发版本，包括正式版与其他渠道，不随版本名重置。
+- APK 按 `night-sleep-<versionName>-android.apk` 命名，Actions Artifact 名额外包含构建号。CI 核验 APK 实际版本与源码一致、非 debuggable、签名有效，生成 SHA256SUMS、package-info、signature、release.json 和说明。
+- 主分支 push 与 workflow_dispatch 仅构建。显式推送 `v<versionName>` 标签触发发布：全部检查通过、标签与包版本一致后，先建草稿并上传附件，再公开 Release。Beta / RC 标记为 Pre-release，禁止覆盖已存在的版本。
+- 官网采用五分钟成功缓存；接口失败可回退一天内已验证缓存并提示，提供重试和官方 Release 页面入口。无缓存不伪造下载链接；不在前端配置 GitHub Token。
+- 占位包名仍为 `com.example.night_sleep`。首个长期签名版本为 `0.49.0-beta.2+3`，旧测试签名包需先导出记录再卸载迁移；真机升级验证仍需单独完成。
+- Beta 构建已在独立分支 `codex/android-beta-0.49.0-1` 完成（Actions run `39383819162`）：静态检查、应用测试、APK 构建及签名校验通过。下载后验证 `versionName=0.49.0-beta.1`、`versionCode=2`、95,617,461 字节，SHA-256 为 `ca77e22c2f06166dc113bc7999a020d77e1c22d7d1902551b5e0881d096ec4f4`。
+- 首次本地验收阶段交付路径：`build/beta/0.49.0-beta.1/night-sleep-0.49.0-beta.1-android.apk`（构建产物不入库）。该阶段未创建公开 Beta Release、未部署官网；公开发布改用下述长期签名 Beta 2。
+
+## 长期签名迁移（2026-10-20）
+
+- 用户确认更换为项目自己的签名。已生成 RSA 4096 位 PKCS#12 密钥库，证书有效至 2054-03-07，公钥指纹为 `5faa548ec06acb039808c8d8fe361f0b2601c91599c8f74c981a170fdebb9851`。
+- 本地密钥、口令及恢复副本位于被 Git 忽略的私密路径，GitHub Actions 四项 Repository Secrets 已配置。私钥与口令不进入 Git、Artifact 或 Release。
+- release 构建不再回退到 debug 签名；CI 在构建前后核验固定证书指纹。工作流结束始终清理恢复的密钥，生成元数据标注 `signing=release`。
+- 独立分支 `codex/android-release-signing` 用于实际签名构建验证。发布时将代码提交主分支并推送 `v0.49.0-beta.2` 标签，由标签工作流重新检查、构建并发布长期签名 Beta 2，官网独立部署后自动读取 Release。
+- Actions run `39392010670` 已完成：签名恢复及指纹核对、应用静态检查和测试、release 编译、APK 签名核验、产物上传、私钥清理均成功；发布步骤未触发。
+- 下载后再次核对：`0.49.0-beta.2+3`、95,617,461 字节、单一签名者 `Night Sleep Android Release`，APK SHA-256 为 `9c3df5c78e63fc8a38fa0361b22f91ca4660d97a5145e576762907d6026dd634`。交付文件为 `build/beta/0.49.0-beta.2/night-sleep-0.49.0-beta.2-android.apk`。

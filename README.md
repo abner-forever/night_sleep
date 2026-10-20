@@ -163,10 +163,11 @@ export FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
 
 - 修改 `website/` 并推送到 `main`，官网工作流会检查并部署。
 - Android 工作流使用 Flutter 3.47.5 / Java 17，生成 Drift 代码、执行检查与测试，再构建关闭演示数据的 release APK。
-- 在仓库 **Actions → Android · APK 试用构建 → 成功运行 → Artifacts** 下载试用包，同时附带包信息、签名检查和 SHA-256。下载 Actions artifact 需要登录 GitHub，保留 30 天。
-- 当前沿用测试签名与占位包名，仅用于试用；不自动创建公开 Release。注意卸载会删除本地记录，更新前先导出。
-- 已核验并发布 [Android 0.49.0 试用版](https://github.com/abner-forever/night_sleep/releases/tag/v0.49.0-preview.1)，可直接从官网下载；Android 7.0+，本次安装包尚未完成真机验证。
-- 官网下载页根据 `website/public/download.json` 控制下载。APK 未公开发布时，二维码只用于打开下载页；有完整、有效的发布信息后，才切换成 APK 下载二维码。
+- 在仓库 **Actions → Android · APK 版本构建 → 成功运行 → Artifacts** 下载构建包，同时附带包信息、签名检查和 SHA-256。下载 Actions artifact 需要登录 GitHub，保留 30 天。
+- `0.49.0-beta.2+3` 起配置项目专用长期签名，普通 CI 只生成附件；推送版本标签才公开发布。旧测试签名版本需先导出记录，再卸载安装新版。签名保管与恢复见 [`docs/android-signing.md`](docs/android-signing.md)。
+- 公开安装包与校验文件见 [GitHub Releases](https://github.com/abner-forever/night_sleep/releases)，官网自动读取最新有效版本；Android 7.0+，当前安装包尚未完成真机验证。
+- 官网下载页直接读取 GitHub Releases（含 Beta），自动获取版本、APK 直链、体积和 SHA-256，无需维护下载 JSON 或重新构建官网。无可用公开包时禁用下载；二维码中央内嵌应用图标。
+- Android 版本以 `pubspec.yaml` 为准，当前开发版本 `0.49.0-beta.2+3`。发布标签对应 `v0.49.0-beta.2`，产物名为 `night-sleep-0.49.0-beta.2-android.apk`；每次分发递增构建号。推送版本标签后 CI 核验并发布 Release，Beta 标记为预发布；普通 CI 只产出构建附件。
 
 详细实施与后续发布条件见 [`docs/release-plan.md`](docs/release-plan.md)。
 
@@ -259,7 +260,7 @@ flutter test integration_test/noise_playback_test.dart -d macos
 | **iOS / macOS 上的端侧推理** | **一个字节都没跑过**（macOS 的 `.dylib` 不随 podspec 安装） |
 | **白噪音后台播放** | 收起页面后继续响，但**退到后台或锁屏会停**，界面已如实标注 |
 | **小米手环导入** | 导入按钮**仍禁用**。可行性已实测到连接层，但**没有任何一条路径被跑通到「拿到数据」** |
-| **Android 发布就绪度** | `applicationId` 仍是占位 `com.example.night_sleep`；release 构建用 debug 签名；加了前台服务后上架需要单独提交用途申报 |
+| **Android 发布就绪度** | `applicationId` 仍是占位 `com.example.night_sleep`；release 已配置项目专用长期签名并固定证书指纹，缺失签名会阻止构建；加了前台服务后上架需要单独提交用途申报 |
 | **界面观感** | 会话页下拉的手感、整夜动画的绘制开销等只有自动测试钉住几何与结构，**「好不好看」没在真机核过** |
 
 ### 授权（发布阻塞项）

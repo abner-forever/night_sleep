@@ -65,7 +65,6 @@ export default function Footer() {
         </div>
         <div className="footer__bottom">
           <p>{t('footer.copyright').replace('{year}', String(SITE.year))}</p>
-          <p>本地优先 · Android 先行</p>
         </div>
       </div>
     </footer>

@@ -1,33 +1,25 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { QRCodeSVG } from 'qrcode.react'
-import { parseDownload } from '../config/download.mjs'
+import { loadDownload, RELEASES_PAGE } from '../config/download.mjs'
 import { SITE } from '../config/site.js'
 import { useI18n } from '../i18n/index.jsx'
 import Reveal from '../components/ui/Reveal.jsx'
-import { ArrowRight, Smartphone } from '../components/ui/Icons.jsx'
+import { IosStoreButton } from '../components/download/StoreButtons.jsx'
+import BrandedQrCode from '../components/download/BrandedQrCode.jsx'
+import { AppleLogo, ArrowRight, Smartphone } from '../components/ui/Icons.jsx'
 import './Download.css'
 export default function Download() {
   const { t, tList } = useI18n()
   const [state, setState] = useState({ loading: true, download: null })
   const [copied, setCopied] = useState(false)
+  const [retry, setRetry] = useState(0)
   useEffect(() => {
-    const controller = new AbortController()
-    fetch(`${import.meta.env.BASE_URL}download.json`, {
-      signal: controller.signal,
-      cache: 'no-store',
+    let active = true
+    loadDownload({ refresh: retry > 0 }).then((result) => {
+      if (active) setState({ loading: false, ...result })
     })
-      .then((r) => {
-        if (!r.ok) throw Error('unavailable')
-        return r.json()
-      })
-      .then((v) => setState({ loading: false, download: parseDownload(v) }))
-      .catch((e) => {
-        if (e.name !== 'AbortError')
-          setState({ loading: false, download: null })
-      })
-    return () => controller.abort()
-  }, [])
+    return () => { active = false }
+  }, [retry])
   const pageUrl = SITE.downloadPageUrl(),
     qrUrl = state.download?.url ?? pageUrl
   return (
@@ -57,8 +49,8 @@ export default function Download() {
               <div className="dl-card__actions">
                 <span className="release-badge">
                   {state.download
-                    ? `Android 试用版 · v${state.download.version}`
-                    : '试用构建阶段'}
+                    ? `Android ${state.download.channel === 'stable' ? '正式版本' : 'Beta 版本'} · v${state.download.version}`
+                    : 'Beta 版本准备中'}
                 </span>
                 <h3>
                   {state.download
@@ -79,16 +71,25 @@ export default function Download() {
                   </a>
                 ) : (
                   <button disabled className="btn btn--primary btn--lg">
-                    {state.loading ? '正在检查版本…' : '尚未开放公开下载'}
+                    {state.loading ? '正在检查版本…' : state.failed ? '暂时无法获取版本' : '尚未开放公开下载'}
                   </button>
+                )}
+                {state.failed && (
+                  <p className="dl-card__req" role="status">
+                    {state.download ? '暂时无法检查更新，当前显示最近获取的版本。' : '请稍后重试，或前往 GitHub 查看发布版本。'}
+                    {' '}<a href={RELEASES_PAGE} target="_blank" rel="noopener noreferrer">GitHub Releases ↗</a>
+                    {' '}<button type="button" className="qr-download" onClick={() => {
+                      setState((current) => ({ ...current, loading: true, failed: false }))
+                      setRetry((value) => value + 1)
+                    }}>重新检查</button>
+                  </p>
                 )}
                 {state.download && (
                   <p className="dl-card__req">
-                    试用包使用测试签名，本次安装、整夜录音与升级覆盖尚未完成真机验证。
-                    后续签名更换可能需卸载重装，请先导出记录。
+                    早期版本使用测试签名。升级到长期签名版本前，请先导出记录，再卸载旧版并重新安装。
+                    本次安装、整夜录音与升级覆盖尚未完成真机验证。
                   </p>
                 )}
-                <p className="dl-card__req">iOS / macOS 等平台暂未提供下载</p>
                 {state.download && (
                   <details className="checksum">
                     <summary>查看 SHA-256 校验值</summary>
@@ -98,14 +99,10 @@ export default function Download() {
               </div>
               <figure className="qr">
                 <div className="qr__box">
-                  <QRCodeSVG
+                  <BrandedQrCode
                     id="download-qr"
                     value={qrUrl}
                     size={180}
-                    marginSize={4}
-                    level="M"
-                    bgColor="#fff"
-                    fgColor="#171717"
                     title={
                       state.download
                         ? 'Android APK 下载二维码'
@@ -145,6 +142,20 @@ export default function Download() {
                 </button>
               </figure>
             </div>
+          </Reveal>
+          <Reveal className="dl-card ios-download">
+            <header className="dl-card__head">
+              <span className="dl-card__icon">
+                <AppleLogo size={24} />
+              </span>
+              <div>
+                <h2 className="dl-card__name">夜深 iOS</h2>
+                <p className="dl-card__store">
+                  App Store · 暂缓支持
+                </p>
+              </div>
+            </header>
+            <IosStoreButton size="lg" />
           </Reveal>
           <Reveal className="download-reminder">
             <div>

@@ -57,8 +57,6 @@ export default function Hero() {
     <section className="hero" id="top">
       <div className="container hero__inner">
         <Reveal className="hero__content">
-          <span className="hero__badge">{t('hero.badge')}</span>
-
           <h1 className="hero__title">
             {t('hero.titleLead')}
             <span className="gradient-text">{t('hero.titleAccent')}</span>

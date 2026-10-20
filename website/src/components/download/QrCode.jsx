@@ -1,4 +1,4 @@
-import { QRCodeSVG } from 'qrcode.react'
+import BrandedQrCode from './BrandedQrCode.jsx'
 import { useI18n } from '../../i18n/index.jsx'
 import './QrCode.css'
 
@@ -14,13 +14,9 @@ export default function QrCode({ value, label, size = 148 }) {
   return (
     <figure className="qr">
       <div className="qr__box" style={{ '--qr-size': `${size}px` }}>
-        <QRCodeSVG
+        <BrandedQrCode
           value={value}
           size={size}
-          level="M"
-          marginSize={0}
-          bgColor="#ffffff"
-          fgColor="#171717"
           title={t('download.qrAlt').replace('{platform}', label ?? '')}
         />
       </div>

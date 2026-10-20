@@ -25,7 +25,6 @@ export default {
   theme: { label: '主题', light: '浅色', dark: '深色', system: '跟随系统' },
   lang: { label: '语言', switch: '切换语言' },
   hero: {
-    badge: '本地优先 · Android 先行',
     titleLead: '读懂每一夜的',
     titleAccent: '睡眠',
     subtitle:
@@ -129,10 +128,6 @@ export default {
       title: '在更长的时间里，找到规律',
       desc: '按 7 / 14 / 30 天查看统计，支持按周、月、年翻阅所有记录。',
     },
-    sync: {
-      title: 'Android 先行',
-      desc: '本次只提供 Android 构建，iOS / macOS 暂未提供下载。',
-    },
   },
   how: {
     eyebrow: '使用方式',
@@ -180,14 +175,14 @@ export default {
       },
       {
         q: '现在能下载哪些版本？',
-        a: '现已提供 Android 7.0 及以上的试用 APK，可在下载页获取。试用包使用测试签名，本次安装包仍需真机验证；iOS、macOS 等平台暂未提供下载。',
+        a: '目前提供 Android Beta 版本，支持 Android 7.0 及以上系统，可在下载页获取。iOS 版暂缓支持。',
       },
     ],
   },
   cta: {
     title: '今晚，试着好好记录一夜',
     subtitle: '从一段安静的睡前时光，到醒来之后的一份回顾。',
-    note: 'Android 7.0+ · 无需账号 · iOS / macOS 暂未提供下载',
+    note: '无需账号 · 记录保存在本地',
   },
   footer: {
     desc: '夜深 — 用自己的记录，读懂每一夜的睡眠。数据默认留在你的设备上。',
@@ -197,14 +192,14 @@ export default {
   download: {
     eyebrow: '获取夜深',
     title: '从今晚开始，好好休息',
-    subtitle: 'Android 先行。无需注册，从一晚真实的记录开始。',
+    subtitle: '无需注册，从一晚真实的记录开始。',
     scanTitle: '把夜深带到手机上',
-    scanHint: '扫描二维码打开下载页，获取 Android 试用版。',
+    scanHint: '扫描二维码打开下载页，获取 Android Beta 版本。',
     qrAlt: '{platform}二维码',
     android: {
       name: 'Android 版',
       store: 'Android APK',
-      lead: '获取试用版本',
+      lead: '获取 Beta 版本',
       action: '查看 Android 下载',
       apk: '下载 APK',
       requirement: 'Android 7.0 或更高版本',

@@ -50,12 +50,6 @@ export default function Devices() {
             </div>
           </Reveal>
         </div>
-
-        <Reveal className="devices__sync" delay={180}>
-          <span className="devices__sync-dot" aria-hidden="true" />
-          <strong>{t('devices.sync.title')}</strong>
-          <span>{t('devices.sync.desc')}</span>
-        </Reveal>
       </div>
     </section>
   )
