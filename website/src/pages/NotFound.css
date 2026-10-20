@@ -1,0 +1,37 @@
+.nf {
+  display: grid;
+  place-items: center;
+  min-height: 70vh;
+  padding-top: var(--nav-height);
+}
+
+.nf__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.nf__code {
+  font-size: clamp(3rem, 2rem + 6vw, 6rem);
+  font-weight: 800;
+  letter-spacing: -0.06em;
+  line-height: 1;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.nf__title {
+  margin: var(--space-5) 0 var(--space-3);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.nf__desc {
+  max-width: 42ch;
+  margin-bottom: var(--space-8);
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  color: var(--text-2);
+}

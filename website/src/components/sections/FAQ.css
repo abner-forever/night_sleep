@@ -1,0 +1,85 @@
+.faq__list {
+  display: flex;
+  flex-direction: column;
+}
+
+.faq-item {
+  border-bottom: 1px solid var(--border);
+}
+
+.faq-item:first-child {
+  border-top: 1px solid var(--border);
+}
+
+.faq-item__heading {
+  margin: 0;
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: normal;
+}
+
+.faq-item__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-5) 0;
+  text-align: left;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  transition: color var(--duration) var(--ease-out);
+}
+
+.faq-item__trigger:hover {
+  color: var(--accent);
+}
+
+.faq-item__icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  color: var(--text-3);
+  flex-shrink: 0;
+  transition:
+    transform var(--duration) var(--ease-out),
+    color var(--duration) var(--ease-out),
+    background-color var(--duration) var(--ease-out);
+}
+
+.faq-item__trigger:hover .faq-item__icon {
+  background: var(--surface-hover);
+}
+
+.faq-item.is-open .faq-item__icon {
+  transform: rotate(180deg);
+  background: var(--gradient-brand);
+  color: #ffffff;
+}
+
+/* 高度动画：grid-template-rows 0fr → 1fr，无需 JS 测量 */
+.faq-item__panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--duration-slow) var(--ease-out);
+}
+
+.faq-item.is-open .faq-item__panel {
+  grid-template-rows: 1fr;
+}
+
+.faq-item__panel-inner {
+  overflow: hidden;
+}
+
+.faq-item__panel-inner p {
+  max-width: 62ch;
+  padding-bottom: var(--space-6);
+  font-size: 0.9375rem;
+  line-height: 1.8;
+  color: var(--text-2);
+}

@@ -1,0 +1,246 @@
+/* 手机屏幕内的紧凑排版。字号按容器宽度等比缩放，保证不同尺寸下比例一致。 */
+
+.screen {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+  padding: 30px 16px 16px;
+  font-size: 12px;
+  background: var(--bg);
+}
+
+.screen__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.screen__date {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.screen__app {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--accent);
+}
+
+/* --- 得分 --- */
+
+.screen__score {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.screen__score-value {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  line-height: 1;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.screen__score-label {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.screen__score-delta {
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* --- 分期色点图例（补回紧凑模式隐藏的行标签） --- */
+
+.screen__stages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  margin: -6px 0 0;
+}
+
+.screen__stages li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  color: var(--text-3);
+}
+
+.screen__stage-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.screen__stage-dot--awake {
+  background: var(--stage-awake);
+}
+
+.screen__stage-dot--rem {
+  background: var(--stage-rem);
+}
+
+.screen__stage-dot--light {
+  background: var(--stage-light);
+}
+
+.screen__stage-dot--deep {
+  background: var(--stage-deep);
+}
+
+/* --- 指标 --- */
+
+.screen__metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  border-top: 1px solid var(--border);
+}
+
+.screen__metrics li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+/* 末项不画分隔线，避免与下方建议卡片形成双线 */
+.screen__metrics li:last-child {
+  border-bottom: none;
+}
+
+.screen__metric-label {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.screen__metric-value {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.screen__metric-value em {
+  margin-left: 2px;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 500;
+  color: var(--text-3);
+}
+
+/* --- 改善建议 --- */
+
+.screen__tip {
+  padding: 10px 12px;
+  border: 1px solid var(--accent-soft-border);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+}
+
+.screen__tip-label {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+}
+
+.screen__tip-text {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+/* --- 录音片段 --- */
+
+.screen__clips {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: auto;
+}
+
+.screen__clips-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.screen__clip {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.screen__clip-icon {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.screen__clip-icon--snore {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.screen__clip-icon--talk {
+  background: var(--surface-inset);
+  color: var(--stage-light);
+}
+
+.screen__clip-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  min-width: 0;
+}
+
+.screen__clip-text strong {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.screen__clip-text small {
+  font-size: 10px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.screen__clip-play {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-left: auto;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  color: var(--on-accent);
+  flex-shrink: 0;
+}

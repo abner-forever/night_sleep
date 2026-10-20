@@ -1,0 +1,305 @@
+.dl__hero {
+  padding-top: calc(var(--nav-height) + var(--space-16));
+  padding-bottom: var(--space-16);
+}
+
+.dl__head {
+  max-width: 620px;
+  margin: 0 auto var(--space-16);
+  text-align: center;
+}
+
+.dl__title {
+  margin-bottom: var(--space-5);
+  font-size: clamp(2rem, 1.4rem + 3vw, 3.25rem);
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  line-height: 1.05;
+  color: var(--text);
+}
+
+.dl__subtitle {
+  font-size: 1.0625rem;
+  line-height: 1.7;
+  color: var(--text-2);
+}
+
+/* --- 平台卡 --- */
+
+.dl__platforms {
+  display: grid;
+  gap: var(--space-6);
+}
+
+.dl-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding: var(--space-8);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2xl);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+}
+
+.dl-card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding-bottom: var(--space-6);
+  border-bottom: 1px solid var(--border);
+}
+
+.dl-card__icon {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: var(--radius-lg);
+  background: var(--gradient-brand);
+  color: #ffffff;
+  box-shadow: var(--shadow-brand);
+  flex-shrink: 0;
+}
+
+.dl-card__name {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text);
+}
+
+.dl-card__store {
+  font-size: 0.8125rem;
+  color: var(--text-3);
+}
+
+.dl-card__body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-6);
+}
+
+.dl-card__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
+}
+
+.dl-card__actions .store-btn {
+  width: 100%;
+  justify-content: center;
+}
+
+.dl-card__apk {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.dl-card__apk:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.dl-card__req {
+  font-size: 0.8125rem;
+  color: var(--text-3);
+  text-align: center;
+}
+
+/* --- 步骤 --- */
+
+.dl__steps {
+  display: grid;
+  gap: var(--space-10);
+  margin: 0;
+}
+
+.dl-step {
+  position: relative;
+  padding-top: var(--space-6);
+}
+
+.dl-step::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 48px;
+  height: 3px;
+  border-radius: var(--radius-full);
+  background: var(--gradient-brand);
+}
+
+.dl-step__num {
+  display: block;
+  margin-bottom: var(--space-4);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.dl-step__title {
+  margin-bottom: var(--space-3);
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text);
+}
+
+.dl-step__desc {
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  color: var(--text-2);
+}
+
+/* --- 系统要求 --- */
+
+.dl__req-grid {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.dl-req,
+.dl-note {
+  padding: var(--space-8);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.dl-req__title,
+.dl-note__title {
+  margin-bottom: var(--space-4);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.dl-req ul {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.dl-req li {
+  position: relative;
+  padding-left: var(--space-5);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+.dl-req li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.6em;
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-full);
+  background: var(--brand-rose);
+}
+
+.dl-note__desc {
+  font-size: 0.9375rem;
+  line-height: 1.75;
+  color: var(--text-2);
+}
+
+/* --- 疑难 --- */
+
+.dl__trouble {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  margin-top: var(--space-5);
+  padding: var(--space-8);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.dl__trouble .btn {
+  align-self: flex-start;
+}
+
+.dl__back {
+  margin-top: var(--space-12);
+  text-align: center;
+}
+
+.dl__back-link {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-3);
+  border-radius: var(--radius-sm);
+  transition: color var(--duration) var(--ease-out);
+}
+
+.dl__back-link:hover {
+  color: var(--accent);
+}
+
+/* --- 断点 --- */
+
+@media (min-width: 640px) {
+  .dl__steps {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (min-width: 768px) {
+  .dl-card__body {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-8);
+  }
+
+  .dl-card__actions {
+    align-items: flex-start;
+    flex: 1;
+  }
+
+  .dl-card__actions .store-btn {
+    width: auto;
+  }
+
+  .dl-card__req {
+    text-align: left;
+  }
+
+  .dl__req-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .dl__trouble {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-8);
+  }
+
+  .dl__trouble .btn {
+    align-self: auto;
+    flex-shrink: 0;
+  }
+}
+
+@media (min-width: 1024px) {
+  .dl__platforms {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

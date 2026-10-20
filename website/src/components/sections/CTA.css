@@ -1,0 +1,137 @@
+.cta {
+  padding-block: var(--space-20) var(--space-24);
+}
+
+/* 深色渐变块 + 径向辉光（参考文件的 cta-box） */
+.cta__card {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  gap: var(--space-12);
+  padding: var(--space-16) var(--space-8);
+  border-radius: var(--radius-3xl);
+  background: linear-gradient(125deg, #170f11 0%, #2c1d20 100%);
+  box-shadow: var(--shadow-xl);
+}
+
+/* 右上角的玫红辉光 */
+.cta__card::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -20%;
+  width: 70%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(244, 63, 94, 0.45), transparent 70%);
+  pointer-events: none;
+}
+
+/* 左下角补一层暖橙，让渐变有方向感 */
+.cta__card::after {
+  content: '';
+  position: absolute;
+  bottom: -60%;
+  left: -15%;
+  width: 55%;
+  height: 160%;
+  background: radial-gradient(
+    circle,
+    rgba(251, 146, 60, 0.32),
+    transparent 70%
+  );
+  pointer-events: none;
+}
+
+/* 深色主题下与页面底色接近，用描边把块分出来 */
+[data-theme='dark'] .cta__card {
+  border: 1px solid var(--border-strong);
+}
+
+.cta__content,
+.cta__qr {
+  position: relative;
+  z-index: 1;
+}
+
+.cta__content {
+  max-width: 520px;
+}
+
+.cta__title {
+  margin-bottom: var(--space-5);
+  font-size: clamp(1.75rem, 1.2rem + 2.4vw, 2.875rem);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.15;
+  color: var(--on-dark);
+}
+
+.cta__subtitle {
+  margin-bottom: var(--space-8);
+  font-size: 1.125rem;
+  line-height: 1.6;
+  color: var(--on-dark-2);
+}
+
+.cta__note {
+  margin-top: var(--space-5);
+  font-size: 0.8125rem;
+  color: rgba(227, 201, 198, 0.7);
+}
+
+.cta__more {
+  display: inline-block;
+  margin-top: var(--space-6);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #ffffff;
+  border-radius: var(--radius-sm);
+}
+
+.cta__more:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+/* --- 二维码 --- */
+
+.cta__qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-6);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-xl);
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(8px);
+  align-self: center;
+}
+
+.cta__qr-title {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--on-dark);
+}
+
+.cta__qr-hint {
+  max-width: 200px;
+  font-size: 0.75rem;
+  line-height: 1.6;
+  color: var(--on-dark-2);
+  text-align: center;
+}
+
+/* 深色块里的二维码底板要去掉外描边，避免双层边 */
+.cta__qr .qr__box {
+  border: none;
+}
+
+@media (min-width: 768px) {
+  .cta__card {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.6fr);
+    align-items: center;
+    padding: var(--space-20) var(--space-16);
+    gap: var(--space-16);
+  }
+}

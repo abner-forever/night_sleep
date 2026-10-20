@@ -1,0 +1,68 @@
+.store-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.store-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 52px;
+  padding: 0 var(--space-6);
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-xs);
+  transition:
+    border-color var(--duration) var(--ease-out),
+    background-color var(--duration) var(--ease-out),
+    box-shadow var(--duration) var(--ease-out),
+    transform var(--duration) var(--ease-out);
+}
+
+.store-btn:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.store-btn:active {
+  transform: scale(0.985);
+}
+
+.store-btn__text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.2;
+}
+
+.store-btn__text small {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--text-3);
+}
+
+.store-btn__text strong {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* --- 尺寸 --- */
+
+.store-btn--lg {
+  min-height: 62px;
+  padding-inline: var(--space-8);
+}
+
+.store-btn--lg .store-btn__text strong {
+  font-size: 1.0625rem;
+}
+
+.store-btn--lg .store-btn__text small {
+  font-size: 0.75rem;
+}

@@ -1,0 +1,126 @@
+.report-card {
+  padding: var(--space-8);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2xl);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.report-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+  margin-bottom: var(--space-10);
+}
+
+.report-card__date {
+  margin-bottom: var(--space-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.report-card__chart-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text);
+}
+
+/* --- 指标 --- */
+
+.report-card__metrics {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-6);
+  margin: var(--space-8) 0 0;
+  padding-top: var(--space-8);
+  border-top: 1px solid var(--border);
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.metric__label {
+  font-size: 0.8125rem;
+  color: var(--text-3);
+}
+
+.metric__value {
+  font-size: clamp(1.125rem, 1rem + 0.6vw, 1.5rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text);
+}
+
+.metric__value em {
+  margin-left: 3px;
+  font-size: 0.8125rem;
+  font-style: normal;
+  font-weight: 500;
+  color: var(--text-3);
+}
+
+.metric__label {
+  font-size: 0.875rem;
+}
+
+/* --- 说明点 --- */
+
+.report__points {
+  display: grid;
+  gap: var(--space-8);
+  margin-top: var(--space-12);
+}
+
+/* 渐变短线替代原先的实心黑顶边 */
+.report-point {
+  position: relative;
+  padding-top: var(--space-6);
+}
+
+.report-point::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 48px;
+  height: 3px;
+  border-radius: var(--radius-full);
+  background: var(--gradient-brand);
+}
+
+.report-point__title {
+  margin-bottom: var(--space-3);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.report-point__desc {
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  color: var(--text-2);
+}
+
+@media (min-width: 640px) {
+  .report-card__metrics {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .report__points {
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-10);
+  }
+}
+
+@media (min-width: 768px) {
+  .report-card {
+    padding: var(--space-12);
+  }
+}

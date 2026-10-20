@@ -157,6 +157,18 @@ export FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
 > ⚠️ `PUB_HOSTED_URL` 会把 `pubspec.lock` 里上百条 `url: "https://pub.dev"` 一并改写成镜像地址，
 > 制造一个与依赖本身无关的巨型 diff。**只在这个 shell 里临时设，依赖齐了就直接 `flutter pub get`。**
 
+## 官网与 Android 试用构建
+
+官网源码位于 [`website/`](website/README.md)，与 Flutter 共用本仓库；仅将该目录的静态构建产物发布到 [GitHub Pages](https://abner-forever.github.io/night_sleep/)，不构建 Flutter Web。
+
+- 修改 `website/` 并推送到 `main`，官网工作流会检查并部署。
+- Android 工作流使用 Flutter 3.47.5 / Java 17，生成 Drift 代码、执行检查与测试，再构建关闭演示数据的 release APK。
+- 在仓库 **Actions → Android · APK 试用构建 → 成功运行 → Artifacts** 下载试用包，同时附带包信息、签名检查和 SHA-256。下载 Actions artifact 需要登录 GitHub，保留 30 天。
+- 当前沿用测试签名与占位包名，仅用于试用；不自动创建公开 Release。注意卸载会删除本地记录，更新前先导出。
+- 官网下载页根据 `website/public/download.json` 控制下载。APK 未公开发布时，二维码只用于打开下载页；有完整、有效的发布信息后，才切换成 APK 下载二维码。
+
+详细实施与后续发布条件见 [`docs/release-plan.md`](docs/release-plan.md)。
+
 ## 项目结构
 
 ```text

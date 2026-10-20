@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">睡眠声音记录</title>
+  <desc id="desc">由新月和两道声波组成的应用图标</desc>
+  <defs>
+    <linearGradient id="night" x1="148" y1="98" x2="876" y2="926" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#75D8FF"/>
+      <stop offset=".42" stop-color="#397BEA"/>
+      <stop offset="1" stop-color="#3F3CC6"/>
+    </linearGradient>
+    <linearGradient id="moon" x1="351" y1="245" x2="673" y2="776" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FCFEFF"/>
+      <stop offset="1" stop-color="#D9E7FF"/>
+    </linearGradient>
+  </defs>
+  <!--
+    满幅直角。交付的原图在 rect 上带 rx="236"，是给 web favicon 与
+    apple-touch-icon 用的；这里去掉它是因为 **iOS** 会给应用图标套遮罩，
+    预先倒过角的图标会变成「圆角套圆角」。
+
+    注意 macOS **不套遮罩**——它的圆角是烘焙在图标文件里的。所以 macOS 那套
+    不是直接用这份满幅图，而是由 tool/generate_app_icons.dart 按 Apple 图标网格
+    重新裁出圆角与留白。历史注释把两个平台混为一谈，导致 macOS 的 Dock 图标
+    被撑成方块，别再改回去。
+  -->
+  <rect width="1024" height="1024" fill="url(#night)"/>
+  <path d="M839 695c-58 63-141 102-233 102-175 0-317-142-317-317 0-103 49-194 125-252-28 52-44 112-44 175 0 204 165 369 369 369 35 0 69-5 100-15Z" fill="#171D71" fill-opacity=".2"/>
+  <path d="M604 212c-137 0-248 111-248 248 0 137 111 248 248 248 48 0 93-14 132-37-49 72-132 119-226 119-151 0-274-123-274-274s123-274 274-274c34 0 66 6 94 18Z" fill="url(#moon)"/>
+  <path d="M698 381c66 42 110 116 110 201 0 85-44 159-110 201" fill="none" stroke="#DDEBFF" stroke-width="42" stroke-linecap="round"/>
+  <path d="M757 322c103 64 171 178 171 317 0 139-68 253-171 317" fill="none" stroke="#B9D6FF" stroke-opacity=".78" stroke-width="30" stroke-linecap="round"/>
+</svg>

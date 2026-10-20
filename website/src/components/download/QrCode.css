@@ -1,0 +1,28 @@
+.qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.qr__box {
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  /* 固定白底：反色二维码在部分扫码器上识别率会下降 */
+  background: #ffffff;
+}
+
+.qr__box svg {
+  width: var(--qr-size);
+  height: var(--qr-size);
+}
+
+.qr__label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-3);
+}

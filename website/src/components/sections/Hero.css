@@ -1,0 +1,187 @@
+.hero {
+  position: relative;
+  padding-top: calc(var(--nav-height) + var(--space-12));
+  padding-bottom: var(--space-16);
+}
+
+.hero__inner {
+  display: grid;
+  gap: var(--space-16);
+  align-items: center;
+}
+
+/* --- 文案 --- */
+
+.hero__content {
+  max-width: 560px;
+}
+
+.hero__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-6);
+  padding: 8px 18px;
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius-full);
+  background: var(--accent-soft);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-2);
+  backdrop-filter: blur(4px);
+}
+
+.hero__badge::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-full);
+  background: var(--gradient-brand);
+  flex-shrink: 0;
+}
+
+.hero__title {
+  margin-bottom: var(--space-6);
+  font-size: clamp(2.5rem, 1.4rem + 4.4vw, 4rem);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.08;
+  color: var(--text);
+}
+
+.hero__subtitle {
+  max-width: 520px;
+  margin-bottom: var(--space-10);
+  font-size: 1.1875rem;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+.hero__stores {
+  margin-bottom: var(--space-5);
+}
+
+.hero__note {
+  margin-bottom: var(--space-8);
+  font-size: 0.8125rem;
+  color: var(--text-3);
+}
+
+.hero__proof {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.hero__stars {
+  display: inline-flex;
+  gap: 2px;
+  color: #f59e0b;
+}
+
+.hero__proof p {
+  font-size: 0.875rem;
+  color: var(--text-3);
+}
+
+.hero__proof strong {
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* --- 视觉 --- */
+
+.hero__visual {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-5);
+}
+
+/* 宽度必须显式给到 100%：本元素是 align-items:center 的 flex 列子项，
+   否则宽度由内容决定，而内容的 min(100%, 310px) 又依赖父宽 —— 循环依赖会塌缩 */
+.hero__device {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+/* 鼠标视差：只在精确指针设备上生效，且尊重减弱动效 */
+@media (hover: hover) and (pointer: fine) {
+  .hero__device {
+    perspective: 1200px;
+  }
+
+  .hero__device .device {
+    transition: transform 300ms var(--ease-out);
+    will-change: transform;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero__device .device {
+    transform: none !important;
+  }
+}
+
+.hero__caption {
+  font-size: 0.75rem;
+  color: var(--text-4);
+  text-align: center;
+}
+
+/* --- 指标条 --- */
+
+.hero__stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-8) var(--space-6);
+  margin-top: var(--space-20);
+  padding-top: var(--space-10);
+  border-top: 1px solid var(--border);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stat__value {
+  font-size: clamp(1.5rem, 1.2rem + 1.2vw, 1.75rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--text);
+}
+
+.stat__label {
+  font-size: 0.875rem;
+  color: var(--text-3);
+}
+
+/* --- 断点 --- */
+
+@media (min-width: 768px) {
+  .hero {
+    padding-top: calc(var(--nav-height) + var(--space-16));
+    padding-bottom: var(--space-20);
+  }
+
+  .hero__stats {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  /* 右列必须给固定宽度：auto 列会与外层 aspect-ratio 形成循环依赖而塌缩 */
+  .hero__inner {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    gap: var(--space-12);
+  }
+
+  .hero__visual {
+    padding-right: var(--space-8);
+  }
+}

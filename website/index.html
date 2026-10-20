@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta
+      name="description"
+      content="夜深是一款本地优先的睡眠记录应用：睡前氛围、夜间声音记录、回顾与趋势，帮助你了解自己的作息。Android 版本先行。"
+    />
+    <title>夜深 — 读懂每一夜的睡眠</title>
+
+    <!--
+      防主题闪烁：在首屏绘制前就把 data-theme 写到 <html> 上。
+      必须内联且置于所有样式之前，否则深色模式用户会看到一帧白屏。
+      取值逻辑需与 src/theme/ThemeProvider.jsx 保持一致。
+    -->
+    <script>
+      ;(function () {
+        try {
+          var stored = localStorage.getItem('yeshen-theme')
+          var theme = stored === 'light' || stored === 'dark' ? stored : null
+          if (!theme) {
+            theme = window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light'
+          }
+          document.documentElement.setAttribute('data-theme', theme)
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'light')
+        }
+      })()
+    </script>
+
+    <!--
+      字体走 fonts.loli.net —— Google Fonts 的国内可用镜像。
+      直接用 fonts.googleapis.com 在中国大陆无法访问（会一直挂到超时），
+      而这个镜像可正常解析，因此中文用户也能拿到 Inter。
+      仍然保持非阻塞加载：即使镜像也挂了，页面会立刻回退到系统字体，不会白屏。
+    -->
+    <link rel="preconnect" href="https://fonts.loli.net" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.loli.net/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      media="print"
+      onload="this.media='all'"
+    />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.loli.net/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      />
+    </noscript>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

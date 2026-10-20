@@ -1,0 +1,96 @@
+/* --------------------------------------------------------------------------
+   分段控件 —— 主题与语言切换共用
+   -------------------------------------------------------------------------- */
+
+.segmented {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+}
+
+.segmented__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-width: 36px;
+  height: 32px;
+  padding-inline: var(--space-3);
+  border-radius: var(--radius-pill);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-3);
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.segmented__btn:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.segmented__btn[aria-checked='true'],
+.segmented__btn[aria-pressed='true'] {
+  background: var(--gradient-brand);
+  color: #ffffff;
+}
+
+/* 语言分段固定宽度，避免切换时布局跳动 */
+.segmented__btn--lang {
+  min-width: 48px;
+  padding-inline: var(--space-2);
+}
+
+/* --------------------------------------------------------------------------
+   Logo
+   -------------------------------------------------------------------------- */
+
+.logo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  border-radius: var(--radius-sm);
+}
+
+.logo__mark {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--gradient-brand);
+  color: #ffffff;
+  box-shadow: var(--shadow-brand);
+  flex-shrink: 0;
+}
+
+.logo__text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.logo__name {
+  font-size: 1.375rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--text);
+}
+
+.logo__sub {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--text-3);
+}
+
+/* 仅图标模式（页脚等窄位场景） */
+.logo--compact .logo__sub {
+  display: none;
+}

@@ -1,0 +1,76 @@
+.device {
+  position: relative;
+  margin-inline: auto;
+}
+
+.device__bezel {
+  position: relative;
+  border: 1px solid var(--border-mid);
+  background: var(--surface);
+  box-shadow: var(--shadow-xl);
+}
+
+.device__screen {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* --- 手机 --- */
+
+.device--phone {
+  width: min(100%, 310px);
+}
+
+.device--phone .device__bezel {
+  padding: 9px;
+  border-radius: 42px;
+}
+
+.device--phone .device__screen {
+  /* 略高于真机比例，给屏内报告留出足够垂直空间 */
+  aspect-ratio: 9 / 19.6;
+  border-radius: 34px;
+}
+
+/* 听筒 */
+.device--phone .device__bezel::before {
+  content: '';
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 58px;
+  height: 5px;
+  border-radius: var(--radius-full);
+  background: var(--border-strong);
+  z-index: 2;
+}
+
+/* --- 平板 --- */
+
+.device--tablet {
+  width: min(100%, 460px);
+}
+
+.device--tablet .device__bezel {
+  padding: 12px;
+  border-radius: 26px;
+}
+
+.device--tablet .device__screen {
+  aspect-ratio: 4 / 5.4;
+  border-radius: 16px;
+}
+
+.device--tablet .device__bezel::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 42px;
+  border-radius: var(--radius-full);
+  background: var(--border-strong);
+}

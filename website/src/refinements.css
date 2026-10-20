@@ -1,0 +1,274 @@
+/* 保留 sass-web 的渐变、柔光、卡片层次和交互，只适配真实应用截图与下载状态。 */
+.yeshen-logo {
+  border-radius: 13px;
+  box-shadow: 0 5px 15px #397bea25;
+}
+.logo__sub {
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+.hero__proof .hero__stars {
+  color: var(--accent);
+}
+.actual-screen {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+.device--phone .device__screen {
+  aspect-ratio: 720/1493;
+}
+.device--phone .device__bezel:before {
+  display: none;
+}
+.hero__caption {
+  color: var(--text-3);
+}
+.devices__item--tablet .device--phone {
+  width: min(100%, 310px);
+}
+.actual-report {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 50px;
+  align-items: center;
+  overflow: hidden;
+  background: radial-gradient(
+      ellipse at 90% 10%,
+      var(--accent-soft),
+      transparent 65%
+    ),
+    var(--surface);
+}
+.actual-report__copy h3 {
+  font-size: 30px;
+  line-height: 1.5;
+}
+.actual-report__copy > p {
+  font-size: 16px;
+  line-height: 1.8;
+  color: var(--text-2);
+  margin-block: 24px;
+}
+.actual-report__copy > small {
+  font-size: 12px;
+  line-height: 1.9;
+  color: var(--text-3);
+}
+.actual-report__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 25px;
+}
+.actual-report__tags span {
+  border: 1px solid var(--accent-soft-border);
+  background: var(--accent-soft);
+  color: var(--accent);
+  padding: 7px 11px;
+  border-radius: 30px;
+  font-size: 11px;
+}
+.actual-report__screens {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  min-width: 0;
+  perspective: 1000px;
+}
+.actual-report__screens img {
+  width: calc(50% - 9px);
+  height: auto;
+  border: 5px solid var(--border-strong);
+  border-radius: 24px;
+  box-shadow: var(--shadow-xl);
+}
+.actual-report__screens img:first-child {
+  transform: translateY(18px) rotate(-5deg);
+}
+.actual-report__screens img:last-child {
+  transform: translateY(-18px) rotate(5deg);
+}
+.android-download {
+  max-width: 950px;
+  margin: auto;
+}
+.android-download .dl-card__body {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 60px;
+  align-items: center;
+  padding-top: 20px;
+}
+.android-download h3 {
+  font-size: 24px;
+  line-height: 1.5;
+  margin: 15px 0;
+}
+.android-download .dl-card__actions > p {
+  line-height: 1.8;
+  color: var(--text-2);
+  font-size: 14px;
+  max-width: 450px;
+  margin-bottom: 22px;
+}
+.android-download .dl-card__actions .dl-card__req {
+  font-size: 12px;
+  margin-top: 18px;
+  margin-bottom: 0;
+}
+.android-download .qr {
+  margin: 0;
+}
+.android-download .qr__box {
+  display: inline-block;
+  background: white;
+  padding: 9px;
+  border-radius: 14px;
+}
+.qr__label small {
+  display: block;
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 7px;
+}
+.qr-save,
+.qr-download {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 44px;
+  color: var(--accent);
+  font-size: 12px;
+  padding: 8px;
+  border: 0;
+  background: none;
+}
+.release-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 30px;
+  font-size: 12px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  padding: 7px 12px;
+}
+.download-reminder {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 950px;
+  margin: 35px auto 0;
+  gap: 25px;
+}
+.download-reminder h3 {
+  font-size: 16px;
+}
+.download-reminder p {
+  font-size: 13px;
+  color: var(--text-3);
+  margin-top: 9px;
+}
+.checksum {
+  max-width: 430px;
+  font-size: 12px;
+  color: var(--text-3);
+  margin-top: 20px;
+}
+.checksum code {
+  display: block;
+  overflow-wrap: anywhere;
+  margin-top: 12px;
+}
+.btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+  transform: none;
+  box-shadow: none;
+}
+.footer__bottom > p {
+  font-size: 12px;
+}
+main:focus {
+  outline: none;
+}
+.hero__device .device__screen {
+  background: #070b14;
+}
+@media (max-width: 900px) {
+  .actual-report {
+    grid-template-columns: 1fr;
+    gap: 50px;
+  }
+  .actual-report__screens {
+    max-width: 500px;
+    margin: 10px auto 25px;
+  }
+  .actual-report__copy h3 {
+    font-size: 27px;
+  }
+  .actual-report__copy > p {
+    font-size: 15px;
+  }
+  .android-download .dl-card__body {
+    gap: 30px;
+  }
+}
+@media (max-width: 640px) {
+  .actual-report {
+    padding: 25px;
+    gap: 35px;
+  }
+  .actual-report__copy h3 {
+    font-size: 24px;
+  }
+  .actual-report__copy > p {
+    font-size: 14px;
+  }
+  .actual-report__screens img {
+    border-width: 3px;
+    border-radius: 16px;
+  }
+  .actual-report__screens {
+    gap: 12px;
+  }
+  .actual-report__screens img {
+    width: calc(50% - 6px);
+  }
+  .android-download .dl-card__body {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+  .android-download .qr {
+    padding-top: 25px;
+    border-top: 1px solid var(--border);
+  }
+  .android-download h3 {
+    font-size: 21px;
+  }
+  .download-reminder {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .android-download .dl-card__actions {
+    align-items: stretch;
+  }
+  .android-download .dl-card__actions .btn {
+    white-space: normal;
+    padding-inline: 20px;
+  }
+  .hero__title {
+    line-height: 1.18;
+  }
+  .logo__sub {
+    font-size: 9px;
+  }
+  .actual-report__copy .eyebrow {
+    font-size: 12px;
+  }
+  .feature__tag {
+    max-width: 100%;
+  }
+}
