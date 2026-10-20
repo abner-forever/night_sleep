@@ -79,6 +79,10 @@
   color: rgba(227, 201, 198, 0.7);
 }
 
+.cta__stores .btn--outline:not(:hover) {
+  color: var(--on-dark);
+}
+
 .cta__more {
   display: inline-block;
   margin-top: var(--space-6);
