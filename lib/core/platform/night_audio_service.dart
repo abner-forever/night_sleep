@@ -22,7 +22,7 @@ enum NightAudioServiceResult {
   /// `FOREGROUND_SERVICE_MICROPHONE`）。
   missingPermission,
 
-  /// 这个平台没有这条通道（iOS / macOS / Web），或通道还没接上（widget 测试里）。
+  /// 这个平台没有这条通道（如 iOS），或通道还没接上（widget 测试里）。
   unsupported,
 
   /// 通道在、权限也在，但平台侧起服务失败。原因不猜。
@@ -43,7 +43,7 @@ abstract class NightAudioService {
   Future<void> stop();
 }
 
-/// 没有前台服务的平台（iOS / macOS / Web）与测试用的空实现。
+/// 没有 Android 前台服务的平台与测试用的空实现。
 ///
 /// 返回 [NightAudioServiceResult.unsupported] 而不是抛：调用方**照旧开流**，
 /// iOS 上的录音一个字都不该被它拦下来。
@@ -79,14 +79,9 @@ class MethodChannelNightAudioService implements NightAudioService {
 
   @override
   Future<NightAudioServiceResult> start() async {
-    // 判定顺序**不能颠倒**：`kIsWeb` 必须排在平台判断之前。
-    // Web 上 `defaultTargetPlatform` 报的是**宿主机**的系统——iPhone 上的 Safari 会报
-    // `TargetPlatform.iOS`，于是「平台优先」的写法会让 Chrome 构建走进 Android 分支，
-    // 去调一条不存在的通道。`compass.dart` 与 `reminders.dart` 记着同一条教训。
-    //
     // 非 Android 直接返回 `unsupported`（**不去碰通道**）：iOS 上真要调一次才会拿到
     // `MissingPluginException`，而那一次多余往返的代价是每次起录都要等一个平台往返。
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+    if (defaultTargetPlatform != TargetPlatform.android) {
       return NightAudioServiceResult.unsupported;
     }
 
@@ -117,7 +112,7 @@ class MethodChannelNightAudioService implements NightAudioService {
 
   @override
   Future<void> stop() async {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    if (defaultTargetPlatform != TargetPlatform.android) return;
     // 撤服务失败不该把调用方（收尾那一段）拖累掉——上层已经用
     // 「先停流、后撤服务」的顺序把录音本身保住了。
     try {

@@ -30,7 +30,7 @@ import 'widgets/settings_footnote.dart';
 /// 麦克风权限最近一次被拒的观测。
 ///
 /// **不能像 [reminderPermissionProvider] 那样在 build 时查询**：`record` 的
-/// `hasPermission()` 在 iOS / macOS 上**本身就会弹权限框**，拿它当纯查询用，一进
+/// `hasPermission()` 在 iOS 上**本身就会弹权限框**，拿它当纯查询用，一进
 /// 设置页就会向用户要权限。所以这里没有可读的权限状态，只在用户拨开关被拒之后记
 /// 一笔，好把「去系统设置」那一行显示出来。
 final microphonePermissionDeniedProvider = StateProvider<bool>((ref) => false);

@@ -435,7 +435,7 @@ class _InsightConfigPageState extends ConsumerState<InsightConfigPage> {
               Divider(height: 1, color: tokens.border),
               const SizedBox(height: 12),
               Text(
-                '密钥存在系统钥匙串里（iOS / macOS 钥匙串、Android Keystore），'
+                '密钥存在系统钥匙串里（iOS 钥匙串、Android Keystore），'
                 '不写入数据库、日志与导出文件；重启后仍在。',
                 style: TextStyle(fontSize: 12, color: tokens.textMuted),
               ),

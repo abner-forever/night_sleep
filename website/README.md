@@ -24,7 +24,7 @@ npm run preview -- --host 127.0.0.1
 
 仓库设置 `Settings → Pages → Source → GitHub Actions`。推送 `website/` 或官网工作流到 `main` 后，`.github/workflows/website.yml` 自动检查并部署 **仅 `website/dist/`**。
 
-Vite 使用相对资源路径；HashRouter 提供 `/#/download` 下载页，直接打开或刷新不依赖服务端路由回退。不要把 `website/` 内容复制进 Flutter 的 `web/`。
+Vite 使用相对资源路径；HashRouter 提供 `/#/download` 下载页，直接打开或刷新不依赖服务端路由回退。官网独立维护，Flutter Web 工程已移除。
 
 ## Android 下载与二维码
 

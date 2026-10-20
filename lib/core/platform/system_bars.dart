@@ -21,16 +21,14 @@ import 'package:flutter/services.dart';
 
 /// 让内容铺满整屏（含两条系统栏背后）。
 ///
-/// **只在 Android 上调。** iOS 本来就是边到边，调它等于空操作；macOS / Web 没有
-/// 系统栏。`kIsWeb` 必须排在平台判断**之前**——Web 上 `defaultTargetPlatform`
-/// 报的是宿主操作系统（与 `compass.dart` 同源）。
+/// **只在 Android 上调。** iOS 本来就是边到边，调它等于空操作。
 ///
 /// Android 10（API 29）以下这一调用是空操作：引擎的
 /// `PlatformPlugin.setSystemChromeEnabledSystemUIMode` 里有 `SDK_INT >= 29` 的门槛，
 /// 低于它的设备维持旧行为（状态栏盖在内容上、导航栏把内容顶起来）。
 /// **这不是遗漏，是引擎自己就不支持**，不要试图在这里补。
 Future<void> enableEdgeToEdge() async {
-  if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+  if (defaultTargetPlatform != TargetPlatform.android) return;
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 }
 

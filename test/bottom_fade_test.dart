@@ -205,7 +205,7 @@ void main() {
     variant: TargetPlatformVariant.only(TargetPlatform.iOS),
   );
 
-  testWidgets('无安全区（macOS / Web）时高度 113', (tester) async {
+  testWidgets('无安全区时高度 113', (tester) async {
     await pumpShell(tester, safeBottom: 0);
 
     // 预留 93（65 + 12 + 16）+ 20。

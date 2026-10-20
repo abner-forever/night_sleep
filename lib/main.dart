@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -42,11 +41,7 @@ Future<void> main() async {
       overrides: [
         databaseProvider.overrideWithValue(database),
         insightApiKeySeedProvider.overrideWithValue(insightApiKey),
-        // Web 不能走这条：`defaultTargetPlatform` 在 Web 上报告的是**宿主操作系统**，
-        // 所以 `reminderSchedulerProvider` 自己的 `kIsWeb` 守卫会被这个 override 绕过。
-        reminderSchedulerProvider.overrideWithValue(
-          kIsWeb ? NoopReminderScheduler() : scheduler,
-        ),
+        reminderSchedulerProvider.overrideWithValue(scheduler),
       ],
       child: const NightSleepApp(),
     ),

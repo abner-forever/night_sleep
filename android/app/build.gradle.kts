@@ -46,7 +46,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        // 占位配置，与 iOS / macOS 的 `com.example.nightSleep` **不同名**：
+        // 占位配置，与 iOS 的 `com.example.nightSleep` **不同名**：
         // 那是 Flutter 两条模板各自的默认（iOS 把 night_sleep 转成 camelCase，
         // Android 保留 snake_case）。两者是两个独立的商店身份，不要求一致；
         // 待项目方给出真实 ID 后一并替换（总规格 §10 第 1 条）。

@@ -61,14 +61,10 @@ const double _iosTabBarFloatRelief = 14;
 ///    `y≈2307`、手势条上沿在 `y≈2312`，**只差 5px，看着就是压在一起**。
 ///    所以 Android 整个让开安全区，不去借（改完胶囊底边在 `y=2296`，中间留出 14px）。
 ///
-/// 下限 12px 留给没有安全区的 macOS / Web。
+/// 安全区为零或较小时，仍保留下限 12px。
 double tabBarFloat(BuildContext context) {
   final safeBottom = MediaQuery.paddingOf(context).bottom;
-  // `kIsWeb` 排在平台判断之前，与 `compass.dart` / `reminders.dart` /
-  // `system_bars.dart` 三处同款：Web 上 `defaultTargetPlatform` 报的是**宿主操作系统**，
-  // 拿它来分叉会得出「按 Android 的规矩算间距、却没按 Android 铺满屏」（`enableEdgeToEdge`
-  // 被 `kIsWeb` 挡掉了）这种半套结论。Web 归到桌面那一支。
-  final relief = !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+  final relief = defaultTargetPlatform == TargetPlatform.android
       ? 0.0
       : _iosTabBarFloatRelief;
   final float = safeBottom - relief;

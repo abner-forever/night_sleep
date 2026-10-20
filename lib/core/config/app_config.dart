@@ -10,7 +10,7 @@ abstract final class AppConfig {
   ///
   /// ```
   /// flutter run --dart-define=DEMO_DATA=true
-  /// flutter build macos --dart-define=DEMO_DATA=false
+  /// flutter build apk --dart-define=DEMO_DATA=false
   /// ```
   ///
   /// Even when enabled, demo rows are tagged `source == 'demo'` and can be

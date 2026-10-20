@@ -15,24 +15,14 @@ abstract interface class InsightKeyStore {
   Future<void> clear();
 }
 
-/// The real one: iOS / macOS Keychain, Android Keystore via the plugin.
+/// 通过插件使用 iOS Keychain / Android Keystore。
 class SecureInsightKeyStore implements InsightKeyStore {
   const SecureInsightKeyStore();
 
   /// Name of the keychain item. Not a secret; the value is.
   static const String itemKey = 'insight_api_key';
 
-  /// **macOS 上刻意关掉 data protection keychain**，走旧版钥匙串。
-  ///
-  /// 开着它就必须加 `keychain-access-groups` entitlement，而那个 entitlement
-  /// 需要 provisioning profile：插件的 README 明确写了，加了之后构建出来的 app
-  /// **只能在构建它的那台 Mac 上启动**。本项目没有 App Group、没有跨应用共享，
-  /// 用不上这个能力，却要为此换掉整条签名链——代价远大于收益。
-  ///
-  /// `mOptions` 只被 macOS 实现读取，其它平台忽略，所以不必按平台分支。
-  static const FlutterSecureStorage _storage = FlutterSecureStorage(
-    mOptions: MacOsOptions(usesDataProtectionKeychain: false),
-  );
+  static const FlutterSecureStorage _storage = FlutterSecureStorage();
 
   /// 读不出来（钥匙串不可用、条目被 ACL 拦下）与「没有密钥」在这里是同一种结果：
   /// 没配置。抛出去只会让应用起不来，而这两种情况下界面要说的话一模一样。

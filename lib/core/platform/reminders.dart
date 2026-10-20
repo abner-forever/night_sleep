@@ -219,11 +219,6 @@ class LocalReminderScheduler extends ReminderScheduler {
             requestBadgePermission: false,
             requestSoundPermission: false,
           ),
-          macOS: DarwinInitializationSettings(
-            requestAlertPermission: false,
-            requestBadgePermission: false,
-            requestSoundPermission: false,
-          ),
         ),
       );
       _ready = true;
@@ -243,13 +238,6 @@ class LocalReminderScheduler extends ReminderScheduler {
           await _plugin
               .resolvePlatformSpecificImplementation<
                   IOSFlutterLocalNotificationsPlugin>()
-              ?.checkPermissions(),
-        );
-      case TargetPlatform.macOS:
-        return _fromDarwin(
-          await _plugin
-              .resolvePlatformSpecificImplementation<
-                  MacOSFlutterLocalNotificationsPlugin>()
               ?.checkPermissions(),
         );
       case TargetPlatform.android:
@@ -276,13 +264,6 @@ class LocalReminderScheduler extends ReminderScheduler {
                   IOSFlutterLocalNotificationsPlugin>()
               ?.requestPermissions(alert: true, sound: true),
         );
-      case TargetPlatform.macOS:
-        return _fromBool(
-          await _plugin
-              .resolvePlatformSpecificImplementation<
-                  MacOSFlutterLocalNotificationsPlugin>()
-              ?.requestPermissions(alert: true, sound: true),
-        );
       case TargetPlatform.android:
         return _fromBool(
           await _plugin
@@ -304,11 +285,6 @@ class LocalReminderScheduler extends ReminderScheduler {
           await _plugin
               .resolvePlatformSpecificImplementation<
                   IOSFlutterLocalNotificationsPlugin>()
-              ?.openAppNotificationSettings();
-        case TargetPlatform.macOS:
-          await _plugin
-              .resolvePlatformSpecificImplementation<
-                  MacOSFlutterLocalNotificationsPlugin>()
               ?.openAppNotificationSettings();
         default:
           return;
@@ -353,12 +329,6 @@ class LocalReminderScheduler extends ReminderScheduler {
           presentList: true,
           presentSound: true,
         ),
-        macOS: DarwinNotificationDetails(
-          presentAlert: true,
-          presentBanner: true,
-          presentList: true,
-          presentSound: true,
-        ),
       ),
       // 刻意用非精确闹钟：Android 14+ 的精确闹钟要么多一个
       // SCHEDULE_EXACT_ALARM 申请流程，要么用需要上架审核的 USE_EXACT_ALARM，
@@ -390,19 +360,12 @@ class LocalReminderScheduler extends ReminderScheduler {
         iOS: DarwinNotificationDetails(
           // 起床闹钟**请求** `timeSensitive`，但当前产物并不能真正穿透专注模式：
           // 工程里没有配套的 Time Sensitive Notifications entitlement
-          // （`ios/` 下没有任何 `.entitlements`，`macos/Runner/*.entitlements`
-          // 也没有 `com.apple.developer.usernotifications.time-sensitive`），
+          // （`ios/` 下没有声明 `com.apple.developer.usernotifications.time-sensitive`
+          // 的 `.entitlements` 文件），
           // 按 Apple 的规则，缺这个键时该级别会被系统降级。要真正拿到这个能力，
           // 需要加 entitlement 并在 App ID 上开启该能力，且要真机实测。
           // `critical` 更强，但需要 Apple 单独批准，本项目也没有；界面上如实写着
           // 「强度不如系统闹钟」。
-          interruptionLevel: InterruptionLevel.timeSensitive,
-          presentAlert: true,
-          presentBanner: true,
-          presentList: true,
-          presentSound: true,
-        ),
-        macOS: DarwinNotificationDetails(
           interruptionLevel: InterruptionLevel.timeSensitive,
           presentAlert: true,
           presentBanner: true,
@@ -464,11 +427,7 @@ class LocalReminderScheduler extends ReminderScheduler {
       : (enabled ? ReminderPermission.granted : ReminderPermission.denied);
 }
 
-/// 按平台选择实现。
-///
-/// Web 必须**显式排除**：`defaultTargetPlatform` 在 Web 上报告的是宿主操作系统，
-/// 靠它判断会让 Web 走进 iOS/macOS 的分支。
+/// 默认本地通知调度器，测试可覆盖为空实现。
 final reminderSchedulerProvider = Provider<ReminderScheduler>((ref) {
-  if (kIsWeb) return NoopReminderScheduler();
   return LocalReminderScheduler();
 });

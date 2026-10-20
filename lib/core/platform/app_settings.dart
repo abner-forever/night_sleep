@@ -16,7 +16,7 @@ abstract class AppSettingsLauncher {
 
 /// 用系统 URL scheme 跳转的实现。
 ///
-/// 两个 scheme 都由 `url_launcher` 交给系统打开，不必自己写平台通道，也就不会在
+/// 地址由 `url_launcher` 交给系统打开，不必自己写平台通道，也就不会在
 /// 测试里漏出一条没被假实现挡住的通道。
 class UrlAppSettingsLauncher implements AppSettingsLauncher {
   const UrlAppSettingsLauncher();
@@ -28,13 +28,6 @@ class UrlAppSettingsLauncher implements AppSettingsLauncher {
         // `UIApplication.openSettingsURLString` 的值：直接落在**本应用**那一页，
         // 麦克风开关就在上面。
         return Uri.parse('app-settings:');
-      case TargetPlatform.macOS:
-        // **不能只写 `x-apple.systempreferences:`**——那只会把用户丢到「系统设置」
-        // 首页，他还得自己翻到隐私与安全性、再翻到麦克风。这里直接落到那个面板。
-        return Uri.parse(
-          'x-apple.systempreferences:com.apple.preference.security'
-          '?Privacy_Microphone',
-        );
       default:
         // **Android 上这一行是死按钮，且换个 URI 也修不好**（规格偏差 §5.4）。
         //

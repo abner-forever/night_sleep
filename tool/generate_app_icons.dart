@@ -1,4 +1,4 @@
-/// Regenerates the iOS and macOS app icon sets from `assets/branding/app-icon.svg`.
+/// Regenerates the iOS and Android app icon sets from `assets/branding/app-icon.svg`.
 ///
 /// Run it after changing the icon:
 ///
@@ -10,23 +10,18 @@
 /// `flutter test` — it rewrites files, and a test run should not.
 ///
 /// **Why this exists instead of a design tool export.** The icon is one 1024px
-/// vector; the platforms need 22 raster sizes between them, and each has to be
+/// vector; the platforms need multiple raster sizes between them, and each has to be
 /// resampled from the vector rather than from a previously rasterised copy.
 /// Rendering every size straight from the SVG with `FilterQuality.high` avoids
 /// the compounding softness of downscaling a downscale.
 ///
-/// 三个平台规则在这里被显式处理，而不是听天由命：
+/// 移动端图标规则在这里被显式处理：
 ///
 ///  * **iOS 不要 alpha。** App Store 校验拒收带 alpha 通道的应用图标，
 ///    所以 iOS 那套每一块都画在不透明底上，并用色型 2 编码。
 ///    （注：透明图标在别处会被画成黑方块，这是同一条规则的另一种表现。）
 ///  * **iOS 不要圆角。** iOS 会给应用图标套遮罩，文件里再烘焙一层圆角，
 ///    结果就是「圆角套圆角」。`assets/branding/app-icon.svg` 因此是满幅的。
-///  * **macOS 两条都要反过来。** macOS **不套遮罩**——实测系统 app 的 `.icns`，
-///    圆角与留白是烘焙在文件里的。所以 macOS 这套按 Apple 图标网格自己画圆角
-///    （实体 824/1024、半径 185.4、四边留白 100）、加投影，并**保留 alpha**。
-///    历史注释曾写「iOS 和 macOS 都会套遮罩」，据此后两个平台共用满幅直角像素，
-///    结果 macOS 的 Dock 图标被撑成一个方块。
 library;
 
 import 'dart:convert';
@@ -40,7 +35,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
-/// Every raster the two asset catalogues reference, deduplicated: several
+/// Every raster the iOS asset catalogue references, deduplicated: several
 /// entries share one file (an iPad 20pt@1x and an iPhone 20pt@1x are the same
 /// 20 pixels), and writing it twice would be wasted work with a chance of the
 /// two copies differing.
@@ -60,16 +55,6 @@ const Map<String, int> iosIcons = {
   'Icon-App-76x76@2x.png': 152,
   'Icon-App-83.5x83.5@2x.png': 167,
   'Icon-App-1024x1024@1x.png': 1024,
-};
-
-const Map<String, int> macosIcons = {
-  'app_icon_16.png': 16,
-  'app_icon_32.png': 32,
-  'app_icon_64.png': 64,
-  'app_icon_128.png': 128,
-  'app_icon_256.png': 256,
-  'app_icon_512.png': 512,
-  'app_icon_1024.png': 1024,
 };
 
 /// Android **传统**启动图标（API < 26 用）的五个密度：文件名 → 像素边长。
@@ -126,37 +111,6 @@ const String androidAdaptiveXml = '''
 /// Side of the canvas the SVG is rasterised onto before any downscaling.
 const int masterSize = 1024;
 
-/// macOS 图标的 Apple 网格：1024 画布上实体占 824×824 居中。
-///
-/// 实体比例与四边留白**实测自系统 app 的 `.icns`**（Calculator / Notes 结果一致）：
-/// `alpha>128` 的实体恰为 206/256 = 824/1024，四边留白全等。
-const double macosBodyFraction = 824 / 1024;
-
-/// 圆角半径 = 实体宽的 22.5%（0.225 × 824 = 185.4），这是**比例**来源，不是量出来的
-/// 像素值——早先的注释写「半径量得 44/256」，但 44/256 × 1024 = 176，与 185.4 对不上，
-/// 那句话是错的。
-///
-/// 系统图标只作**交叉验证**：同一套量法（顶行 `alpha>128` 收敛量）下系统图标量得
-/// 44/256，本图标量得 176/1024 = 44×(1024/256)，两者一致，说明比例选得对。
-const double macosCornerRadius = 185.4;
-
-/// macOS 图标的投影。三个值由系统图标的 `alpha>8` 包络反推后扫参逼近得到：
-/// 目标包络 L84 T96 R84 B72，本组得 L85 T99 R85 B71（1024 基准，最大差 3px）。
-const Offset macosShadowOffset = Offset(0, 14);
-const double macosShadowSigma = 10;
-const Color macosShadowColor = Color(0x80000000);
-
-/// macOS 实体矩形（1024 画布，居中）。
-///
-/// `masterSize * (1 - macosBodyFraction)` 是 `int * double`，但除法与乘法在
-/// 常量求值里都成立，所以整条表达式是编译期常量，这里可以是 `const`。
-const Rect macosBodyRect = Rect.fromLTWH(
-  masterSize * (1 - macosBodyFraction) / 2,
-  masterSize * (1 - macosBodyFraction) / 2,
-  masterSize * macosBodyFraction,
-  masterSize * macosBodyFraction,
-);
-
 void main() {
   // 需要 binding 才能用 `Picture.toImage`。**故意不用 `testWidgets`**：那会跑在
   // FakeAsync 里，`flutter_svg` 的异步解析永不完成，症状是挂死而不是失败。
@@ -169,7 +123,7 @@ void main() {
     expect(svgFile.existsSync(), isTrue, reason: '找不到 ${svgFile.path}');
 
     // 矢量解析成三份，各画各的：
-    //  * 整幅——iOS、macOS、Android 传统位图；
+    //  * 整幅——iOS、Android 传统位图；
     //  * 只有主体（月亮与两道声波）——Android 自适应图标的**前景**；
     //  * 只有渐变底——Android 自适应图标的**背景**。
     // 后两份是同一个源图切出来的，切法见 `_withoutBackground` / `_backgroundOnly`。
@@ -196,17 +150,6 @@ void main() {
         opaque: true,
       );
       iosMaster.dispose();
-
-      final macosMaster =
-          await _rasteriseMacos(pictureInfo.picture, pictureInfo.size);
-      await _writeAll(
-        p.join(root.path, 'macos', 'Runner', 'Assets.xcassets',
-            'AppIcon.appiconset'),
-        macosIcons,
-        macosMaster,
-        opaque: false,
-      );
-      macosMaster.dispose();
 
       await _writeAndroidIcons(
         resDir: Directory(
@@ -269,38 +212,6 @@ Future<ui.Image> _rasteriseOpaque(
   canvas.scale(size / srcSize.width, size / srcSize.height);
   canvas.drawPicture(picture);
   return recorder.endRecording().toImage(size, size);
-}
-
-/// 把 [picture] 画进 Apple 网格的圆角实体里，并在下方垫一层投影（macOS 用）。
-///
-/// 画布**保持透明**——四角的透明正是圆角本身。
-///
-/// 顺序不能颠倒：先画投影（它在实体之外、不会被裁），再 `clipRRect` 裁住实体。
-/// 反过来的话投影会被裁没。
-Future<ui.Image> _rasteriseMacos(ui.Picture picture, Size srcSize) async {
-  const body = macosBodyRect;
-  final rrect =
-      RRect.fromRectAndRadius(body, const Radius.circular(macosCornerRadius));
-
-  final recorder = ui.PictureRecorder();
-  final canvas = Canvas(recorder);
-
-  canvas.drawRRect(
-    rrect.shift(macosShadowOffset),
-    Paint()
-      ..color = macosShadowColor
-      ..maskFilter =
-          const ui.MaskFilter.blur(ui.BlurStyle.normal, macosShadowSigma),
-  );
-
-  canvas.save();
-  canvas.clipRRect(rrect);
-  canvas.translate(body.left, body.top);
-  canvas.scale(body.width / srcSize.width, body.height / srcSize.height);
-  canvas.drawPicture(picture);
-  canvas.restore();
-
-  return recorder.endRecording().toImage(masterSize, masterSize);
 }
 
 Future<void> _writeAll(
@@ -399,7 +310,7 @@ Future<void> _writeAndroidIcons({
 ///
 /// 不去信源图的构图是居中的：实测 `app-icon.svg` 的墨迹在 1024 画布里是
 /// x∈[356,928]、y∈[212,956]，中心 (642,584)——**比画布中心偏右下 130/72**。
-/// 那是给满幅方图（iOS / macOS）做的构图，直接套进自适应图标的圆形遮罩里会明显偏，
+/// 那是给 iOS 满幅方图做的构图，直接套进自适应图标的圆形遮罩里会明显偏，
 /// 第二道声波的尾端还会顶到遮罩边缘。
 Future<Rect> _inkBounds(ui.Picture picture, Size srcSize) async {
   final width = srcSize.width.ceil();
@@ -417,7 +328,7 @@ Future<Rect> _inkBounds(ui.Picture picture, Size srcSize) async {
   var minX = width, minY = height, maxX = -1, maxY = -1;
   for (var y = 0; y < height; y++) {
     for (var x = 0; x < width; x++) {
-      // 阈值 8 与测试里量 macOS 留白用的是同一个：抗锯齿的极淡边缘不算墨迹，
+      // 阈值 8 排除抗锯齿的极淡边缘，不把它们算作墨迹，
       // 否则包围盒会被一圈几乎看不见的像素撑开。
       if (rgba[(y * width + x) * 4 + 3] > 8) {
         if (x < minX) minX = x;
@@ -465,13 +376,13 @@ Future<ui.Image> _rasteriseAdaptiveForeground(
 // ── 一个最小的 PNG 编码器 ───────────────────────────────────────────────────
 //
 // `ui.Image.toByteData(format: png)` 只会输出带 alpha 的 PNG，而 `sips` 在格式往返后
-// 也会把 alpha 通道加回来。两个平台的要求正好相反，所以通道数在这里显式决定：
+// 也会把 alpha 通道加回来。不同图层的要求不同，所以通道数在这里显式决定：
 //
 //  * iOS 走 `alpha: false`，写颜色类型 2（真彩、无 alpha）。App Store 校验拒收带
 //    alpha 的应用图标；本地构建不会因此报错，正是那种「不到提交那天发现不了」的问题，
 //    所以在生成期就钉死。
-//  * macOS 走 `alpha: true`，写颜色类型 6（真彩 + alpha）。圆角外的透明必须有 alpha
-//    才存得下——这正是 macOS 这条路存在的理由。
+//  * Android 自适应前景走 `alpha: true`，写颜色类型 6（真彩 + alpha），
+//    保留主体之外的透明区域，让背景层透出来。
 //
 // 色型 6 存的是**直乘**（非关联）alpha，所以调用方传进来的 RGBA 也必须是直乘的
 // （见 `_writeAll` 用 `rawStraightRgba` 而非 `rawRgba` 的理由）。
@@ -546,8 +457,8 @@ int _crc32(List<int> bytes) {
 
 /// 把 [source] 缩放到 [size]×[size]。
 ///
-/// [opaque] 为 true 时先铺不透明底（iOS）；为 false 时**不铺**（macOS）——
-/// 铺了会把圆角外的透明填成黑，四角变成黑方块。
+/// [opaque] 为 true 时先铺不透明底（iOS / Android 背景与传统图标）；
+/// 为 false 时保留 Android 自适应前景的透明区域。
 ///
 /// `FilterQuality.high` 在小尺寸上很关键：20px 那块是 51:1 的缩小，
 /// 最近邻或双线性采样会把月牙整个丢掉。

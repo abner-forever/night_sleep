@@ -5,7 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 这是什么
 
 「夜深」——中文、**本地优先**的睡眠记录 Flutter 应用，数据留在设备上、不上传。
-iOS / macOS / Android 都已构建、都在真机或模拟器上跑通过；**Web 只有骨架、从未构建**。
+应用面向手机和平板，只保留 Android / iOS 工程；macOS 与 Flutter Web 工程已移除。
+Android 已在真机跑通，iOS 已在模拟器跑通；独立官网保留在 `website/`。
 界面按 Figma Make 原型的**最终生效层**实现。
 
 能做的事：离线睡眠记录与 7 / 14 / 30 天统计（全部记录可按周 / 月 / 年翻阅）、睡前会话
@@ -38,7 +39,7 @@ flutter analyze
 flutter test                     # 整套（约 840 条用例）
 flutter test test/sleep_score_test.dart                       # 单个文件
 flutter test test/sleep_score_test.dart --plain-name "时长阶梯"  # 单个用例（子串匹配）
-flutter run -d macos             # 或 -d chrome / -d <真机或模拟器>
+flutter run -d <设备ID>          # Android / iOS 真机或模拟器
 ```
 
 **新检出要先跑一次 `build_runner`**：`app_database.g.dart` 已 gitignore，缺了它 `flutter analyze` /
@@ -47,8 +48,8 @@ flutter run -d macos             # 或 -d chrome / -d <真机或模拟器>
 **演示数据**只在 `DEMO_DATA` 为真时安装，默认等于 `kDebugMode`（见 `core/config/app_config.dart`）：
 
 ```bash
-flutter run -d macos --dart-define=DEMO_DATA=true     # 强制开启
-flutter build macos --dart-define=DEMO_DATA=false     # 发布构建强制关闭
+flutter run -d <设备ID> --dart-define=DEMO_DATA=true     # 强制开启
+flutter build apk --dart-define=DEMO_DATA=false     # 发布构建强制关闭
 ```
 
 `integration_test/` **不在裸跑 `flutter test` 的扫描范围里**（它只扫 `test/`），要**指名文件 +
@@ -127,9 +128,8 @@ lib/
   `appSettingsLauncherProvider`。
 
 `main.dart` 里 override 了三个：`databaseProvider`、`insightApiKeySeedProvider`（密钥必须在这里
-`await` 读到，否则输入框会先空一下）、`reminderSchedulerProvider`（Web 上必须给
-`NoopReminderScheduler`，因为 `defaultTargetPlatform` 在 Web 上报告的是宿主系统、
-会绕过 provider 自己的 `kIsWeb` 守卫）。
+`await` 读到，否则输入框会先空一下）、`reminderSchedulerProvider`（使用启动时已初始化的
+本地通知调度器）。
 
 **`NotifierProvider`（`toastProvider`、`insightApiKeyProvider`）与 `ChangeNotifierProvider`
 （录音、白噪音、片段回放）并存，是有意的分工**——前者是纯值，后者本来就是要 dispose 的控制器。
@@ -322,7 +322,7 @@ Drift + SQLite，**`schemaVersion => 8`**（`core/database/app_database.dart`）
    下载被截断。判断「已装好」的可靠依据是 `platforms/android-3X/android.jar`（27 MB 上下）在不在
    ——失败的安装会留下一个只有 `.installer` 的空目录。
 
-**iOS / macOS**：`tflite_flutter` 尚不支持 Swift Package Manager，项目在 `pubspec.yaml` 中关闭
+**iOS**：`tflite_flutter` 尚不支持 Swift Package Manager，项目在 `pubspec.yaml` 中关闭
 SwiftPM，使用 CocoaPods 解析插件依赖，需要安装 CocoaPods。**本机实测直连即可跑通**，
 代理是可选的（`127.0.0.1:7890` 终验时并没有在监听）。`sqlite3` 的构建钩子偶发 GitHub Releases
 下载超时，原样重跑即过。`flutter build ios --simulator --no-codesign` 无需签名。
@@ -344,12 +344,12 @@ SwiftPM，使用 CocoaPods 解析插件依赖，需要安装 CocoaPods。**本�
   不要为了统一去批量重写。
 - `analysis_options.yaml` 开了 `avoid_print`、`prefer_const_constructors`、`prefer_const_declarations`
   ——CLI 工具与巡检脚本需要 print 时用 `// ignore: avoid_print`。分析器排除
-  `build/ ios/ web/ macos/ android/`。
+  `build/ ios/ android/`。
 - **设计令牌只有一份**（`core/theme/app_tokens.dart` 的 `AppTokens` 主题扩展，另有
   `AppRadii` / `AppDurations` / `AppMotion`）。颜色 / 圆角 / 动效曲线从 `AppTokens.of(context)` 取，
   **不要在 widget 里写死色值**。宽屏断点 `kWideLayoutBreakpoint = 768` 也定义在那里，
   外壳与二级页共用同一个值，不要另写常量。
-- **`tool/` 下两个脚本产出的是生成物**：`generate_app_icons.dart`（iOS / macOS / Android 三套图标）
+- **`tool/` 下两个脚本产出的是生成物**：`generate_app_icons.dart`（iOS / Android 两套图标）
   与 `generate_noise_assets.dart`（`assets/noise/`）。**要改图标或音效就改生成器再跑一遍，
   别手改产物。**（同目录的 `analyse_clips.dart` / `eval_clips.dart` 是**复核**用的，只读、不改文件。）
 - **模型权限与用户数据**：「获取可用模型」调服务商 `GET /models`：API Key 只走请求头，

@@ -123,7 +123,7 @@ class _SubpageHeaderDelegate extends SliverPersistentHeaderDelegate {
   /// 标题行离屏幕左右边缘的距离（已含内容限宽的居中留白）。
   final double sideInset;
 
-  /// 状态栏高度；没有状态栏（macOS / Web）时为 0。
+  /// 状态栏高度；系统未预留状态栏空间时为 0。
   final double statusBarInset;
 
   final double topPadding;

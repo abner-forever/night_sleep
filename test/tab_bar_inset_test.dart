@@ -110,7 +110,7 @@ void main() {
   );
 
   testWidgets(
-    '无安全区（macOS / Web）：各平台都保留下限 12pt',
+    '无安全区：各平台都保留下限 12pt',
     (tester) async {
       await pump(tester, 0);
 

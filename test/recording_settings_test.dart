@@ -285,17 +285,11 @@ void main() {
     expect(find.text('暂时读不到占用'), findsNothing);
   });
 
-  test('跳转地址按平台选对 scheme，且都真的落在能开麦克风的那一页', () {
+  test('iOS 跳转地址落在本应用的系统设置页', () {
     // iOS：`app-settings:` 就是本应用那一页，麦克风开关就在上面。
     expect(
       UrlAppSettingsLauncher.uriFor(TargetPlatform.iOS).toString(),
       'app-settings:',
     );
-    // macOS：**光有 `x-apple.systempreferences:` 是不够的**，那只到「系统设置」首页，
-    // 用户还得自己翻两级。这里钉住后面那串必须指向麦克风隐私面板。
-    final macos =
-        UrlAppSettingsLauncher.uriFor(TargetPlatform.macOS).toString();
-    expect(macos, startsWith('x-apple.systempreferences:'));
-    expect(macos, contains('Privacy_Microphone'));
   });
 }

@@ -14,6 +14,11 @@
 
 ---
 
+## 未发布（2026-10-20）
+
+应用平台收敛到 Android / iOS 手机和平板，移除 macOS 与 Flutter Web 工程，
+同步清理相关平台配置、图标生成、测试与运行说明；保留独立官网和宽屏布局。
+
 ## 0.49.1（2026-10-19）
 
 修复 iOS 启动时 `tflite_flutter` 与 Flutter 3.47 Swift Package Manager 不兼容的问题：在

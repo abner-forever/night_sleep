@@ -94,8 +94,7 @@ void main() {
       });
 
       // iOS 上根本没有这条通道。真要调一次也能拿到 MissingPluginException，但那一次
-      // 多余往返是每次起录都要付的；而且 `kIsWeb` 必须同样被挡在平台判断之前
-      // （Web 上 `defaultTargetPlatform` 报的是宿主系统）。
+      // 多余往返是每次起录都要付的，所以在本地按平台挡住。
       for (final platform in const [TargetPlatform.iOS, TargetPlatform.macOS]) {
         debugDefaultTargetPlatformOverride = platform;
         expect(await service.start(), NightAudioServiceResult.unsupported);

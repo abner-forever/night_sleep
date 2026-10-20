@@ -6,7 +6,7 @@
 
 **本地优先的睡眠记录应用。数据留在设备上，不上传。**
 
-[![Platform](https://img.shields.io/badge/platform-iOS%20%7C%20macOS%20%7C%20Android-lightgrey)](#平台支持)
+[![Platform](https://img.shields.io/badge/platform-iOS%20%7C%20Android-lightgrey)](#平台支持)
 [![Flutter](https://img.shields.io/badge/Flutter-3.47.5-02569B?logo=flutter)](https://flutter.dev)
 [![Dart](https://img.shields.io/badge/Dart-3.13.4-0175C2?logo=dart)](https://dart.dev)
 [![Local-first](https://img.shields.io/badge/data-local--first-3E8E7E)](#数据与隐私)
@@ -64,9 +64,10 @@
 | 平台 | 状态 |
 | --- | --- |
 | iOS | ✅ 已构建、模拟器跑通；**真机安装尚未实测** |
-| macOS | ✅ 已构建、跑通 |
 | Android | ✅ 已构建、真机跑通（MI 9 / API 30），有前台服务 |
-| Web | ⚠️ 只有骨架，**从未构建** |
+
+应用面向手机和平板，保留 Android / iOS 工程及宽屏布局；macOS 与 Flutter Web 工程已移除。
+独立官网位于 `website/`，继续保留。
 
 ## 截图
 
@@ -88,7 +89,7 @@
 其中「睡眠详情」那张里的 **自动 · 疑似打鼾** 就是端侧模型给的判定，下面那条波形来自真实录音。
 
 想自己重抓：跑一遍界面巡检，宿主机边跑边截——巡检每屏停留约 5 秒，覆盖首页、回顾、统计、设置与
-五个二级页、睡眠详情、助眠音效面板、会话页两态。桌面平台也能跑（`-d macos`，不必开模拟器）。
+五个二级页、睡眠详情、助眠音效面板、会话页两态。使用 Android 真机或 iOS 模拟器运行。
 
 ```bash
 # 模拟器：一边跑巡检，一边在外面循环截屏
@@ -111,7 +112,7 @@ Android 真机上把循环换成 `adb exec-out screencap -p > /tmp/tour/$i.png` 
 ### 环境要求
 
 - **Flutter stable**，本仓基线 `3.47.5`（Dart `3.13.4`）
-- **iOS / macOS**：需要 Xcode 和 CocoaPods。`tflite_flutter` 尚不支持 Swift Package
+- **iOS**：需要 Xcode 和 CocoaPods。`tflite_flutter` 尚不支持 Swift Package
   Manager，项目通过 `pubspec.yaml` 关闭 SwiftPM，使用 CocoaPods 解析插件依赖
 - **Android**：需要 Android SDK 与 **JDK 17**（`flutter_local_notifications` 要求 Java 17）。
   Android Studio 不是必需的，有 SDK + JDK 就能 `flutter build apk`
@@ -123,7 +124,8 @@ git clone https://github.com/abner-forever/night_sleep.git
 cd night_sleep
 flutter pub get
 dart run build_runner build     # 必须；见下
-flutter run -d macos            # 或 -d chrome / -d <设备>
+flutter devices                 # 查看手机、平板或模拟器的设备 ID
+flutter run -d <设备ID>
 ```
 
 > ⚠️ **新检出一定要先跑 `build_runner`。** `lib/core/database/app_database.g.dart` 由 Drift 生成、
@@ -133,14 +135,13 @@ flutter run -d macos            # 或 -d chrome / -d <设备>
 **演示数据**默认只在 debug / profile 构建里安装，可以强制开关：
 
 ```bash
-flutter run   -d macos --dart-define=DEMO_DATA=true     # 强制开启
-flutter build macos    --dart-define=DEMO_DATA=false    # 发布构建强制关闭
+flutter run -d <设备ID> --dart-define=DEMO_DATA=true     # 强制开启
+flutter build apk --dart-define=DEMO_DATA=false    # 发布构建强制关闭
 ```
 
 ### 构建
 
 ```bash
-flutter build macos --debug
 flutter build ios --simulator --no-codesign
 flutter build apk --debug
 ```
@@ -226,7 +227,7 @@ flutter test test/sleep_score_test.dart --plain-name "时长阶梯"  # 单个用
 
 ```bash
 export NO_PROXY=127.0.0.1,localhost     # 不设会表现为「连不上 VM Service」
-flutter test integration_test/noise_playback_test.dart -d macos
+flutter test integration_test/noise_playback_test.dart -d <设备ID>
 ```
 
 ## 数据与隐私
@@ -257,7 +258,7 @@ flutter test integration_test/noise_playback_test.dart -d macos
 | 项 | 现状 |
 | --- | --- |
 | **鼾声判定的准确率** | **换引擎之后一个数都没量到**。旧规则在一批 47 段人工标注上是覆盖 2% / 准确 0%，换 YAMNet 后**还没在同一批上量过**（那批录音随卸载丢失）。两条明写在案：**人声阈值 0.70 这一档根本没量过**；**均分有盲区**——11.8 秒里只有 3.5 秒是鼾声会被摊薄成弃权 |
-| **iOS / macOS 上的端侧推理** | **一个字节都没跑过**（macOS 的 `.dylib` 不随 podspec 安装） |
+| **iOS 上的端侧推理** | **尚未实测** |
 | **白噪音后台播放** | 收起页面后继续响，但**退到后台或锁屏会停**，界面已如实标注 |
 | **小米手环导入** | 导入按钮**仍禁用**。可行性已实测到连接层，但**没有任何一条路径被跑通到「拿到数据」** |
 | **Android 发布就绪度** | `applicationId` 仍是占位 `com.example.night_sleep`；release 已配置项目专用长期签名并固定证书指纹，缺失签名会阻止构建；加了前台服务后上架需要单独提交用途申报 |
