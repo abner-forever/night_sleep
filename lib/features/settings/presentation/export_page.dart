@@ -2,18 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../app/session_teardown.dart';
+import '../../../core/config/app_config.dart';
+import '../../../core/database/app_database.dart' show databaseProvider;
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_basics.dart';
 import '../../../core/widgets/app_icons.dart';
+import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/glass_surface.dart';
 import '../../../core/widgets/ios_controls.dart';
 import '../../../core/widgets/subpage.dart';
+import '../../sleep/data/clip_pruning.dart';
+import '../../sleep/data/clip_store.dart';
 import '../../sleep/data/sleep_repository.dart';
 import '../../sleep/domain/sleep_entry.dart';
 import '../data/export_sharer.dart';
+import '../data/sleep_backup_service.dart';
 import '../domain/sleep_export.dart';
 
-/// 睡眠数据导出。
+/// 睡眠数据管理。
 ///
 /// 只导出**真实**记录：演示之夜是合成的，写进用户的备份就是把伪造数据掺进真实数据。
 /// 没有可导出的记录时如实说明并禁用动作，不生成空文件、也不谎报成功。
@@ -32,6 +39,38 @@ class _ExportPageState extends ConsumerState<ExportPage> {
   /// push 在它之上，提示条会被整个盖住；失败反馈必须留在本页，否则界面只会表现
   /// 为「点了没反应」。取消分享是正常操作，不算失败，不设置它。
   String? _error;
+  String? _notice;
+
+  Future<void> _confirmDeleteAll() async {
+    if (_busy) return;
+    final confirmed = await showConfirmDialog(
+      context,
+      title: '删除全部本地数据？',
+      message: '所有睡眠记录、睡眠阶段、声音事件与洞察都会被永久删除，此操作无法撤销。',
+      confirmLabel: '删除',
+      destructive: true,
+    );
+    if (confirmed != true || !mounted || _busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+      _notice = null;
+    });
+    try {
+      await deleteAllUserDataWithRecordings(
+        database: ref.read(databaseProvider),
+        files: ref.read(clipFileStoreProvider),
+      );
+      await teardownSession(ref);
+      if (!mounted) return;
+      ref.invalidate(sleepEntriesProvider);
+      setState(() => _notice = '本地数据已全部删除。');
+    } catch (_) {
+      if (mounted) setState(() => _error = '删除失败，请稍后再试。');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   /// [all] 是**未过滤**的全部记录。
   ///
@@ -40,28 +79,46 @@ class _ExportPageState extends ConsumerState<ExportPage> {
   Future<void> _export({
     required bool asJson,
     required List<SleepEntry> all,
+    bool asBackup = false,
   }) async {
     if (_busy) return;
     setState(() {
       _busy = true;
       _error = null;
+      _notice = null;
     });
-
-    final files = asJson
-        ? SleepExporter.json(all, now: DateTime.now())
-        : SleepExporter.csv(all, now: DateTime.now());
-
-    final outcome = await ref.read(exportSharerProvider).share(
-          files: files,
-          subject: '夜深睡眠数据导出',
-        );
-
-    if (!mounted) return;
-    setState(() {
-      _busy = false;
-      // 失败必须看得见；dismissed（用户取消分享）是正常操作，不报。
-      _error = outcome == ShareOutcome.failed ? '导出失败，文件没有交出去。' : null;
-    });
+    try {
+      final List<ExportFile> files;
+      var missing = 0;
+      if (asBackup) {
+        final result = await ref.read(sleepBackupServiceProvider).export(
+              all,
+              now: DateTime.now(),
+            );
+        files = [result.file];
+        missing = result.missingAudioCount;
+      } else {
+        files = asJson
+            ? SleepExporter.json(all, now: DateTime.now())
+            : SleepExporter.csv(all, now: DateTime.now());
+      }
+      if (!mounted) return;
+      final outcome = await ref.read(exportSharerProvider).share(
+            files: files,
+            subject: '夜深睡眠数据导出',
+          );
+      if (!mounted) return;
+      setState(() {
+        _error = outcome == ShareOutcome.failed ? '导出失败，文件没有交出去。' : null;
+        if (asBackup && outcome == ShareOutcome.shared && missing > 0) {
+          _notice = '$missing 段音频文件已缺失，备份中保留了对应的声音事件。';
+        }
+      });
+    } catch (_) {
+      if (mounted) setState(() => _error = '导出失败，无法生成备份文件。');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   @override
@@ -91,10 +148,67 @@ class _ExportPageState extends ConsumerState<ExportPage> {
   }
 
   /// 加载 / 出错 / 有数据三态共用同一副外壳与标题。
-  Widget _shell(List<Widget> children) => Subpage(
-        title: '睡眠数据导出',
-        children: children,
-      );
+  Widget _shell(List<Widget> children) {
+    final tokens = AppTokens.of(context);
+    final entries = ref.watch(sleepEntriesProvider).valueOrNull ?? const [];
+    final demoCount =
+        entries.where((entry) => entry.source == AppConfig.demoSource).length;
+    return Subpage(
+      title: '睡眠数据管理',
+      children: [
+        ...children,
+        const SizedBox(height: 22),
+        const SectionHeader('导入数据'),
+        IosListGroup(children: [
+          IosListItem(
+            onTap: _busy ? null : () => context.push('/settings/restore'),
+            child: _Action(
+              enabled: !_busy,
+              title: '从备份恢复',
+              subtitle: '导入 ZIP 完整备份或以前导出的 JSON',
+            ),
+          ),
+        ]),
+        const SizedBox(height: 22),
+        const SectionHeader('本地数据'),
+        IosListGroup(children: [
+          if (AppConfig.demoDataEnabled)
+            IosListItem(
+              onTap: _busy ? null : () => context.push('/settings/demo'),
+              child: _Action(
+                enabled: !_busy,
+                title: '演示数据',
+                subtitle: demoCount == 0 ? '仅调试构建可见' : '$demoCount 条示例记录',
+              ),
+            ),
+          IosListItem(
+            onTap: _busy ? null : _confirmDeleteAll,
+            child: Row(
+              children: [
+                ListIconBadge(
+                  background: tokens.danger.withValues(alpha: 0.12),
+                  size: 36,
+                  child: AppIcons.trash(
+                      size: 17, color: tokens.danger, strokeWidth: 1.8),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '删除全部本地数据',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: _busy ? tokens.textMuted : tokens.danger,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ]),
+      ],
+    );
+  }
 
   Widget _content(BuildContext context, List<SleepEntry> all) {
     final tokens = AppTokens.of(context);
@@ -112,6 +226,8 @@ class _ExportPageState extends ConsumerState<ExportPage> {
 
     return _shell(
       [
+        const SectionHeader('导出数据'),
+        const SizedBox(height: 12),
         GlassSurface(
           borderRadius: BorderRadius.circular(AppRadii.card),
           padding: const EdgeInsets.all(20),
@@ -138,9 +254,7 @@ class _ExportPageState extends ConsumerState<ExportPage> {
               ),
               const SizedBox(height: 14),
               Text(
-                // 短状态句不加句号（首页「还没有睡眠记录」、统计页「暂无统计数据」
-                // 同口径）；这一页只有「文件不含音频…」那句完整说明句带句号。
-                hasData ? '文件不含音频本身，也不含设置与密钥。' : '暂无可导出的记录',
+                hasData ? '完整备份包含本机仍保留的录音，不含设置与密钥。' : '暂无可导出的记录',
                 style: TextStyle(
                   fontSize: 12,
                   height: 1.5,
@@ -168,11 +282,28 @@ class _ExportPageState extends ConsumerState<ExportPage> {
             style: TextStyle(fontSize: 12, height: 1.5, color: tokens.danger),
           ),
         ],
+        if (_notice != null) ...[
+          const SizedBox(height: 12),
+          Text(_notice!, style: TextStyle(fontSize: 12, color: tokens.caution)),
+        ],
+        if (_busy) ...[
+          const SizedBox(height: 12),
+          Text('正在处理数据…',
+              style: TextStyle(fontSize: 12, color: tokens.textMuted)),
+        ],
         const SizedBox(height: 22),
         IosListGroup(
           children: [
-            // 预览排在两个导出动作之前：先看清文件里是什么，再决定要不要交出去。
-            // 没有可导出记录时与它们一起禁用——空的预览只等于一个点了没反应的入口。
+            IosListItem(
+              onTap: hasData && !_busy
+                  ? () => _export(asJson: false, asBackup: true, all: all)
+                  : null,
+              child: _Action(
+                enabled: hasData && !_busy,
+                title: '导出完整备份（含录音）',
+                subtitle: 'ZIP 备份包，用于换机或重新安装后恢复',
+              ),
+            ),
             IosListItem(
               onTap: hasData
                   ? () => context.push('/settings/export/preview')
@@ -184,19 +315,23 @@ class _ExportPageState extends ConsumerState<ExportPage> {
               ),
             ),
             IosListItem(
-              onTap: hasData ? () => _export(asJson: false, all: all) : null,
+              onTap: hasData && !_busy
+                  ? () => _export(asJson: false, all: all)
+                  : null,
               child: _Action(
-                enabled: hasData,
+                enabled: hasData && !_busy,
                 title: '导出 CSV',
                 subtitle: '记录与阶段两张表，可用表格软件打开',
               ),
             ),
             IosListItem(
-              onTap: hasData ? () => _export(asJson: true, all: all) : null,
+              onTap: hasData && !_busy
+                  ? () => _export(asJson: true, all: all)
+                  : null,
               child: _Action(
-                enabled: hasData,
+                enabled: hasData && !_busy,
                 title: '导出 JSON',
-                subtitle: '完整数据，含阶段、声音事件与洞察',
+                subtitle: '结构化数据，含声音事件与洞察，不含录音文件',
               ),
             ),
           ],
@@ -204,7 +339,7 @@ class _ExportPageState extends ConsumerState<ExportPage> {
         const SizedBox(height: 16),
         Text(
           '文件通过系统分享面板交出，存到哪里、发给谁由你决定。'
-          '音频文件本身不在导出范围内。',
+          '完整备份含私人录音，请妥善保管。已清理的录音无法补回；进行中的睡眠请先结束再备份。',
           style: TextStyle(fontSize: 12, height: 1.5, color: tokens.textMuted),
         ),
       ],

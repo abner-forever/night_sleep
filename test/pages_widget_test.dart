@@ -706,6 +706,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(find.text('睡眠记录与分析'), 200,
           scrollable: find.byType(Scrollable).first);
+      await tester.ensureVisible(find.text('睡眠记录与分析'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('睡眠记录与分析'));
       await tester.pumpAndSettle();
       expect(find.byType(AboutPage), findsOneWidget);
@@ -764,16 +766,13 @@ void main() {
       expect(find.text('数据与隐私'), findsOneWidget);
       expect(find.text('关于'), findsOneWidget);
 
-      // 原型那五条 + 我们必须保留的四条（导出是偏差 #18、删除全部数据是规格 §7、
-      // 演示数据是调试期功能、罗盘是本实现新增）。
       for (final label in [
         '外观',
         '睡眠设置',
         '罗盘',
         '睡眠数据导入',
         '睡眠洞察',
-        '睡眠数据导出',
-        '删除全部本地数据',
+        '睡眠数据管理',
         '清除缓存',
       ]) {
         expect(find.text(label), findsOneWidget, reason: '根页少了「$label」这一行');
@@ -786,6 +785,9 @@ void main() {
       expect(find.text('就寝提醒'), findsNothing);
       expect(find.text('起床提醒'), findsNothing);
       expect(find.text('夜间声音录制'), findsNothing);
+      expect(find.text('从备份恢复'), findsNothing);
+      expect(find.text('删除全部本地数据'), findsNothing);
+      expect(find.text('演示数据'), findsNothing);
     });
 
     testWidgets('清除缓存显示真实占用，清完变成「暂无缓存」', (tester) async {
@@ -902,7 +904,7 @@ void main() {
     });
 
     testWidgets('删除全部数据前要求二次确认', (tester) async {
-      await pumpPage(tester, const SettingsPage());
+      await pumpRoute(tester, const ExportPage());
 
       await tester.tap(find.text('删除全部本地数据'));
       await tester.pumpAndSettle();
@@ -915,7 +917,7 @@ void main() {
     });
 
     testWidgets('危险操作行用垃圾桶图标并套了 danger 底板', (tester) async {
-      await pumpPage(tester, const SettingsPage());
+      await pumpRoute(tester, const ExportPage());
 
       final row = find.ancestor(
         of: find.text('删除全部本地数据'),
@@ -932,7 +934,7 @@ void main() {
       // 图标身份断得到：`SvgPicture.bytesLoader` 是公开字段，`SvgStringLoader`
       // 又实现了值相等（逐字符比 SVG 文本、比 theme 与 colorMapper）。
       // 这一条钉的正是本任务要钉的行为——换回借来的「停止」方块就会红。
-      final tokens = AppTokens.of(tester.element(find.byType(SettingsPage)));
+      final tokens = AppTokens.of(tester.element(find.byType(ExportPage)));
       final rendered = tester.widget<SvgPicture>(
         find.descendant(of: row, matching: find.byType(SvgPicture)),
       );
@@ -1229,7 +1231,9 @@ void main() {
       // 没有它，文字会落到 Flutter 的错误样式（黄色双下划线），背景会是黑的。
       // 这个 bug 在本项目真出现过一次，所以每个二级页都要接上这条守卫。
       await pumpRoute(tester, const ExportPage());
-      expectProperlyRendered(tester, '睡眠数据导出');
+      expectProperlyRendered(tester, '睡眠数据管理');
+      expect(find.text('演示数据'), findsOneWidget);
+      expect(find.text('删除全部本地数据'), findsOneWidget);
     });
 
     testWidgets('导出页的「预览表格」进表格预览页', (tester) async {

@@ -11,11 +11,18 @@ class ExportFile {
     required this.fileName,
     required this.content,
     required this.mimeType,
-  });
+  }) : localPath = null;
+
+  const ExportFile.local({
+    required this.fileName,
+    required this.localPath,
+    required this.mimeType,
+  }) : content = '';
 
   final String fileName;
   final String content;
   final String mimeType;
+  final String? localPath;
 }
 
 /// CSV 的两张表。界面上的分段控件按它分栏。
@@ -163,7 +170,7 @@ abstract final class SleepExporter {
       'format': 'night-sleep-export',
       'version': 1,
       'exportedAtUtc': now.toUtc().toIso8601String(),
-      'schemaVersion': 2,
+      'schemaVersion': 10,
       'recordCount': exportable.length,
       'excludedDemoCount': entries.length - exportable.length,
       'records': [for (final entry in exportable) _record(entry)],
@@ -218,6 +225,12 @@ abstract final class SleepExporter {
               'analysis': clip.analysis,
               'analysisStatus': clip.analysisStatus.id,
               'source': clip.source,
+              'waveformEnvelope': clip.waveformEnvelope,
+              'labeledAtUtc':
+                  clip.labeledAtUtc == null ? null : _iso(clip.labeledAtUtc!),
+              'autoAnalysis': clip.autoAnalysis == null
+                  ? null
+                  : jsonDecode(clip.autoAnalysis!.encode()),
             },
         ],
         'insight': entry.insight == null ? null : _insight(entry.insight!),

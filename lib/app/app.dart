@@ -22,6 +22,7 @@ import '../features/settings/presentation/about_page.dart';
 import '../features/settings/presentation/privacy_policy_page.dart';
 import '../features/settings/presentation/demo_data_page.dart';
 import '../features/settings/presentation/export_page.dart';
+import '../features/settings/presentation/backup_restore_page.dart';
 import '../features/settings/presentation/export_preview_page.dart';
 import '../features/settings/presentation/insight_config_page.dart';
 import '../features/settings/presentation/settings_page.dart';
@@ -84,6 +85,10 @@ final _router = GoRouter(
         GoRoute(
           path: 'settings/export',
           builder: (context, state) => const ExportPage(),
+        ),
+        GoRoute(
+          path: 'settings/restore',
+          builder: (context, state) => const BackupRestorePage(),
         ),
         // 导出页的表格预览（v3.31）。与导出页平级，不嵌成它的子路由：
         // 返回目标是导出页，靠栈里的上一页（`Subpage` 的返回按钮 `pop`），
