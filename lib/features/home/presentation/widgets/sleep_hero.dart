@@ -131,18 +131,17 @@ class SleepHeroCard extends StatelessWidget {
       borderColor: const Color(0x24DAE4FF),
       borderRadius: BorderRadius.circular(AppRadii.card),
       padding: const EdgeInsets.all(20),
-      // 右上月晕，`190×190` 放在 `top:-76 / right:-54`，5 秒一个来回。
       glow: const HeroGlow(
-        size: 190,
-        top: -76,
-        right: -54,
+        size: 280,
+        top: -150,
+        right: -100,
         breathe: true,
         colors: [
-          Color(0x47BDCFFF),
-          Color(0x128091E5),
-          Colors.transparent,
+          Color(0x24BDCFFF),
+          Color(0x0C8091E5),
+          Color(0x008091E5),
         ],
-        stops: [0, 0.42, 0.70],
+        stops: [0, 0.32, 0.70],
       ),
       // 左下青雾 `radial 80% 70% at 0% 100%`：原型是按卡的百分比给的一团椭圆，
       // 这里取一个同样贴住左下角、直径约卡宽 70% 的圆来近似。

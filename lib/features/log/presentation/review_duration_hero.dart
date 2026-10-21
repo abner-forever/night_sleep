@@ -11,7 +11,7 @@ import '../../../core/widgets/hero_surface.dart';
 /// 记录头（日期、起止、来源，点开换一晚）。
 ///
 /// 底色是两层：一条 `accent-soft` 混 `material-strong` 的斜向底，上面叠一团落在
-/// **右上角**的暖色光团；卡角另有一枚 108px 的暖光晕。颜色全部现算——
+/// **右上角**的柔和暖光。颜色全部现算——
 /// 描边从 `accent` 与 `glassBorder` 混出来，底色从 `accentSoft` 与 `materialStrong`
 /// 混出来，**一个写死的档位色都没有**（只有原型本身就是字面量的那几处渐变与阴影
 /// 是常量，规格已逐条给出）。
@@ -62,38 +62,27 @@ class ReviewDurationHero extends StatelessWidget {
           offset: Offset(0, 10),
         ),
       ],
-      glow: const HeroGlow(
-        size: 108,
-        top: -34,
-        right: -28,
-        colors: [Color(0x47FFDB97), Colors.transparent],
-        stops: [0, 0.68],
+      glow: HeroGlow(
+        size: 240,
+        top: -140,
+        right: -100,
+        colors: dark
+            ? const [
+                Color(0x14E09B56),
+                Color(0x06E09B56),
+                Color(0x00E09B56),
+              ]
+            : const [
+                Color(0x20FFC66F),
+                Color(0x08FFC66F),
+                Color(0x00FFC66F),
+              ],
+        stops: const [0, 0.32, 0.70],
       ),
+      padding: padding,
       onTap: onTap,
       semanticLabel: semanticLabel,
-      child: Stack(
-        children: [
-          // 暖色光团（`circle at 92% 4%`）：`Stack` 的第一层就是最底那一层，所以
-          // 它压在斜向底之上、内容之下。`Positioned.fill` 铺满整张卡——`HeroSurface`
-          // 自己的 padding 留空，留白由下面那层 `Padding` 出。
-          Positioned.fill(
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: RadialGradient(
-                    center: const Alignment(0.84, -0.92),
-                    radius: 0.4,
-                    colors: dark
-                        ? const [Color(0x1AE09B56), Colors.transparent]
-                        : const [Color(0x2EFFC66F), Colors.transparent],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Padding(padding: padding, child: child),
-        ],
-      ),
+      child: child,
     );
   }
 }
