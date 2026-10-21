@@ -66,11 +66,9 @@ export function I18nProvider({ children }) {
     }
   }, [])
 
-  // 同步 <html lang> 与页面标题
+  // 同步 <html lang>
   useEffect(() => {
     document.documentElement.lang = locale
-    const title = resolve(DICT[locale], 'meta.title')
-    if (title) document.title = title
   }, [locale])
 
   /**

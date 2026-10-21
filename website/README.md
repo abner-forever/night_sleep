@@ -26,6 +26,14 @@ npm run preview -- --host 127.0.0.1
 
 Vite 使用相对资源路径；HashRouter 提供 `/#/download` 下载页，直接打开或刷新不依赖服务端路由回退。官网独立维护，Flutter Web 工程已移除。
 
+## 隐私协议
+
+完整协议由 `src/pages/PrivacyPolicy.jsx` 维护，入口在官网页脚，公开地址为 `https://abner-forever.github.io/night_sleep/#/privacy`。内容依据当前本地数据库、录音保留、可选洞察请求、权限、导出、更新及官网存储行为起草，隐私邮箱为 `1661287843@qq.com`，个人开发者暂按项目账号 `abner-forever` 标识；正式发布前需由运营者核实主体标识、联系方式和实际处理行为。
+
+App 的“关于夜深 → 隐私协议”使用系统 WebView 打开同一页面，附加 `?app=1&theme=light`（或 `dark`）到 hash 路由后，以隐藏官网导航和页脚并匹配 App 主题。原生页提供返回、加载指示、失败与超时重试；外部政策和邮箱链接交给系统处理，不向网页暴露本地数据或 JavaScript 通道。
+
+修改后需先部署官网，公开协议地址才会展示新内容。更新协议时同步维护更新／生效日期；涉及新增敏感信息、第三方或跨境处理时，还需核实相应告知与授权流程。
+
 ## Android 下载与二维码
 
 官网直接请求公开接口 `GET https://api.github.com/repos/abner-forever/night_sleep/releases?per_page=30`，无需后端或访问令牌。使用列表接口是为了包含 Beta / RC 预发布版本；`releases/latest` 不包含预发布版本。按语义版本选择最新的有效 Android 包，不依赖 Release 创建顺序。

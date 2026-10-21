@@ -1,4 +1,5 @@
-import { Outlet } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
+import { useEffect } from 'react'
 import { useI18n } from '../../i18n/index.jsx'
 import Navbar from './Navbar.jsx'
 import Footer from './Footer.jsx'
@@ -11,6 +12,16 @@ import BackgroundBlobs from './BackgroundBlobs.jsx'
  */
 export default function SiteLayout() {
   const { t } = useI18n()
+  const { pathname, search } = useLocation()
+  const embedded = pathname === '/privacy' && new URLSearchParams(search).get('app') === '1'
+
+  useEffect(() => {
+    document.title = pathname === '/privacy' ? '隐私协议 · 夜深' : t('meta.title')
+  }, [pathname, t])
+
+  if (embedded) {
+    return <main id="main" tabIndex="-1"><Outlet /></main>
+  }
 
   return (
     <>

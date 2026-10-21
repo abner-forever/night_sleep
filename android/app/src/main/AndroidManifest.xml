@@ -9,6 +9,7 @@
          漏了的后果是**只在 release 包里发作**：debug 因为变体清单里有这条而一切正常，
          release 里所有洞察请求都以 SocketException 失败——开发时完全看不出来。 -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
 
     <!-- 设备重启后重排就寝 / 起床提醒。
          **应用必须自己声明这一条**：flutter_local_notifications 22.3.1 的 manifest 里没有它
@@ -40,6 +41,15 @@
         android:label="夜深"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.updates"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_paths" />
+        </provider>
         <activity
             android:name=".MainActivity"
             android:exported="true"

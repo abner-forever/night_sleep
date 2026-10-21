@@ -27,6 +27,7 @@ import 'package:night_sleep/features/compass/presentation/compass_page.dart';
 import 'package:night_sleep/features/log/presentation/log_page.dart';
 import 'package:night_sleep/features/sleep/presentation/widgets/quality_rating.dart';
 import 'package:night_sleep/features/settings/presentation/appearance_settings_page.dart';
+import 'package:night_sleep/features/settings/presentation/about_page.dart';
 import 'package:night_sleep/features/settings/presentation/demo_data_page.dart';
 import 'package:night_sleep/features/settings/presentation/export_page.dart';
 import 'package:night_sleep/features/settings/presentation/export_preview_page.dart';
@@ -681,6 +682,43 @@ void main() {
   });
 
   group('设置页', () {
+    testWidgets('关于入口打开应用信息页，返回后仍在设置页', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            databaseProvider.overrideWithValue(database),
+            settingsProvider.overrideWith((ref) => Stream.value(settings())),
+            sleepEntriesProvider.overrideWith((ref) => const []),
+            activeTabProvider.overrideWith((ref) => AppTab.settings),
+            activeSessionProvider.overrideWith((ref) => null),
+          ],
+          child: const NightSleepApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final router = tester
+          .widget<MaterialApp>(find.byType(MaterialApp))
+          .routerConfig! as GoRouter;
+      router.go('/');
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('睡眠记录与分析'), 200,
+          scrollable: find.byType(Scrollable).first);
+      await tester.tap(find.text('睡眠记录与分析'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AboutPage), findsOneWidget);
+      expect(find.byType(AppShell), findsNothing);
+      expect(find.text('关于夜深'), findsOneWidget);
+      expect(find.text('0.1.0'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('subpage-back')));
+      await tester.pumpAndSettle();
+      expect(find.byType(AboutPage), findsNothing);
+      expect(find.byType(SettingsPage), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
     testWidgets('罗盘入口打开二级页，返回后仍在设置页', (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1;
@@ -859,7 +897,7 @@ void main() {
       // 走平台通道（测试环境里那条通道没有实现）。
       expect(find.text('夜深'), findsOneWidget);
       expect(find.text('睡眠记录与分析'), findsOneWidget);
-      expect(find.text('v0.1.0 (1)'), findsOneWidget);
+      expect(find.text('0.1.0'), findsOneWidget);
       expect(find.text('v2.0.0'), findsNothing, reason: '版本号又退回写死的常量了');
     });
 

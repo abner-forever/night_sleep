@@ -168,6 +168,8 @@ export FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
 - `0.49.0-beta.2+3` 起配置项目专用长期签名，普通 CI 只生成附件；推送版本标签才公开发布。旧测试签名版本需先导出记录，再卸载安装新版。签名保管与恢复见 [`docs/android-signing.md`](docs/android-signing.md)。
 - 公开安装包与校验文件见 [GitHub Releases](https://github.com/abner-forever/night_sleep/releases)，官网自动读取最新有效版本；Android 7.0+，当前安装包尚未完成真机验证。
 - 官网下载页直接读取 GitHub Releases（含 Beta），自动获取版本、APK 直链、体积和 SHA-256，无需维护下载 JSON 或重新构建官网。无可用公开包时禁用下载；二维码中央内嵌应用图标。
+- 设置 → 关于夜深：版本号显示为 `0.49.0（Beta 2）`，点击版本号检查更新；没有新版时提示「当前是最新版」，发现新版后弹出更新操作，支持下载进度、取消与系统安装。iOS 商店地址暂未配置，仅在点击时提示。
+- 关于页保留隐私协议、软件著作权与 APP 备案号入口。隐私协议在 App 内通过系统 WebView 加载官网 `https://abner-forever.github.io/night_sleep/#/privacy`；软著和备案尚未提供实际登记信息，点击仅提示。
 - Android 版本以 `pubspec.yaml` 为准，当前开发版本 `0.49.0-beta.2+3`。发布标签对应 `v0.49.0-beta.2`，产物名为 `night-sleep-0.49.0-beta.2-android.apk`；每次分发递增构建号。推送版本标签后 CI 核验并发布 Release，Beta 标记为预发布；普通 CI 只产出构建附件。
 
 详细实施与后续发布条件见 [`docs/release-plan.md`](docs/release-plan.md)。
@@ -234,8 +236,8 @@ flutter test integration_test/noise_playback_test.dart -d <设备ID>
 
 - **数据留在设备上**：SQLite 在应用目录，录音在 `getApplicationSupportDirectory()/clips/`，
   默认只保留最近 7 晚，超期删文件、**行保留**
-- **应用会联网，且全部由用户点击触发**，共 4 处：获取可用模型、连通性测试、查询余额、生成洞察。
-  全部只发结构化睡眠字段，**用户自由文本备注不发送**；API Key 只进请求头，**不落日志、不落盘**
+- **联网洞察可选**：获取模型、连通性测试、查询余额仅发送认证及必要请求参数；主动生成洞察时才发送该晚的结构化睡眠字段，**用户自由文本备注和音频不发送**。API Key 通过系统安全存储保存，只在请求头发送，不进入睡眠数据库、导出文件或日志。
+- **更新与网页会联网**：Android 设置展示版本时检查一次 GitHub 公开版本，点击版本号可再次检查；确认后才下载和安装。查看隐私协议通过 WebView 访问 GitHub Pages，不向网页注入睡眠数据或密钥。对方会接收正常网络连接信息。
 - **导出是把文件交给系统分享面板，去向由你选择**，应用自己不发起传输
 - 权限只在用到时申请：通知权限仅在你打开提醒开关时申请，麦克风权限仅在打开夜间录音时申请
 

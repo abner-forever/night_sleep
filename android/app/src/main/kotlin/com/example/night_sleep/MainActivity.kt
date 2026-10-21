@@ -8,6 +8,7 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
 
     private var compassHandler: CompassStreamHandler? = null
+    private var appUpdateHandler: AppUpdateHandler? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         // **这一行必须留着。** 本工程用的是 embedding v2（清单里 `flutterEmbedding=2`），
@@ -16,6 +17,11 @@ class MainActivity : FlutterActivity() {
         // 覆写时漏掉它 → 通知、录音、安全存储**全体静默失效**，
         // 编译期与运行期都不会有任何提示，只有功能悄悄不工作。
         super.configureFlutterEngine(flutterEngine)
+
+        val updateHandler = AppUpdateHandler(this)
+        appUpdateHandler = updateHandler
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "night_sleep/app_update")
+            .setMethodCallHandler(updateHandler)
 
         // 本工程唯一一条手写的流式通道。名字与 iOS 侧、Dart 侧三处必须一致。
         val handler = CompassStreamHandler(this)
@@ -69,6 +75,8 @@ class MainActivity : FlutterActivity() {
         // `dispose()` 是幂等的，正常路径下这里是空操作。
         compassHandler?.dispose()
         compassHandler = null
+        appUpdateHandler?.dispose()
+        appUpdateHandler = null
         super.onDestroy()
     }
 

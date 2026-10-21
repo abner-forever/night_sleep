@@ -5,6 +5,7 @@ import SiteLayout from './components/layout/SiteLayout.jsx'
 import Home from './pages/Home.jsx'
 import Download from './pages/Download.jsx'
 import NotFound from './pages/NotFound.jsx'
+import PrivacyPolicy from './pages/PrivacyPolicy.jsx'
 
 export default function App() {
   return (
@@ -15,6 +16,7 @@ export default function App() {
             <Route element={<SiteLayout />}>
               <Route path="/" element={<Home />} />
               <Route path="/download" element={<Download />} />
+              <Route path="/privacy" element={<PrivacyPolicy />} />
               <Route path="*" element={<NotFound />} />
             </Route>
           </Routes>

@@ -24,6 +24,9 @@ import '../../sleep/data/sleep_repository.dart';
 import '../data/app_cache.dart';
 import '../data/insight_credentials.dart';
 import '../data/model_catalog.dart';
+import '../data/app_update_controller.dart';
+import '../domain/app_release.dart';
+import 'about_page.dart';
 import 'appearance_settings_page.dart';
 
 /// 根页「睡眠洞察」那一行的副标题。
@@ -241,6 +244,7 @@ class SettingsPage extends ConsumerWidget {
           children: [
             IosListItem(
               haptic: false,
+              onTap: () => context.go('/settings/about'),
               child: Row(
                 children: [
                   ListIconBadge(
@@ -275,6 +279,9 @@ class SettingsPage extends ConsumerWidget {
                     ),
                   ),
                   const _VersionLabel(),
+                  const SizedBox(width: 6),
+                  AppIcons.chevronRight(
+                      size: 18, color: tokens.textMuted, strokeWidth: 2),
                 ],
               ),
             ),
@@ -469,19 +476,29 @@ class _NavRow extends StatelessWidget {
 ///   `testWidgets` 取的 future 到下一个用例就再也不回调，正是这个原因。
 ///
 /// 跟着 State 走则两条都避开：实例随页面挂载建一次，重建复用，卸载即弃。
-class _VersionLabel extends StatefulWidget {
+class _VersionLabel extends ConsumerStatefulWidget {
   const _VersionLabel();
 
   @override
-  State<_VersionLabel> createState() => _VersionLabelState();
+  ConsumerState<_VersionLabel> createState() => _VersionLabelState();
 }
 
-class _VersionLabelState extends State<_VersionLabel> {
+class _VersionLabelState extends ConsumerState<_VersionLabel> {
   late final Future<PackageInfo> _info = PackageInfo.fromPlatform();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(ref.read(appUpdateProvider.notifier).check());
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
+    final update = ref.watch(appUpdateProvider);
+    if (update.release != null) return const NewVersionBadge();
     return FutureBuilder<PackageInfo>(
       future: _info,
       builder: (context, snapshot) {
@@ -491,7 +508,7 @@ class _VersionLabelState extends State<_VersionLabel> {
         // 干脆不完成，两条路都落在这里。
         if (info == null) return const SizedBox.shrink();
         return Text(
-          'v${info.version} (${info.buildNumber})',
+          formatAppVersion(info.version),
           style: AppTheme.num(context, size: 12, color: tokens.textMuted),
         );
       },

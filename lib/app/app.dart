@@ -18,6 +18,8 @@ import '../features/log/presentation/review_page.dart';
 import '../features/onboarding/presentation/onboarding_overlay.dart';
 import '../features/onboarding/presentation/splash_screen.dart';
 import '../features/settings/presentation/appearance_settings_page.dart';
+import '../features/settings/presentation/about_page.dart';
+import '../features/settings/presentation/privacy_policy_page.dart';
 import '../features/settings/presentation/demo_data_page.dart';
 import '../features/settings/presentation/export_page.dart';
 import '../features/settings/presentation/export_preview_page.dart';
@@ -58,6 +60,14 @@ final _router = GoRouter(
       path: '/',
       builder: (context, state) => const AppScaffold(),
       routes: [
+        GoRoute(
+          path: 'settings/about',
+          builder: (context, state) => const AboutPage(),
+        ),
+        GoRoute(
+          path: 'settings/about/privacy',
+          builder: (context, state) => const PrivacyPolicyPage(),
+        ),
         // 外观与睡眠设置是 v3.5 从设置根页收进来的两个二级页：根页只留导航行。
         GoRoute(
           path: 'settings/appearance',

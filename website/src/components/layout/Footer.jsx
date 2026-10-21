@@ -26,6 +26,7 @@ export default function Footer() {
       title: '了解夜深',
       links: [
         ['数据与隐私', '/?section=privacy'],
+        ['隐私协议', '/privacy'],
         ['GitHub', SITE.repositoryUrl],
         ['问题反馈', SITE.issuesUrl],
       ],
