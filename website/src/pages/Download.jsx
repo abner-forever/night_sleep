@@ -51,17 +51,19 @@ export default function Download() {
                 <span className="release-badge">
                   {state.download
                     ? `正式版本 · v${state.download.version}`
-                    : '正式版尚未发布'}
+                    : state.loading ? '正在检查正式版' : state.stableFailed ? '暂未获取正式版' : '正式版尚未发布'}
                 </span>
                 <h3>
                   {state.download
                     ? '从第一晚，开始记录。'
-                    : '正式版准备中'}
+                    : state.loading ? '正在获取版本信息' : state.stableFailed ? '暂时无法检查版本' : '正式版准备中'}
                 </h3>
                 <p>
                   {state.download
                     ? `${(state.download.size / 1024 / 1024).toFixed(1)} MB · 直接下载 APK`
-                    : '正式发布后，这里会提供最新正式版安装包。想提前体验，可以选择旁边的 Beta 测试版。'}
+                    : state.stableFailed
+                      ? '版本服务暂时不可用，请稍后重试，或前往 GitHub 查看发布版本。'
+                      : '正式发布后，这里会提供最新正式版安装包。想提前体验，可以选择旁边的 Beta 测试版。'}
                 </p>
                 {state.download ? (
                   <a
