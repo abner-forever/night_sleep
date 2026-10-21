@@ -48,7 +48,7 @@ App 的“关于夜深 → 隐私协议”使用系统 WebView 打开同一页�
 
 1. 日常将应用变更合并到 `beta` 并推送，自动发布 Beta。只有明确要求发布正式版时，才将 `beta` 合并到 `main` 并推送，自动发布正式包，随后同步回 `beta`。
 2. Android Actions 根据发布历史和 Conventional Commits 自动计算版本、Beta 序号与全局构建号，检查、测试、构建并核验版本与长期签名；不需要修改 `pubspec.yaml` 或打标签。
-3. 构建通过后，针对源码提交自动创建标签，上传全部附件后公开 Release；Beta 标记为 Pre-release，正式版设为 Latest。重跑已发布提交不产生重复版本；详细规则见 `../docs/release-plan.md`。
+3. 构建通过后，针对源码提交自动创建标签，仅上传 APK 和 App 检查更新所需的 `release.json`，再公开 Release；核验文件保留在 Actions Artifact，说明放在发布正文。Beta 标记为 Pre-release，正式版设为 Latest。重跑已发布提交不产生重复版本；详细规则见 `../docs/release-plan.md`。
 4. 官网无需修改源码或重新构建；用户重新访问页面、缓存到期后会自动获取新版本。草稿阶段不会被官网读取，已有 Release 禁止覆盖。
 
 官网保留 iOS 的 App Store 入口并标注「暂缓支持」。`0.49.0-beta.2+3` 起配置项目专用长期签名，早期测试签名版本需导出记录并卸载迁移；证书保管见 `../docs/android-signing.md`，真机验收边界见 `../docs/release-plan.md`。

@@ -26,7 +26,7 @@
 
 工作流通过 `tool/configure_android_signing.py` 恢复临时文件，并先用 keytool 导出公开证书核验指纹，构建结束后始终清理。签名配置缺失时 release 构建立即失败，不回退到 debug。日常 debug 构建仍使用开发调试证书，无需发布私钥。
 
-产物打包时，`tool/android_release.py` 再次调用 apksigner 校验 APK，并要求唯一签名者与仓库固定指纹一致。`release.json` 标注 `signing=release` 及 `certificate_sha256`，签名详情和 SHA-256 随产物保存。只有非私密构建产物会进入 Actions Artifact / Release。
+产物打包时，`tool/android_release.py` 再次调用 apksigner 校验 APK，并要求唯一签名者与仓库固定指纹一致。`release.json` 标注 `signing=release` 及 `certificate_sha256`；签名详情和 SHA-256 核验文件保存在 Actions Artifact（30 天）。Release 仅上传 APK 和 App 检查更新必需的 `release.json`，其余说明放在发布正文。只有非私密构建产物会进入 Actions Artifact / Release。
 
 ## 首次迁移
 

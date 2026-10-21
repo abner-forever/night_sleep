@@ -158,11 +158,16 @@ class PlanAndroidReleaseTest(unittest.TestCase):
     @patch('plan_android_release.load_releases', return_value=[])
     def test_publish_creates_draft_at_exact_sha_then_uploads_and_exposes(self, releases, command):
         folder, metadata = self.artifacts()
+        for filename in ('package-info.txt', 'signature.txt', 'SHA256SUMS.txt', 'debug.log'):
+            (folder / filename).write_text('Build verification output\n')
         publish('owner/repo', folder)
         calls = [call.args for call in command.call_args_list]
         self.assertIn(SOURCE_SHA, calls[0])
         self.assertIn('--draft', calls[0])
-        self.assertEqual(calls[1][:2], ('release', 'upload'))
+        self.assertEqual(calls[1], (
+            'release', 'upload', metadata['tag'], '--repo', 'owner/repo', '--clobber',
+            str(folder / metadata['filename']), str(folder / 'release.json'),
+        ))
         self.assertEqual(calls[2][:2], ('release', 'edit'))
         self.assertIn('--prerelease=true', calls[2])
         self.assertIn('--latest=false', calls[2])
