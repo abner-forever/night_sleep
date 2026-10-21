@@ -29,7 +29,7 @@
 ## 后续正式发布
 
 - 确认或替换五条助眠录音的分发授权，补齐模型转换件许可证说明。
-- 正式包名仍待确定；`0.49.0-beta.2+3` 起已配置长期签名，私钥通过 GitHub Secrets 加密保存，具体保管与恢复见 `android-signing.md`。
+- Android 包名已确定为 `com.abner.night_sleep`；`0.49.0-beta.2+3` 起已配置长期签名，私钥通过 GitHub Secrets 加密保存，具体保管、恢复及旧包名迁移见 `android-signing.md`。
 - 真机验证首次安装、空数据启动、录音权限、锁屏录音、通知、导出和升级覆盖。
 - 官网直接读取公开 GitHub Releases，发布新 APK 后无需修改官网文件或重新部署。主入口使用 `/releases/latest` 获取正式版，旁边的 Beta 使用 Release 列表筛选预发布；版本、附件大小、直链及 SHA-256 来自 GitHub。未上传完成或缺少校验值的附件不开放下载，没有正式版时不会用 Beta 替代。
 
@@ -54,7 +54,7 @@
 - 检查通过后，先创建针对确切源码提交的草稿并上传附件，再公开 Release。已公开版本禁止覆盖；重复运行同一提交会跳过已发布版本，未完成的同源草稿允许续传；已被更高构建号超越的草稿停止发布。失败后可在对应分支手动运行 Android 工作流，无需补打标签。
 - 官网独立于 App 发版：`beta` 或 `main` 的官网变更触发部署，始终构建 `beta` 的官网源码，避免较旧主分支覆盖官网；GitHub Pages 环境需允许这两个分支部署。主下载入口和二维码仅对应最新正式包，Beta 为旁边的独立入口。
 - 官网对两个渠道分别维护五分钟成功缓存；接口失败可回退一天内已验证缓存并提示，提供重试和官方 Release 页面入口。无缓存不伪造下载链接；不在前端配置 GitHub Token。
-- 占位包名仍为 `com.example.night_sleep`。首个长期签名版本为 `0.49.0-beta.2+3`，旧测试签名包需先导出记录再卸载迁移；真机升级验证仍需单独完成。
+- Android 包名为 `com.abner.night_sleep`，原生 namespace、Kotlin 包目录与发布校验统一使用该值，`release.json` 同时记录 `application_id`。`0.49.0` 及之前的包使用旧占位包名 `com.example.night_sleep`，无法覆盖升级到新包名，需单独安装且旧数据不会自动迁移；请先在旧应用导出记录保留。长期签名证书沿用，真机安装与同包名升级验证仍需单独完成。
 - Beta 构建已在独立分支 `codex/android-beta-0.49.0-1` 完成（Actions run `39383819162`）：静态检查、应用测试、APK 构建及签名校验通过。下载后验证 `versionName=0.49.0-beta.1`、`versionCode=2`、95,617,461 字节，SHA-256 为 `ca77e22c2f06166dc113bc7999a020d77e1c22d7d1902551b5e0881d096ec4f4`。
 - 首次本地验收阶段交付路径：`build/beta/0.49.0-beta.1/night-sleep-0.49.0-beta.1-android.apk`（构建产物不入库）。该阶段未创建公开 Beta Release、未部署官网；公开发布改用下述长期签名 Beta 2。
 

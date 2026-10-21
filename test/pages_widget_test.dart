@@ -121,7 +121,7 @@ void main() {
   setUpAll(
     () => PackageInfo.setMockInitialValues(
       appName: '夜深',
-      packageName: 'com.example.night_sleep',
+      packageName: 'com.abner.night_sleep',
       version: '0.1.0',
       buildNumber: '1',
       buildSignature: '',

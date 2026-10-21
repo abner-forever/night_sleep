@@ -1,6 +1,6 @@
 # Android 长期签名
 
-夜深 release 构建统一使用项目专用的 RSA 4096 位签名。Beta 与正式版本共用此身份，不再使用 Android Debug 证书。应用包名仍为 `com.example.night_sleep`，本次只迁移签名；包名调整需要单独处理。
+夜深 release 构建统一使用项目专用的 RSA 4096 位签名。Beta 与正式版本共用此证书，不再使用 Android Debug 证书。当前 Android 包名为 `com.abner.night_sleep`，已替换旧占位包名 `com.example.night_sleep`；更换包名不需要重新生成签名密钥。
 
 ## 本地文件
 
@@ -33,3 +33,7 @@
 首个长期签名版本为 `0.49.0-beta.2+3`。此前 preview / beta.1 使用 Android Debug 签名，无法通过普通覆盖安装迁移到新证书。先导出记录，再卸载旧包、安装新版；卸载会清除本地数据。此后同包名、同证书且递增 versionCode 的版本才具备常规升级条件；真机升级覆盖仍需实测。
 
 后续不要为每次构建生成新密钥，也不要随意替换本证书。若以后接入 Google Play App Signing，需另外规划商店应用签名密钥与上传密钥，并考虑与官网 APK 的签名一致性。
+
+## 包名迁移（2026-10-21）
+
+`0.49.0` 及之前的安装包使用 `com.example.night_sleep`。新包名 `com.abner.night_sleep` 在 Android 中属于另一个应用，无法覆盖升级旧包，旧应用的数据库、录音与设置不会自动迁移。两个包名可以分别安装；请在旧应用中导出需要保留的记录，确认备份后再决定是否卸载旧应用。当前导出功能用于保留数据，不代表新应用支持导入恢复。

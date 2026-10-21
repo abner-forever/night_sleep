@@ -12,7 +12,7 @@
 // 它给每一段真实录音落一份「整段均分」，再从设备上取回来喂给这个脚本：
 //
 //   flutter test integration_test/yamnet_eval_test.dart -d <serial>
-//   adb exec-out run-as com.example.night_sleep cat \
+//   adb exec-out run-as com.abner.night_sleep cat \
 //     files/yamnet_scores.txt > scores.txt
 //
 // 用法：
@@ -36,7 +36,7 @@
 //   snore / talk / noise  —— 与 `SoundEventKind` 的 id 一致
 //   -                     —— 没标过，跳过
 // 从真机库里导出这个文件：
-//   adb exec-out run-as com.example.night_sleep cat app_flutter/night_sleep.sqlite > db.sqlite
+//   adb exec-out run-as com.abner.night_sleep cat app_flutter/night_sleep.sqlite > db.sqlite
 //   sqlite3 db.sqlite "select id, kind from sound_clips where labeled_at_utc is not null;" > labels.txt
 //
 // **正确率必须连同「弃权多少」一起读。** 机器靠弃权可以轻易把正确率做到 100%

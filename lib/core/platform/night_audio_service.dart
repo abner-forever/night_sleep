@@ -60,7 +60,7 @@ class NoopNightAudioService implements NightAudioService {
 
 /// 包 `night_sleep/recording_service` 这条 MethodChannel 的实现。
 ///
-/// Kotlin 侧见 `android/app/src/main/kotlin/com/example/night_sleep/`
+/// Kotlin 侧见 `android/app/src/main/kotlin/com/abner/night_sleep/`
 /// 的 `NightAudioServiceHandler.kt` 与 `NightRecordingService.kt`。
 ///
 /// 两种失败分开处理，因为它们对调用方的意义不同：

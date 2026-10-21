@@ -16,7 +16,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 PackageInfo installed({String version = '0.49.0-beta.2', String build = '3'}) =>
     PackageInfo(
         appName: '夜深',
-        packageName: 'com.example.night_sleep',
+        packageName: 'com.abner.night_sleep',
         version: version,
         buildNumber: build);
 

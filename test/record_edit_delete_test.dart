@@ -456,7 +456,7 @@ void main() {
     testWidgets('确认后记录被删除，并且真的走到了删录音文件那一步', (tester) async {
       final entry = await seedManual();
       const path =
-          '/data/user/0/com.example.night_sleep/files/clips/clip-1.wav';
+          '/data/user/0/com.abner.night_sleep/files/clips/clip-1.wav';
 
       await database.insertClips([
         SoundClipsCompanion.insert(
