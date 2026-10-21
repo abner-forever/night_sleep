@@ -175,7 +175,7 @@ export default {
       },
       {
         q: '现在能下载哪些版本？',
-        a: '目前提供 Android Beta 版本，支持 Android 7.0 及以上系统，可在下载页获取。iOS 版暂缓支持。',
+        a: '支持 Android 7.0 及以上系统，下载页分别提供正式版和 Beta 测试版入口；未发布的渠道会如实提示。iOS 版暂缓支持。',
       },
     ],
   },
@@ -194,12 +194,12 @@ export default {
     title: '从今晚开始，好好休息',
     subtitle: '无需注册，从一晚真实的记录开始。',
     scanTitle: '把夜深带到手机上',
-    scanHint: '扫描二维码打开下载页，获取 Android Beta 版本。',
+    scanHint: '扫描二维码打开下载页，获取正式版或选择 Beta 测试版。',
     qrAlt: '{platform}二维码',
     android: {
       name: 'Android 版',
       store: 'Android APK',
-      lead: '获取 Beta 版本',
+      lead: '获取 Android 版本',
       action: '查看 Android 下载',
       apk: '下载 APK',
       requirement: 'Android 7.0 或更高版本',

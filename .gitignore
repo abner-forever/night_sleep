@@ -5,6 +5,7 @@
 .pub-cache/
 build/
 coverage/
+__pycache__/
 ios/Pods/
 ios/.symlinks/
 android/.gradle/

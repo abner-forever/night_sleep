@@ -1,7 +1,8 @@
 export const RELEASES_URL = 'https://api.github.com/repos/abner-forever/night_sleep/releases?per_page=30'
+export const STABLE_RELEASE_URL = 'https://api.github.com/repos/abner-forever/night_sleep/releases/latest'
 export const RELEASES_PAGE = 'https://github.com/abner-forever/night_sleep/releases'
 const REPOSITORY = '/abner-forever/night_sleep'
-const CACHE_KEY = 'yeshen-github-release-v1'
+const CACHE_KEY = 'yeshen-github-release-v2'
 const FRESH_FOR = 5 * 60 * 1000
 const OFFLINE_FOR = 24 * 60 * 60 * 1000
 
@@ -15,6 +16,7 @@ function versionParts(tag) {
 function releaseDownload(release) {
   if (!release || release.draft !== false || !Number.isFinite(Date.parse(release.published_at)) || !versionParts(release.tag_name)) return null
   const version = release.tag_name.replace(/^v/, '')
+  if (release.prerelease !== version.includes('-')) return null
   const filename = `night-sleep-${version}-android.apk`
   // 已发布的首个 preview 包保留兼容；后续 APK 必须按版本命名。
   const asset = Array.isArray(release.assets) && release.assets.find((item) => item && (item.name === filename ||
@@ -37,9 +39,9 @@ function releaseDownload(release) {
   }
 }
 
-export function selectLatestDownload(releases) {
+export function selectLatestDownload(releases, channel = 'stable') {
   if (!Array.isArray(releases)) return null
-  return releases.map(releaseDownload).filter(Boolean).sort((a, b) => {
+  return releases.map(releaseDownload).filter((item) => item && item.channel === channel).sort((a, b) => {
     const left = versionParts(a.version), right = versionParts(b.version)
     for (let i = 0; i < left.length; i++) {
       if (left[i] !== right[i]) return right[i] - left[i]
@@ -54,39 +56,56 @@ export function createDownloadClient({ fetcher = globalThis.fetch, storage, now 
   let pending = null
   try { memory = JSON.parse(storage?.getItem(CACHE_KEY) ?? 'null') } catch { /* 禁用存储时仍可下载 */ }
 
-  function cached(maxAge) {
-    const age = now() - memory?.time
-    const download = selectLatestDownload(memory?.releases)
-    return age >= 0 && age < maxAge && download ? download : null
+  function cached(channel, maxAge) {
+    const entry = memory?.[channel]
+    const age = now() - entry?.time
+    return {
+      valid: age >= 0 && age < maxAge && Array.isArray(entry?.releases),
+      download: age >= 0 && age < maxAge ? selectLatestDownload(entry?.releases, channel) : null,
+    }
   }
 
-  async function request() {
+  async function requestChannel(channel) {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 12000)
     try {
-      const response = await fetcher(RELEASES_URL, {
+      const response = await fetcher(channel === 'stable' ? STABLE_RELEASE_URL : RELEASES_URL, {
         signal: controller.signal,
         cache: 'no-cache',
         headers: { Accept: 'application/vnd.github+json' },
       })
-      if (!response.ok) throw new Error(`GitHub ${response.status}`)
-      const releases = await response.json()
+      if (!response.ok && !(channel === 'stable' && response.status === 404)) throw new Error(`GitHub ${response.status}`)
+      const value = response.status === 404 ? null : await response.json()
+      const releases = channel === 'stable' ? value === null ? [] : [value] : value
       if (!Array.isArray(releases)) throw new Error('Invalid releases response')
-      const download = selectLatestDownload(releases)
-      memory = { time: now(), releases }
+      if (channel === 'stable' && value !== null && (!value || typeof value !== 'object' || Array.isArray(value) || value.prerelease !== false)) throw new Error('Invalid stable release response')
+      const download = selectLatestDownload(releases, channel)
+      memory = { ...memory, [channel]: { time: now(), releases } }
       try { storage?.setItem(CACHE_KEY, JSON.stringify(memory)) } catch { /* 存储容量或隐私模式 */ }
       return { download, stale: false, failed: false }
     } catch {
-      return { download: cached(OFFLINE_FOR), stale: true, failed: true }
+      return { download: cached(channel, OFFLINE_FOR).download, stale: true, failed: true }
     } finally {
       clearTimeout(timeout)
     }
   }
 
+  async function request() {
+    const [stable, beta] = await Promise.all(['stable', 'beta'].map(requestChannel))
+    return {
+      download: stable.download, beta: beta.download,
+      stableFailed: stable.failed, betaFailed: beta.failed,
+      stale: stable.stale || beta.stale, failed: stable.failed || beta.failed,
+    }
+  }
+
   return {
     load({ refresh = false } = {}) {
-      const download = cached(FRESH_FOR)
-      if (!refresh && download) return Promise.resolve({ download, stale: false, failed: false })
+      const stable = cached('stable', FRESH_FOR), beta = cached('beta', FRESH_FOR)
+      if (!refresh && stable.valid && beta.valid) return Promise.resolve({
+        download: stable.download, beta: beta.download,
+        stableFailed: false, betaFailed: false, stale: false, failed: false,
+      })
       if (!pending) pending = request().finally(() => { pending = null })
       return pending
     },

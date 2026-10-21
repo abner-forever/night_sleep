@@ -5,7 +5,7 @@
 - 官网代码从 `../sass-web` 整合到 `website/`，保留原有渐变、柔光、卡片与动效，替换为「夜深」实际功能和截图。
 - 网站只提供中文介绍、真实 Android 截图、功能边界、隐私说明和 Android 下载页。
 - Flutter 与官网共用已公开的 `abner-forever/night_sleep` 仓库；官网源码位于 `website/`，仅部署 `website/dist/` 到 GitHub Pages，不另建仓库。
-- Android 首版由 Actions 构建并核验，再作为标明测试签名的 GitHub Pre-release 发布；不自动把每次 CI 产物发布为 Release。
+- Android 首版作为标明测试签名的 GitHub Pre-release 发布；目前采用下述 `beta` / `main` 自动发布规则。
 - 用户随后明确要求按免费、公开项目继续发布。该指令是本次发布决策，不代表已取得第三方素材授权证明；原有素材来源与授权说明继续保留。
 - iOS、macOS、Flutter Web 构建本次不发布。
 
@@ -31,7 +31,7 @@
 - 确认或替换五条助眠录音的分发授权，补齐模型转换件许可证说明。
 - 正式包名仍待确定；`0.49.0-beta.2+3` 起已配置长期签名，私钥通过 GitHub Secrets 加密保存，具体保管与恢复见 `android-signing.md`。
 - 真机验证首次安装、空数据启动、录音权限、锁屏录音、通知、导出和升级覆盖。
-- 官网直接读取公开 GitHub Releases，发布新 APK 后无需修改官网文件或重新部署。使用 Release 列表包含预发布；版本、附件大小、直链及 SHA-256 来自 GitHub。未上传完成或缺少校验值的附件不开放下载。
+- 官网直接读取公开 GitHub Releases，发布新 APK 后无需修改官网文件或重新部署。主入口使用 `/releases/latest` 获取正式版，旁边的 Beta 使用 Release 列表筛选预发布；版本、附件大小、直链及 SHA-256 来自 GitHub。未上传完成或缺少校验值的附件不开放下载，没有正式版时不会用 Beta 替代。
 
 ## 应用内更新
 
@@ -43,12 +43,17 @@
 - 验收包含版本筛选、元数据/下载完整性、取消重试、授权返回与页面状态测试；Android 真机下载、授权、安装覆盖及设备厂商差异仍需实际安装后验证。
 - 隐私协议在官网 `/#/privacy` 维护，App 内使用系统 WebView 加载同一链接，支持随 App 配色、加载进度、失败／超时重试和返回。当前隐私联系邮箱为 `1661287843@qq.com`；协议依据本地记录、录音、洞察、更新、权限和导出行为说明，不代表已完成正式上架的全部隐私授权流程。官网部署后公开链接才生效。
 
-## Beta 版本与后续自动发布
+## 自动发布规则（2026-10-21）
 
-- `pubspec.yaml` 是唯一构建版本来源：`0.49.0-beta.1+2` 对应 Android `versionName=0.49.0-beta.1`、`versionCode=2`；后续如 `0.49.0-beta.2+3`。`versionCode` 必须大于所有已分发版本，包括正式版与其他渠道，不随版本名重置。
-- APK 按 `night-sleep-<versionName>-android.apk` 命名，Actions Artifact 名额外包含构建号。CI 核验 APK 实际版本与源码一致、非 debuggable、签名有效，生成 SHA256SUMS、package-info、signature、release.json 和说明。
-- 主分支 push 与 workflow_dispatch 仅构建。显式推送 `v<versionName>` 标签触发发布：全部检查通过、标签与包版本一致后，先建草稿并上传附件，再公开 Release。Beta / RC 标记为 Pre-release，禁止覆盖已存在的版本。
-- 官网采用五分钟成功缓存；接口失败可回退一天内已验证缓存并提示，提供重试和官方 Release 页面入口。无缓存不伪造下载链接；不在前端配置 GitHub Token。
+- 日常开发使用功能分支或 `beta`。应用相关变更合并／推送到 `beta` 后，Actions 自动检查、测试、构建并公开 Beta，标记为 Pre-release，不设为 Latest。
+- 只有用户明确要求「发布正式版」时，才将通过验证的 `beta` 合并到 `main` 并推送，自动生成正式版本并设为 Latest。使用保留提交历史的合并；自动化会检查正式发布包含已有 Beta 源码。发布后将 `main` 同步回 `beta`，再继续开发。不要为日常维护将 Beta 自动合并到主分支。
+- 无需手改版本、Beta 序号、构建号或推送版本标签。`tool/plan_android_release.py` 从公开发布、草稿、标签和 Conventional Commits 分配版本；`pubspec.yaml` 仅提供最低目标版本与构建号。分配结果只写入 CI 工作目录，不回写 Git。
+- 首次沿用现有版本起点，例如 `0.49.0-beta.2+3` 后为 `0.49.0-beta.3+4`，晋升为正式版时去掉 Beta 后缀。已有正式版后，从上次正式版到当前提交的 `fix:` 对应补丁版本、`feat:` 对应次版本、`!` 或 `BREAKING CHANGE:` 对应主版本（1.0 前对应次版本）；其他应用变更默认按补丁版本。Beta 在目标版本内自动累加序号。
+- `versionCode` 在 Beta 和正式版间全局递增，不随版本名重置。两个分支共用串行发布队列，开始分配前跳过已经落后于所在分支的提交；发布流程不会被新提交中断。应用无变更、只有官网／文档变更时不发布 APK。
+- APK 按 `night-sleep-<versionName>-android.apk` 命名，Actions Artifact 名额外包含构建号。CI 核验 APK 实际版本与分配版本一致、非 debuggable、长期签名有效，生成 SHA256SUMS、package-info、signature、release.json 和说明；元数据记录确切源码提交与发布分支。
+- 检查通过后，先创建针对确切源码提交的草稿并上传附件，再公开 Release。已公开版本禁止覆盖；重复运行同一提交会跳过已发布版本，未完成的同源草稿允许续传；已被更高构建号超越的草稿停止发布。失败后可在对应分支手动运行 Android 工作流，无需补打标签。
+- 官网独立于 App 发版：`beta` 或 `main` 的官网变更触发部署，始终构建 `beta` 的官网源码，避免较旧主分支覆盖官网；GitHub Pages 环境需允许这两个分支部署。主下载入口和二维码仅对应最新正式包，Beta 为旁边的独立入口。
+- 官网对两个渠道分别维护五分钟成功缓存；接口失败可回退一天内已验证缓存并提示，提供重试和官方 Release 页面入口。无缓存不伪造下载链接；不在前端配置 GitHub Token。
 - 占位包名仍为 `com.example.night_sleep`。首个长期签名版本为 `0.49.0-beta.2+3`，旧测试签名包需先导出记录再卸载迁移；真机升级验证仍需单独完成。
 - Beta 构建已在独立分支 `codex/android-beta-0.49.0-1` 完成（Actions run `39383819162`）：静态检查、应用测试、APK 构建及签名校验通过。下载后验证 `versionName=0.49.0-beta.1`、`versionCode=2`、95,617,461 字节，SHA-256 为 `ca77e22c2f06166dc113bc7999a020d77e1c22d7d1902551b5e0881d096ec4f4`。
 - 首次本地验收阶段交付路径：`build/beta/0.49.0-beta.1/night-sleep-0.49.0-beta.1-android.apk`（构建产物不入库）。该阶段未创建公开 Beta Release、未部署官网；公开发布改用下述长期签名 Beta 2。
