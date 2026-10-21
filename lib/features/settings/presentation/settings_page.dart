@@ -175,7 +175,7 @@ class SettingsPage extends ConsumerWidget {
                   ListIconBadge(
                     background: tokens.accentSoft,
                     size: 36,
-                    child: AppIcons.moon(
+                    child: AppIcons.about(
                         size: 18, color: tokens.accent, strokeWidth: 1.7),
                   ),
                   const SizedBox(width: 12),

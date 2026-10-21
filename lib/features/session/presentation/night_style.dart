@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 
 /// 会话页（「正在睡眠」）自己的材质与调色板。
@@ -205,6 +207,26 @@ abstract final class NightStyle {
   /// （`flex-direction: column`，图标在上、标签在下，间距 3）。
   static bool narrowDeck(BuildContext context) =>
       MediaQuery.sizeOf(context).width <= 390;
+
+  /// 会话控制面板的 `backdrop-filter: blur(24px) saturate(130%)`。
+  ///
+  /// 入睡前与进行中两态共用同一张 deck；把滤镜放在这里，避免两边各写一份
+  /// 色彩矩阵后悄悄漂开。
+  static ui.ImageFilter deckFilter() {
+    const saturation = 1.3;
+    const lr = 0.2126 * (1 - saturation);
+    const lg = 0.7152 * (1 - saturation);
+    const lb = 0.0722 * (1 - saturation);
+    return ui.ImageFilter.compose(
+      outer: const ui.ColorFilter.matrix(<double>[
+        lr + saturation, lg, lb, 0, 0, //
+        lr, lg + saturation, lb, 0, 0, //
+        lr, lg, lb + saturation, 0, 0, //
+        0, 0, 0, 1, 0, //
+      ]),
+      inner: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+    );
+  }
 
   /// `@media (min-height: 860px)`：入睡前态 hero 从 230 撑到 **285**。
   ///

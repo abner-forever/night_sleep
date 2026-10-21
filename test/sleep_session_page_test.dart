@@ -26,6 +26,7 @@ import 'package:night_sleep/features/session/presentation/widgets/hold_to_finish
 import 'package:night_sleep/features/session/presentation/widgets/night_backdrop.dart';
 import 'package:night_sleep/features/session/presentation/widgets/night_scene_picker.dart';
 import 'package:night_sleep/features/session/presentation/widgets/session_events_card.dart';
+import 'package:night_sleep/features/session/presentation/widgets/sleep_moon_mark.dart';
 import 'package:night_sleep/features/sleep/data/clip_analyzer.dart';
 import 'package:night_sleep/features/sleep/data/night_recorder.dart';
 import 'package:night_sleep/features/sleep/data/noise_player.dart';
@@ -400,6 +401,41 @@ void main() {
     expect(find.textContaining('23:14 开始'), findsOneWidget);
     // 闹钟那一行的标题带时刻。
     expect(find.text('07:00 起床闹钟'), findsOneWidget);
+  });
+
+  testWidgets('进行中页面沿用月亮 hero 与底部统一控制面板', (tester) async {
+    final start = DateTime(2026, 8, 30, 23, 14);
+    await pumpSession(
+      tester,
+      session: sessionAt(start, alarmEnabled: true),
+      now: start.add(const Duration(hours: 1)),
+    );
+
+    final moon = find.byType(SleepMoonOrbit);
+    final deck = find.byKey(const ValueKey('sleep-live-deck'));
+    expect(moon, findsOneWidget);
+    expect(deck, findsOneWidget);
+    expect(
+      find.descendant(of: deck, matching: find.byType(NightScenePicker)),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: deck, matching: find.byType(SessionEventsCard)),
+      findsOneWidget,
+    );
+
+    // 参考入睡前页：月亮 hero 在中间，场景与事件统一收在它下方的一张 deck 里。
+    expect(tester.getCenter(moon).dy, lessThan(tester.getRect(deck).top));
+    expect(
+      tester.getRect(deck).bottom,
+      lessThanOrEqualTo(tester.getRect(find.byType(HoldToFinishButton)).top),
+    );
+    expect(
+      tester.getRect(find.byType(HoldToFinishButton)).top -
+          tester.getRect(deck).bottom,
+      greaterThanOrEqualTo(12),
+      reason: '长按按钮与上方 deck 之间要留出呼吸空间',
+    );
   });
 
   testWidgets('常暗的会话页自己那一层系统栏样式压过应用那一层', (tester) async {

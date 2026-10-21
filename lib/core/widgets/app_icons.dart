@@ -46,6 +46,8 @@ class AppIcons {
   static const _clock =
       '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>';
   static const _check = '<polyline points="20 6 9 17 4 12"/>';
+  static const _about = '<circle cx="12" cy="12" r="9"/>'
+      '<path d="M12 11v5.5"/><path d="M12 8h.01"/>';
   static const _sleep =
       '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/><path d="M9 9h3l-3 3h3"/><path d="M14 7h2l-2 2h2"/>';
   static const _volume =
@@ -237,6 +239,10 @@ class AppIcons {
   static Widget check(
           {double size = 24, Color? color, double strokeWidth = 1.6}) =>
       glyph(_check, size: size, color: color, strokeWidth: strokeWidth);
+
+  static Widget about(
+          {double size = 24, Color? color, double strokeWidth = 1.6}) =>
+      glyph(_about, size: size, color: color, strokeWidth: strokeWidth);
 
   static Widget sleep(
           {double size = 24, Color? color, double strokeWidth = 1.6}) =>

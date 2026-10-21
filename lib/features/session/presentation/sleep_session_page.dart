@@ -535,28 +535,41 @@ class _SessionBody extends StatelessWidget {
         Expanded(
           child: LayoutBuilder(
             builder: (context, upper) {
-              // 量的是扣掉安全区和结束按钮后的高度；手机上先收紧装饰与留白，
-              // 小屏和大字体仍可滚动查看完整事件，按钮始终留在视口内。
+              // 与入睡前页使用同一套纵向节奏：标题 / 月亮 hero / 底部 deck。
+              // hero 吃掉 deck 之外的余量，deck 贴着底部按钮，避免中间空一截。
               final compact = upper.maxHeight < 760;
+              final heroSlot =
+                  (upper.maxHeight - _kHeaderHeight - _kDeckReserve)
+                      .clamp(180.0, compact ? 220.0 : 260.0);
               return SingleChildScrollView(
                 controller: scrollController,
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
-                child: Column(
-                  children: [
-                    SessionHeader.live(
-                      onCollapse: onCollapse,
-                      onDragUpdate: onHeaderDragUpdate,
-                      onDragEnd: onHeaderDragEnd,
-                      onDragCancel: onHeaderDragCancel,
-                    ),
-                    const SizedBox(height: 4),
-                    _TimerBlock(session: session, now: now, compact: compact),
-                    SizedBox(height: compact ? 8 : 12),
-                    NightScenePicker(scene: scene, onChanged: onSceneChanged),
-                    SizedBox(height: compact ? 8 : 12),
-                    SessionEventsCard(
-                        session: session, now: now, compact: compact),
-                  ],
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: upper.maxHeight),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      SessionHeader.live(
+                        onCollapse: onCollapse,
+                        onDragUpdate: onHeaderDragUpdate,
+                        onDragEnd: onHeaderDragEnd,
+                        onDragCancel: onHeaderDragCancel,
+                      ),
+                      _TimerBlock(
+                        session: session,
+                        now: now,
+                        compact: compact,
+                        slot: heroSlot,
+                      ),
+                      _LiveDeck(
+                        scene: scene,
+                        onChanged: onSceneChanged,
+                        session: session,
+                        now: now,
+                        compact: compact,
+                      ),
+                    ],
+                  ),
                 ),
               );
             },
@@ -569,19 +582,30 @@ class _SessionBody extends StatelessWidget {
       ],
     );
   }
+
+  static const _kHeaderHeight = 40.0;
+
+  /// 为 deck 预留的高度。实测手机宽度下，带白噪音的事件行约为 390；
+  /// 高估只会把余量交给 hero 上下的空气，低估才会把 deck 推到按钮下面。
+  static const _kDeckReserve = 400.0;
 }
 
-/// 中央：月亮 + 当前时刻 + `HH:MM:SS` + 「已进入睡眠模式」。
+/// 中央 hero：月亮、当前时刻、已睡时长与今晚的起床时刻。
+///
+/// 形态沿用入睡前页的大月亮 + 三行文案，而不是把读数横置成仪表盘；这一屏整夜
+/// 都亮着，视线应当落在同一个安静中心，场景与事件则统一收进下方 deck。
 class _TimerBlock extends StatelessWidget {
   const _TimerBlock({
     required this.session,
     required this.now,
     required this.compact,
+    required this.slot,
   });
 
   final SleepSession session;
   final DateTime now;
   final bool compact;
+  final double slot;
 
   @override
   Widget build(BuildContext context) {
@@ -589,49 +613,116 @@ class _TimerBlock extends StatelessWidget {
     final hhmm = '${clock.hour.toString().padLeft(2, '0')}:'
         '${clock.minute.toString().padLeft(2, '0')}';
     final elapsed = session.elapsedClockAt(now);
-    final clockLabel = Text(
-      hhmm,
-      style: const TextStyle(
-        fontSize: 13,
-        letterSpacing: 1.6,
-        color: NightStyle.clockText,
+    final wakeClock = minutesToClock(session.wakeMinutes);
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(minHeight: slot),
+      child: Padding(
+        padding: EdgeInsets.symmetric(vertical: compact ? 4 : 10),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SleepMoonOrbit(size: compact ? 84 : 102, live: true),
+            SizedBox(height: compact ? 9 : 14),
+            Text(
+              hhmm,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.8,
+                color: NightStyle.greetingInk,
+              ),
+            ),
+            const SizedBox(height: 4),
+            SizedBox(
+              width: double.infinity,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  elapsed,
+                  maxLines: 1,
+                  style: AppTheme.num(
+                    context,
+                    size: compact ? 42 : 46,
+                    weight: FontWeight.w500,
+                    letterSpacing: 1.1,
+                    color: NightStyle.textPrimary,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '已进入睡眠模式 · 预计 $wakeClock 起床',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 12,
+                color: NightStyle.textFaint,
+              ),
+            ),
+          ],
+        ),
       ),
     );
-    const modeLabel = Text(
-      '已进入睡眠模式',
-      style: TextStyle(fontSize: 12, color: NightStyle.textFaint),
-    );
+  }
+}
 
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: compact ? 8 : 24),
-      child: Column(
-        children: [
-          SleepMoonOrbit(size: compact ? 80 : 132, live: true),
-          SizedBox(height: compact ? 10 : 24),
-          if (!compact) ...[clockLabel, const SizedBox(height: 7)],
-          Text(
-            elapsed,
-            style: AppTheme.num(
-              context,
-              size: 46,
-              weight: FontWeight.w500,
-              letterSpacing: 1.1,
-              color: NightStyle.textPrimary,
-            ),
+/// 进行中态唯一的主面板：场景选择与睡眠事件共用一张 deck。
+class _LiveDeck extends StatelessWidget {
+  const _LiveDeck({
+    required this.scene,
+    required this.onChanged,
+    required this.session,
+    required this.now,
+    required this.compact,
+  });
+
+  final NightScene scene;
+  final ValueChanged<NightScene> onChanged;
+  final SleepSession session;
+  final DateTime now;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const ValueKey('sleep-live-deck'),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment(-0.7, -1),
+          end: Alignment(0.7, 1),
+          colors: [NightStyle.deckFillTop, NightStyle.deckFillBottom],
+        ),
+        borderRadius: BorderRadius.circular(NightStyle.deckRadius),
+        border: Border.all(color: NightStyle.deckStroke),
+        boxShadow: const [
+          BoxShadow(
+            color: NightStyle.deckShadow,
+            offset: Offset(0, 20),
+            blurRadius: 50,
           ),
-          SizedBox(height: compact ? 4 : 10),
-          if (compact)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                clockLabel,
-                const SizedBox(width: 12),
-                modeLabel,
-              ],
-            )
-          else
-            modeLabel,
         ],
+      ),
+      child: BackdropFilter(
+        filter: NightStyle.deckFilter(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            NightScenePicker(
+              scene: scene,
+              onChanged: onChanged,
+              compact: false,
+            ),
+            const Divider(height: 1, color: NightStyle.controlRowDivider),
+            SessionEventsCard(
+              session: session,
+              now: now,
+              compact: compact,
+              embedded: true,
+            ),
+          ],
+        ),
       ),
     );
   }

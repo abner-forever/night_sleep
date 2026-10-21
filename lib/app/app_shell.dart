@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/platform/haptics.dart';
 import '../core/theme/app_tokens.dart';
 import '../core/widgets/app_icons.dart';
+import '../core/widgets/app_logo.dart';
 import '../core/widgets/app_sheet.dart' show openSheetCount;
 import '../core/widgets/bottom_fade.dart';
 import '../core/widgets/liquid_glass.dart';
@@ -480,17 +481,7 @@ class _Sidebar extends StatelessWidget {
                 padding: const EdgeInsets.only(left: 8, right: 8, bottom: 32),
                 child: Row(
                   children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: tokens.accentSoft,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      alignment: Alignment.center,
-                      child: AppIcons.moon(
-                          size: 20, color: tokens.accent, strokeWidth: 1.6),
-                    ),
+                    const AppLogo(size: 40, cornerRadius: 12),
                     const SizedBox(width: 12),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,

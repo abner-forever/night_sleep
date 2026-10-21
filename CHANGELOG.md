@@ -19,6 +19,14 @@
 应用平台收敛到 Android / iOS 手机和平板，移除 macOS 与 Flutter Web 工程，
 同步清理相关平台配置、图标生成、测试与运行说明；保留独立官网和宽屏布局。
 
+会话进行中页改版：沿用入睡前页的月亮 hero 与底部 deck 节奏，把场景选择与睡眠事件收进
+同一张玻璃面板，hero 吃掉 deck 之外的余量，中间不再空一截。
+
+新增 `AppLogo`（`assets/branding/app-icon.svg`），侧栏与关于页改用真正的应用图标；
+设置页顶部的「关于」行换成信息图标。会话面板的模糊 + 饱和度滤镜下沉到
+`NightStyle.deckFilter()`，入睡前与进行中两态共用一份，避免两边各写一份后悄悄漂开。
+入睡前页「开始睡眠」与下方提示文案之间补了 8 px 间距。
+
 ## 0.49.1（2026-10-19）
 
 修复 iOS 启动时 `tflite_flutter` 与 Flutter 3.47 Swift Package Manager 不兼容的问题：在

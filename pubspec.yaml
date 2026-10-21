@@ -54,6 +54,7 @@ flutter:
     enable-swift-package-manager: false
   uses-material-design: true
   assets:
+    - assets/branding/
     # 助眠音效的五条循环素材。由 tool/generate_noise_assets.dart 生成，
     # 源素材来自爱给网（aigei.com），**可商用授权尚未落实**——发布前必须确认或更换，
     # 见 docs/superpowers/specs/2026-10-03-noise-real-recordings-design.md §3.1。

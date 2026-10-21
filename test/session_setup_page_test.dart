@@ -471,6 +471,12 @@ void main() {
           0,
           reason: '这一档机型上整页应当一屏放下、一点都不用滚',
         );
+        expect(
+          tester.getRect(find.text('屏幕将保持暗色，轻触夜景即可切换氛围')).top -
+              buttonRect(tester).bottom,
+          greaterThanOrEqualTo(8),
+          reason: '开始睡眠按钮与下方提示文案之间要留出间距',
+        );
       });
     }
 
