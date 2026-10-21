@@ -10,7 +10,7 @@ import { AppleLogo, ArrowRight, Smartphone } from '../components/ui/Icons.jsx'
 import './Download.css'
 export default function Download() {
   const { t, tList } = useI18n()
-  const [state, setState] = useState({ loading: true, download: null })
+  const [state, setState] = useState({ loading: true, download: null, beta: null })
   const [copied, setCopied] = useState(false)
   const [retry, setRetry] = useState(0)
   useEffect(() => {
@@ -33,13 +33,13 @@ export default function Download() {
             </h1>
             <p className="dl__subtitle">{t('download.subtitle')}</p>
           </Reveal>
-          <Reveal className="dl-card android-download">
+          <Reveal className="dl-card android-download" id="beta-download">
             <header className="dl-card__head">
               <span className="dl-card__icon">
                 <Smartphone size={24} />
               </span>
               <div>
-                <h2 className="dl-card__name">夜深 Android</h2>
+                <h2 className="dl-card__name">夜深 Android 正式版</h2>
                 <p className="dl-card__store">
                   Android 7.0+ · 无需账号 · APK 安装
                 </p>
@@ -49,32 +49,50 @@ export default function Download() {
               <div className="dl-card__actions">
                 <span className="release-badge">
                   {state.download
-                    ? `Android ${state.download.channel === 'stable' ? '正式版本' : 'Beta 版本'} · v${state.download.version}`
-                    : 'Beta 版本准备中'}
+                    ? `正式版本 · v${state.download.version}`
+                    : state.loading ? '正在检查正式版' : state.stableFailed ? '暂未获取正式版' : '正式版尚未发布'}
                 </span>
                 <h3>
                   {state.download
                     ? '从第一晚，开始记录。'
-                    : 'Android 版本准备中'}
+                    : state.loading ? '正在获取版本信息' : state.stableFailed ? '暂时无法检查版本' : '正式版准备中'}
                 </h3>
                 <p>
                   {state.download
                     ? `${(state.download.size / 1024 / 1024).toFixed(1)} MB · 直接下载 APK`
-                    : '安装包正在构建与验证。公开下载开放后，这里会提供 APK 和对应二维码。'}
+                    : state.stableFailed
+                      ? '版本服务暂时不可用，请稍后重试，或前往 GitHub 查看发布版本。'
+                      : '正式发布后，这里会提供最新正式版安装包，也可先体验 Beta 测试版。'}
                 </p>
-                {state.download ? (
-                  <a
-                    className="btn btn--primary btn--lg"
-                    href={state.download.url}
-                  >
-                    下载 APK <ArrowRight size={18} />
-                  </a>
-                ) : (
-                  <button disabled className="btn btn--primary btn--lg">
-                    {state.loading ? '正在检查版本…' : state.failed ? '暂时无法获取版本' : '尚未开放公开下载'}
-                  </button>
-                )}
-                {state.failed && (
+                <div className="download-actions">
+                  {state.download ? (
+                    <a
+                      className="btn btn--primary btn--lg"
+                      href={state.download.url}
+                    >
+                      下载正式版 <ArrowRight size={18} />
+                    </a>
+                  ) : (
+                    <button disabled className="btn btn--primary btn--lg">
+                      {state.loading ? '正在检查版本…' : state.stableFailed ? '暂时无法获取正式版' : '正式版尚未发布'}
+                    </button>
+                  )}
+                  <span className="beta-download">
+                    {state.beta ? (
+                      <a className="beta-download__link" href={state.beta.url} title={`v${state.beta.version}${state.betaFailed ? ' · 暂时无法检查更新' : ''}`}>
+                        下载 Beta <span className="beta-download__version">v{state.beta.version}</span> <ArrowRight size={14} />
+                      </a>
+                    ) : state.betaFailed ? (
+                      <button className="beta-download__link" type="button" onClick={() => {
+                        setState((current) => ({ ...current, loading: true, betaFailed: false }))
+                        setRetry((value) => value + 1)
+                      }}>重试获取 Beta</button>
+                    ) : (
+                      <span role="status">{state.loading ? '正在获取 Beta…' : 'Beta 尚未发布'}</span>
+                    )}
+                  </span>
+                </div>
+                {state.stableFailed && (
                   <p className="dl-card__req" role="status">
                     {state.download ? '暂时无法检查更新，当前显示最近获取的版本。' : '请稍后重试，或前往 GitHub 查看发布版本。'}
                     {' '}<a href={RELEASES_PAGE} target="_blank" rel="noopener noreferrer">GitHub Releases ↗</a>

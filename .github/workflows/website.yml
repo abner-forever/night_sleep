@@ -2,7 +2,7 @@ name: 官网 · GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [beta, main]
     paths: ['website/**', '.github/workflows/website.yml']
   workflow_dispatch:
 
@@ -11,13 +11,16 @@ permissions:
 
 concurrency:
   group: github-pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: beta
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'

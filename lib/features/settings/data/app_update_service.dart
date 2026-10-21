@@ -35,6 +35,8 @@ class GithubAppUpdateService implements AppUpdateService {
     '/repos/$repository/releases',
     {'per_page': '100'},
   );
+  static final latestStableUri =
+      Uri.https('api.github.com', '/repos/$repository/releases/latest');
   final http.Client Function() _clientFactory;
   final Directory? directory;
   http.Client? _downloadClient;
@@ -66,12 +68,14 @@ class GithubAppUpdateService implements AppUpdateService {
     return null;
   }
 
-  Future<dynamic> _json(http.Client client, Uri url) async {
+  Future<dynamic> _json(http.Client client, Uri url,
+      {bool allowNotFound = false}) async {
     final response = await client.get(url, headers: {
       'Accept': url.host == 'api.github.com'
           ? 'application/vnd.github+json'
           : 'application/json',
     }).timeout(const Duration(seconds: 15));
+    if (allowNotFound && response.statusCode == 404) return null;
     if (response.statusCode != 200) {
       throw const AppUpdateException('暂时无法获取版本信息，请稍后重试。');
     }
@@ -87,7 +91,14 @@ class GithubAppUpdateService implements AppUpdateService {
     }
     final client = _clientFactory();
     try {
-      final response = await _json(client, releasesUri);
+      final payload = await _json(
+          client, current.isPrerelease ? releasesUri : latestStableUri,
+          allowNotFound: !current.isPrerelease);
+      final response = current.isPrerelease
+          ? payload
+          : payload == null
+              ? []
+              : [payload];
       if (response is! List) {
         throw const AppUpdateException('版本信息不完整，请稍后重试。');
       }
@@ -139,7 +150,11 @@ class GithubAppUpdateService implements AppUpdateService {
         url: _assetUrl(selected, filename)!,
         sha256: metadata['sha256'],
         size: metadata['size'],
-        notes: selected['body'] is String ? selected['body'] : '',
+        notes: selected['body'] is String
+            ? (selected['body'] as String)
+                .replaceAll(RegExp(r'<!-- night-sleep-release .*? -->'), '')
+                .trim()
+            : '',
       );
     } finally {
       client.close();

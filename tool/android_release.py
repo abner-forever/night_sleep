@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import tempfile
 
 
 def read_version(path):
@@ -27,6 +28,19 @@ def read_version(path):
         'filename': f'night-sleep-{version}-android.apk',
         'artifact_name': f'night-sleep-{version}-build.{build}-android',
     }
+
+
+def write_version(path, version, build_number):
+    target = Path(path)
+    original = target.read_text()
+    read_version(target)
+    candidate = re.sub(r'^version:.*$', f'version: {version}+{build_number}', original, count=1, flags=re.MULTILINE)
+    with tempfile.TemporaryDirectory() as directory:
+        validation = Path(directory) / 'pubspec.yaml'
+        validation.write_text(candidate)
+        metadata = read_version(validation)
+    target.write_text(candidate)
+    return metadata
 
 
 def verify_badging(badging, metadata):
@@ -73,6 +87,7 @@ def package(args, metadata):
     (output / 'release.json').write_text(json.dumps({
         **metadata, 'sha256': digest, 'size': len(payload),
         'signing': 'release', 'certificate_sha256': certificate_sha256, 'demo_data': False,
+        'source_sha': args.source_sha, 'branch': args.branch,
     }, ensure_ascii=False, indent=2) + '\n')
     (output / 'README.txt').write_text(
         f"夜深 Android {metadata['version']}（构建 {metadata['build_number']}）\n"
@@ -97,6 +112,8 @@ def main():
     artifact.add_argument('--apksigner', required=True)
     artifact.add_argument('--output', default='artifacts/android')
     artifact.add_argument('--certificate-sha256', default='android/release-certificate.sha256')
+    artifact.add_argument('--source-sha')
+    artifact.add_argument('--branch', choices=['beta', 'main'])
     args = parser.parse_args()
     metadata = read_version(args.pubspec)
     if args.command == 'version':

@@ -10,7 +10,7 @@ export function StoreButton({ size = 'md', className = '' }) {
     >
       <Smartphone size={size === 'lg' ? 26 : 22} />
       <span className="store-btn__text">
-        <small>Beta 版本</small>
+        <small>正式版下载</small>
         <strong>Android APK</strong>
       </span>
     </Link>
@@ -36,6 +36,7 @@ export default function StoreButtons({ size = 'md', className = '' }) {
   return (
     <div className={`store-buttons ${className}`}>
       <StoreButton size={size} />
+      <Link className="btn btn--outline" to="/download?section=beta-download">Beta 测试版</Link>
       <IosStoreButton size={size} />
       <Link className="btn btn--outline" to="/?section=devices">
         看看应用 <ArrowRight size={17} />

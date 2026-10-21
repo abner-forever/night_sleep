@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { createDownloadClient, selectLatestDownload, RELEASES_URL } from '../src/config/download.mjs'
+import { createDownloadClient, selectLatestDownload, RELEASES_URL, STABLE_RELEASE_URL } from '../src/config/download.mjs'
 
 function release(version = '0.49.0-beta.1', overrides = {}) {
   const tag = `v${version}`
@@ -18,7 +18,7 @@ const response = (releases) => ({ ok: true, json: async () => releases })
 
 test('识别真实 Beta Release 的版本、链接、体积和 GitHub SHA-256', () => {
   const item = release()
-  const download = selectLatestDownload([item])
+  const download = selectLatestDownload([item], 'beta')
   assert.equal(download.url, item.assets[0].browser_download_url)
   assert.equal(download.version, '0.49.0-beta.1')
   assert.equal(download.channel, 'beta')
@@ -36,43 +36,48 @@ test('按版本排序，包含 prerelease，忽略草稿、无 APK、未上传�
     invalid({ browser_download_url: `${release('9.0.0').assets[0].browser_download_url}?redirect=1` }),
   ]
   assert.equal(selectLatestDownload(bad), null)
-  assert.equal(selectLatestDownload([...bad, release(), release('0.49.0-beta.10'), release('0.49.0-beta.2')]).version, '0.49.0-beta.10')
+  assert.equal(selectLatestDownload([...bad, release(), release('0.49.0-beta.10'), release('0.49.0-beta.2')], 'beta').version, '0.49.0-beta.10')
   assert.equal(selectLatestDownload([release('0.49.0-beta.10'), release('0.49.0')]).channel, 'stable')
-  assert.equal(selectLatestDownload([release('0.49.0'), release('0.50.0-beta.1')]).version, '0.50.0-beta.1')
+  assert.equal(selectLatestDownload([release('0.49.0'), release('0.50.0-beta.1')]).version, '0.49.0')
+  assert.equal(selectLatestDownload([release()]), null)
+  assert.equal(selectLatestDownload([release('0.49.0', { prerelease: true })]), null)
 })
 
 test('兼容已公开的首个 preview 包，但 Beta 版本必须使用版本化文件名', () => {
   const preview = release('0.49.0-preview.1')
   preview.assets[0].name = 'night-sleep-preview.apk'
   preview.assets[0].browser_download_url = 'https://github.com/abner-forever/night_sleep/releases/download/v0.49.0-preview.1/night-sleep-preview.apk'
-  assert.equal(selectLatestDownload([preview]).version, '0.49.0-preview.1')
-  assert.equal(selectLatestDownload([preview, release()]).version, '0.49.0-beta.1')
-  assert.equal(selectLatestDownload([release('0.49.0-beta.1', { assets: preview.assets })]), null)
+  assert.equal(selectLatestDownload([preview], 'beta').version, '0.49.0-preview.1')
+  assert.equal(selectLatestDownload([preview, release()], 'beta').version, '0.49.0-beta.1')
+  assert.equal(selectLatestDownload([release('0.49.0-beta.1', { assets: preview.assets })], 'beta'), null)
 })
 
 test('并发合并、五分钟缓存，发布新版本后重新请求即可更新，无需改官网', async () => {
   let time = 1, calls = 0, latest = release()
   const client = createDownloadClient({ now: () => time, fetcher: async (url) => {
-    assert.equal(url, RELEASES_URL)
     calls++
+    if (url === STABLE_RELEASE_URL) return response(release('0.48.0'))
+    assert.equal(url, RELEASES_URL)
     return response([latest])
   } })
   const [first, same] = await Promise.all([client.load(), client.load()])
   assert.deepEqual(first, same)
-  assert.equal(calls, 1)
-  latest = release('0.49.0-beta.2')
-  assert.equal((await client.load()).download.version, '0.49.0-beta.1')
-  time += 300001
-  assert.equal((await client.load()).download.version, '0.49.0-beta.2')
   assert.equal(calls, 2)
+  latest = release('0.49.0-beta.2')
+  assert.equal((await client.load()).beta.version, '0.49.0-beta.1')
+  time += 300001
+  assert.equal((await client.load()).beta.version, '0.49.0-beta.2')
+  assert.equal((await client.load()).download.version, '0.48.0')
+  assert.equal(calls, 4)
   await client.load({ refresh: true })
-  assert.equal(calls, 3)
+  assert.equal(calls, 6)
 })
 
 test('限流或断网时提示失败，只回退一天内缓存，空发布列表会清除旧版本', async () => {
   let time = 1, mode = 'ok'
-  const client = createDownloadClient({ now: () => time, fetcher: async () => {
+  const client = createDownloadClient({ now: () => time, fetcher: async (url) => {
     if (mode === 'fail') return { ok: false, status: 403 }
+    if (url === STABLE_RELEASE_URL) return mode === 'empty' ? { ok: false, status: 404 } : response(release('0.48.0'))
     return response(mode === 'empty' ? [] : [release()])
   } })
   await client.load()
@@ -95,7 +100,44 @@ test('损坏或禁用的本地缓存不影响真实接口加载', async () => {
     { getItem: () => '{', setItem: () => { throw Error('disabled') } },
     { getItem: () => JSON.stringify({ time: 1, releases: {} }) },
   ]) {
-    const client = createDownloadClient({ storage, fetcher: async () => response([release()]) })
-    assert.equal((await client.load()).download.version, '0.49.0-beta.1')
+    const client = createDownloadClient({ storage, fetcher: async (url) => response(url === STABLE_RELEASE_URL ? release('0.48.0') : [release()]) })
+    assert.equal((await client.load()).download.version, '0.48.0')
+    assert.equal((await client.load()).beta.version, '0.49.0-beta.1')
   }
+})
+
+test('正式版从 latest 独立获取，避免连续 Beta 发布把正式版挤出列表', async () => {
+  const releases = Array.from({ length: 30 }, (_, index) => release(`0.50.0-beta.${index + 1}`))
+  const client = createDownloadClient({ fetcher: async (url) => response(url === STABLE_RELEASE_URL ? release('0.49.0') : releases) })
+  const result = await client.load()
+  assert.equal(result.download.version, '0.49.0')
+  assert.equal(result.beta.version, '0.50.0-beta.30')
+})
+
+test('没有正式版时保持空状态，Beta 仅出现在独立入口', async () => {
+  const client = createDownloadClient({ fetcher: async (url) => url === STABLE_RELEASE_URL
+    ? { ok: false, status: 404 } : response([release()]) })
+  const result = await client.load()
+  assert.equal(result.download, null)
+  assert.equal(result.beta.version, '0.49.0-beta.1')
+  assert.equal(result.failed, false)
+})
+
+test('任一渠道网络失败不影响另一渠道，失败缓存不会被另一渠道续期', async () => {
+  let time = 1, failStable = false
+  const client = createDownloadClient({ now: () => time, fetcher: async (url) => {
+    if (url === STABLE_RELEASE_URL) return failStable ? { ok: false, status: 503 } : response(release('0.49.0'))
+    return response([release('0.50.0-beta.1')])
+  } })
+  await client.load()
+  failStable = true
+  time += 300001
+  let result = await client.load()
+  assert.equal(result.download.version, '0.49.0')
+  assert.equal(result.stableFailed, true)
+  assert.equal(result.betaFailed, false)
+  time += 86400001
+  result = await client.load()
+  assert.equal(result.download, null)
+  assert.equal(result.beta.version, '0.50.0-beta.1')
 })

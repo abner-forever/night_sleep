@@ -165,12 +165,12 @@ export FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
 - 修改 `website/` 并推送到 `main`，官网工作流会检查并部署。
 - Android 工作流使用 Flutter 3.47.5 / Java 17，生成 Drift 代码、执行检查与测试，再构建关闭演示数据的 release APK。
 - 在仓库 **Actions → Android · APK 版本构建 → 成功运行 → Artifacts** 下载构建包，同时附带包信息、签名检查和 SHA-256。下载 Actions artifact 需要登录 GitHub，保留 30 天。
-- `0.49.0-beta.2+3` 起配置项目专用长期签名，普通 CI 只生成附件；推送版本标签才公开发布。旧测试签名版本需先导出记录，再卸载安装新版。签名保管与恢复见 [`docs/android-signing.md`](docs/android-signing.md)。
-- 公开安装包与校验文件见 [GitHub Releases](https://github.com/abner-forever/night_sleep/releases)，官网自动读取最新有效版本；Android 7.0+，当前安装包尚未完成真机验证。
-- 官网下载页直接读取 GitHub Releases（含 Beta），自动获取版本、APK 直链、体积和 SHA-256，无需维护下载 JSON 或重新构建官网。无可用公开包时禁用下载；二维码中央内嵌应用图标。
+- `0.49.0-beta.2+3` 起配置项目专用长期签名，`beta` 分支的应用变更检查通过后自动发布 Beta；仅在明确要求发布正式版时合并到 `main`，自动发布正式包。旧测试签名版本需先导出记录，再卸载安装新版。签名保管与恢复见 [`docs/android-signing.md`](docs/android-signing.md)。
+- 公开安装包与校验文件见 [GitHub Releases](https://github.com/abner-forever/night_sleep/releases)；Android 7.0+，当前安装包尚未完成真机验证。
+- 官网主下载入口读取最新正式版，旁边独立提供最新 Beta，自动获取版本、APK 直链、体积和 SHA-256，无需维护下载 JSON 或重新构建官网。没有正式版时显示「正式版尚未发布」，Beta 仍可单独下载；二维码中央内嵌应用图标。
 - 设置 → 关于夜深：版本号显示为 `0.49.0（Beta 2）`，点击版本号检查更新；没有新版时提示「当前是最新版」，发现新版后弹出更新操作，支持下载进度、取消与系统安装。iOS 商店地址暂未配置，仅在点击时提示。
 - 关于页保留隐私协议、软件著作权与 APP 备案号入口。隐私协议在 App 内通过系统 WebView 加载官网 `https://abner-forever.github.io/night_sleep/#/privacy`；软著和备案尚未提供实际登记信息，点击仅提示。
-- Android 版本以 `pubspec.yaml` 为准，当前开发版本 `0.49.0-beta.2+3`。发布标签对应 `v0.49.0-beta.2`，产物名为 `night-sleep-0.49.0-beta.2-android.apk`；每次分发递增构建号。推送版本标签后 CI 核验并发布 Release，Beta 标记为预发布；普通 CI 只产出构建附件。
+- Android 版本由 CI 根据发布历史和 Conventional Commits 分配，`pubspec.yaml` 提供最低版本起点。无需手改 Beta 序号、构建号或创建标签：`fix:` 升补丁版本，`feat:` 升次版本，破坏性变更在 1.0 前升次版本、1.0 起升主版本。两个渠道共用递增构建号，检查通过后自动创建对应标签和 Release；详细规则见 [`docs/release-plan.md`](docs/release-plan.md)。
 
 详细实施与后续发布条件见 [`docs/release-plan.md`](docs/release-plan.md)。
 

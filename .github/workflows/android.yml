@@ -1,9 +1,8 @@
-name: Android · APK 版本构建
+name: Android · 自动发布
 
 on:
   push:
-    branches: [main]
-    tags: ['v*']
+    branches: [beta, main]
     paths:
       - 'lib/**'
       - 'assets/**'
@@ -20,33 +19,60 @@ permissions:
   contents: read
 
 concurrency:
-  group: android-${{ github.ref }}
-  cancel-in-progress: true
+  group: android-release
+  cancel-in-progress: false
+  queue: max
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.version.outputs.skip }}
+      version: ${{ steps.version.outputs.version }}
+      build_number: ${{ steps.version.outputs.build_number }}
+      tag: ${{ steps.version.outputs.tag }}
+      channel: ${{ steps.version.outputs.channel }}
+      artifact_name: ${{ steps.version.outputs.artifact_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: 验证发布规则并分配版本
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_BRANCH: ${{ github.ref_name }}
+        run: |
+          python3 -m unittest discover -s tool -p 'test_*release.py'
+          python3 -m unittest discover -s tool -p 'test_*signing.py'
+          case "$RELEASE_BRANCH" in beta|main) ;; *) echo '只能从 beta 或 main 发布' >&2; exit 1 ;; esac
+          git fetch origin "$RELEASE_BRANCH"
+          if [ "$GITHUB_SHA" != "$(git rev-parse FETCH_HEAD)" ]; then
+            echo '分支已有更新的提交，本次跳过，等待最新提交发布。'
+            echo 'skip=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          python3 tool/plan_android_release.py plan \
+            --repository "$GITHUB_REPOSITORY" --branch "$RELEASE_BRANCH" \
+            --source-sha "$GITHUB_SHA" --github-output "$GITHUB_OUTPUT"
+
   apk:
+    needs: prepare
+    if: needs.prepare.outputs.skip != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    outputs:
-      artifact_name: ${{ steps.version.outputs.artifact_name }}
-      tag: ${{ steps.version.outputs.tag }}
-      version: ${{ steps.version.outputs.version }}
-      channel: ${{ steps.version.outputs.channel }}
     env:
       GRADLE_OPTS: '-Dorg.gradle.jvmargs="-Xmx4G -XX:MaxMetaspaceSize=1G -XX:ReservedCodeCacheSize=256m" -Dorg.gradle.workers.max=2'
     steps:
       - uses: actions/checkout@v4
-      - name: 解析版本并检查打包规则
-        id: version
-        run: |
-          python3 -m unittest discover -s tool -p 'test_*signing.py'
-          python3 -m unittest discover -s tool -p 'test_android_release.py'
-          python3 tool/android_release.py version --github-output "$GITHUB_OUTPUT"
-      - name: 确认发布标签与包内版本一致
-        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          persist-credentials: false
+      - name: 写入本次构建版本（仅 CI 工作目录）
         env:
-          EXPECTED_TAG: ${{ steps.version.outputs.tag }}
-        run: test "$GITHUB_REF_NAME" = "$EXPECTED_TAG"
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          BUILD_NUMBER: ${{ needs.prepare.outputs.build_number }}
+        run: python3 tool/plan_android_release.py apply --version "$RELEASE_VERSION" --build-number "$BUILD_NUMBER"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -87,11 +113,12 @@ jobs:
           python3 tool/android_release.py package \
             --apk build/app/outputs/flutter-apk/app-release.apk \
             --aapt "$ANDROID_HOME/build-tools/36.0.0/aapt" \
-            --apksigner "$ANDROID_HOME/build-tools/36.0.0/apksigner"
+            --apksigner "$ANDROID_HOME/build-tools/36.0.0/apksigner" \
+            --source-sha "$GITHUB_SHA" --branch "$GITHUB_REF_NAME"
           cat artifacts/android/package-info.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.version.outputs.artifact_name }}
+          name: ${{ needs.prepare.outputs.artifact_name }}
           path: artifacts/android/
           if-no-files-found: error
           retention-days: 30
@@ -100,37 +127,24 @@ jobs:
         run: python3 tool/configure_android_signing.py --clean
 
   publish:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: apk
+    needs: [prepare, apk]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
-          name: ${{ needs.apk.outputs.artifact_name }}
+          name: ${{ needs.prepare.outputs.artifact_name }}
           path: artifacts/android
       - name: 发布已核验的版本（Beta 标记为 Pre-release）
         env:
           GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ needs.apk.outputs.tag }}
-          RELEASE_VERSION: ${{ needs.apk.outputs.version }}
-          RELEASE_CHANNEL: ${{ needs.apk.outputs.channel }}
         shell: bash
         run: |
-          cd artifacts/android
-          sha256sum --check SHA256SUMS.txt
-          # 草稿上传完毕后再公开，官网不会读取到未完成的附件；已有版本禁止覆盖。
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            echo '该版本已存在，请递增 pubspec 版本与构建号后发布。' >&2
-            exit 1
-          fi
-          gh release create "$RELEASE_TAG" --verify-tag --draft \
-            --title "夜深 Android $RELEASE_VERSION" --notes-file README.txt
-          gh release upload "$RELEASE_TAG" ./*
-          if [ "$RELEASE_CHANNEL" = beta ]; then
-            gh release edit "$RELEASE_TAG" --draft=false --prerelease --latest=false
-          else
-            gh release edit "$RELEASE_TAG" --draft=false --prerelease=false --latest
-          fi
+          (cd artifacts/android && sha256sum --check SHA256SUMS.txt)
+          python3 tool/plan_android_release.py publish --repository "$GITHUB_REPOSITORY"
+          echo "### Android 发布完成" >> "$GITHUB_STEP_SUMMARY"
+          echo "https://github.com/$GITHUB_REPOSITORY/releases/tag/${{ needs.prepare.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"

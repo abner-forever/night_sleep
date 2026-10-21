@@ -146,6 +146,21 @@ void main() {
         GithubAppUpdateService(
             clientFactory: () => MockClient((request) async {
                   if (request.url.host == 'api.github.com') {
+                    if (request.url.path.endsWith('/latest')) {
+                      final stable = releases
+                          .where((item) =>
+                              AppVersion.parse(item['tag_name'])
+                                  ?.isPrerelease ==
+                              false)
+                          .toList()
+                        ..sort((left, right) =>
+                            AppVersion.parse(right['tag_name'])!.compareTo(
+                                AppVersion.parse(left['tag_name'])!));
+                      return stable.isEmpty
+                          ? http.Response('Not Found', 404)
+                          : http.Response.bytes(
+                              utf8.encode(jsonEncode(stable.first)), 200);
+                    }
                     return http.Response.bytes(
                         utf8.encode(jsonEncode(releases)), 200);
                   }
@@ -180,6 +195,40 @@ void main() {
       final stable = service([releaseData('0.49.0', bytes)]);
       addTearDown(stable.dispose);
       expect((await stable.check(installed()))?.version, '0.49.0');
+    });
+
+    test('release automation metadata is hidden from update notes', () async {
+      final release = releaseData('0.49.0-beta.3', bytes);
+      release['body'] = '${release['body']}\n\n'
+          '<!-- night-sleep-release {"version":"0.49.0-beta.3"} -->';
+      final updater = service([release]);
+      addTearDown(updater.dispose);
+      expect((await updater.check(installed()))?.notes, '改善睡眠记录体验');
+    });
+
+    test('stable checks use latest endpoint independent of Beta list size',
+        () async {
+      final requests = <Uri>[];
+      final updater = GithubAppUpdateService(
+          clientFactory: () => MockClient((request) async {
+                requests.add(request.url);
+                return http.Response.bytes(
+                    utf8.encode(jsonEncode(request.url.host == 'api.github.com'
+                        ? releaseData('0.49.0', bytes)
+                        : metadata('0.49.0', 4, bytes))),
+                    200);
+              }));
+      addTearDown(updater.dispose);
+      expect((await updater.check(installed(version: '0.48.0')))?.version,
+          '0.49.0');
+      expect(requests.first, GithubAppUpdateService.latestStableUri);
+    });
+
+    test('missing first stable release is treated as no available update',
+        () async {
+      final updater = service([releaseData('0.49.0-beta.3', bytes)]);
+      addTearDown(updater.dispose);
+      expect(await updater.check(installed(version: '0.48.0')), isNull);
     });
 
     test('never offers downgrade, same version or nonincreasing build',
