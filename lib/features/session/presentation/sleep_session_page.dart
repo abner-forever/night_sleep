@@ -190,7 +190,7 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage>
               // （index.css:1734 / 1915）。不限宽的话宽屏上会整条拉满。
               child: Center(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 680),
+                  constraints: const BoxConstraints(maxWidth: 540),
                   child: session == null
                       ? SessionSetupBody(
                           scene: _draftScene,
@@ -743,6 +743,7 @@ class _RejectedSheet extends StatelessWidget {
     final tooShort = rejection == SessionFinishRejection.tooShort;
 
     return AppSheet(
+      scrollable: true,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
         child: Column(
@@ -790,7 +791,7 @@ class _RejectedSheet extends StatelessWidget {
                 ),
               ),
             ),
-            SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
+            const SizedBox(height: 16),
           ],
         ),
       ),

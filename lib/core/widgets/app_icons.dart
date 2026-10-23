@@ -15,6 +15,14 @@ import 'package:flutter_svg/flutter_svg.dart';
 class AppIcons {
   const AppIcons._();
 
+  static Widget home(
+          {double size = 24, required Color color, double strokeWidth = 1.8}) =>
+      glyph(
+          '<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z"/>',
+          size: size,
+          color: color,
+          strokeWidth: strokeWidth);
+
   static const _moon =
       '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>';
   static const _pen =

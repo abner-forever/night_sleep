@@ -177,7 +177,12 @@ void main() {
       // 这一条立刻变红（两条都是 null）——前面的分组一条都不会。
       await pumpRealApp(tester);
       expect(
-          systemBarStyleAt(tester), appSystemUiOverlayStyle(Brightness.light));
+        systemBarStyleAt(tester),
+        appSystemUiOverlayStyle(Brightness.light).copyWith(
+          statusBarBrightness: Brightness.dark,
+          statusBarIconBrightness: Brightness.light,
+        ),
+      );
       expect(
         systemBarStyleAt(tester, top: false),
         appSystemUiOverlayStyle(Brightness.light),

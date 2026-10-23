@@ -375,7 +375,7 @@ class _TabContent extends StatelessWidget {
     // The horizontal gutter is *not* applied here — see [pageGutter].
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 720),
+        constraints: BoxConstraints(maxWidth: tab == AppTab.home ? 1180 : 1080),
         // 顶部留白改由各页自己的滚动视图施加——见 [pageTopInset]。
         child: switch (tab) {
           AppTab.home => HomePage(

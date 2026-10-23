@@ -80,7 +80,7 @@ class SettingsPage extends ConsumerWidget {
       ),
       children: [
         const PageHeading(eyebrow: '偏好设置', title: '设置'),
-        const SizedBox(height: 22),
+        const SizedBox(height: 25),
 
         // ── 常用 ────────────────────────────────────────────────────────────
         const SectionHeader('常用'),
@@ -169,12 +169,13 @@ class SettingsPage extends ConsumerWidget {
           children: [
             IosListItem(
               haptic: false,
+              minHeight: 65,
               onTap: () => context.go('/settings/about'),
               child: Row(
                 children: [
                   ListIconBadge(
-                    background: tokens.accentSoft,
-                    size: 36,
+                    background: Colors.transparent,
+                    size: 25,
                     child: AppIcons.about(
                         size: 18, color: tokens.accent, strokeWidth: 1.7),
                   ),
@@ -187,7 +188,7 @@ class SettingsPage extends ConsumerWidget {
                         Text(
                           '夜深',
                           style: TextStyle(
-                            fontSize: 14,
+                            fontSize: 13,
                             fontWeight: FontWeight.w500,
                             color: tokens.textPrimary,
                           ),
@@ -196,7 +197,7 @@ class SettingsPage extends ConsumerWidget {
                         Text(
                           '睡眠记录与分析',
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 10,
                             color: tokens.textMuted,
                           ),
                         ),
@@ -211,6 +212,13 @@ class SettingsPage extends ConsumerWidget {
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 25),
+        Text(
+          '夜深 NIGHT SLEEP',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+              fontSize: 10, letterSpacing: 1, color: tokens.textMuted),
         ),
       ],
     );
@@ -348,10 +356,11 @@ class _NavRow extends StatelessWidget {
     final tokens = AppTokens.of(context);
     return IosListItem(
       haptic: false,
+      minHeight: 65,
       onTap: onTap,
       child: Row(
         children: [
-          ListIconBadge(background: background, size: 36, child: icon),
+          SizedBox(width: 25, height: 27, child: Center(child: icon)),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -361,7 +370,7 @@ class _NavRow extends StatelessWidget {
                 Text(
                   title,
                   style: TextStyle(
-                    fontSize: 14,
+                    fontSize: 13,
                     fontWeight: FontWeight.w500,
                     color: tokens.textPrimary,
                   ),
@@ -371,7 +380,7 @@ class _NavRow extends StatelessWidget {
                   subtitle,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 12, color: tokens.textMuted),
+                  style: TextStyle(fontSize: 10, color: tokens.textMuted),
                 ),
               ],
             ),

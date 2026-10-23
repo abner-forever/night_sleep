@@ -42,9 +42,12 @@ Future<AppDatabase> pumpNoiseSheet(
   WidgetTester tester, {
   NoisePlayer? player,
   ThemeData? appTheme,
+  Size size = const Size(430, 932),
+  FakeViewPadding padding = const FakeViewPadding(),
 }) async {
-  tester.view.physicalSize = const Size(430, 932);
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
+  tester.view.padding = padding;
   addTearDown(tester.view.reset);
 
   final database = AppDatabase(NativeDatabase.memory());
@@ -271,6 +274,55 @@ void main() {
     // 关掉弹窗**不**停声音——播放器挂在 app 级的控制器上，生命周期比这层弹窗长。
     expect(player.calls.where((c) => c == 'stop'), isEmpty);
   });
+
+  for (final size in [const Size(390, 844), const Size(1024, 900)]) {
+    for (final brightness in Brightness.values) {
+      testWidgets('弹窗分区紧凑，网格不重复计算安全区：$size / $brightness', (tester) async {
+        await pumpNoiseSheet(
+          tester,
+          appTheme: brightness == Brightness.dark
+              ? AppTheme.dark()
+              : AppTheme.light(),
+          size: size,
+          padding: const FakeViewPadding(top: 59, bottom: 34),
+        );
+
+        final header = tester.getRect(find
+            .ancestor(
+              of: find.text('白噪音设置'),
+              matching: find.byType(Row),
+            )
+            .first);
+        final grid = find.byType(GridView);
+        final firstTile = tester.getRect(find
+            .ancestor(
+              of: find.text('关闭'),
+              matching: find.byType(GestureDetector),
+            )
+            .first);
+        final lastTile = tester.getRect(find
+            .ancestor(
+              of: find.text('风'),
+              matching: find.byType(GestureDetector),
+            )
+            .first);
+        final volume = tester.getRect(find
+            .ancestor(
+              of: find.text('音量'),
+              matching: find.byType(Container),
+            )
+            .first);
+
+        expect(firstTile.top - header.bottom, closeTo(10, 0.01));
+        expect(volume.top - lastTile.bottom, closeTo(12, 0.01));
+        expect(tester.getSize(grid).height, 64 * 2 + 8);
+        final note = tester.getRect(find.textContaining('退到后台或锁屏后声音会停'));
+        expect(size.height - note.bottom, closeTo(34 + 12, 0.01));
+        expect(find.text('60m').hitTestable(), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
 
   /// 弹窗现在是**入睡前那一屏**的唯一白噪音入口，但控制器本身与弹窗无关：
   /// 下面两条钉的是控制器怎么跟播放器和会话行打交道。

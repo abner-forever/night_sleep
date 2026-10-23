@@ -9,20 +9,7 @@ import 'package:night_sleep/core/widgets/app_basics.dart';
 import 'package:night_sleep/core/widgets/subpage.dart';
 import 'package:night_sleep/features/settings/presentation/sleep_import_page.dart';
 
-/// `PrimaryAction` 禁用态的护栏。
-///
-/// 导入页那颗「导入睡眠记录」按钮是全项目唯一一颗禁用态的 `PrimaryAction`，它同时
-/// 犯了两个毛病（用户报的「按钮上方有根白线」和「点了没反应」）：
-///
-///  * **顶边高光成了一根多余的白线。** `inset 0 1px rgba(255,255,255,.25)` 那条镜面
-///    高光是给启用态走的（同一类的还有那圈蓝色投影），落到一颗 60% 不透明的禁用
-///    按钮上，就成了它身上最跳的元素。位置本身没错，错在用了不该用的状态。
-///  * **手势被整个吞掉。** `onTap: null` 时 `Pressable` 把四个手势回调全部置空，
-///    手指按下去连一点回应都没有；用户的补充是「没有实现可以给一个相关反馈提示」。
-///
-/// 于是新增了 `onBlockedTap`：外观仍是禁用，但手势接得住。下面这些用例钉的是
-/// 「启用态一个字节都没变、禁用态既不亮也没有按下的手感」——启用态的另两个调用点
-/// （首页、引导页）就靠启用态那几条守着。
+/// 主按钮保留禁用反馈、回调优先级与触觉行为。
 void main() {
   /// 按钮的宿主。`PrimaryAction` 读设计令牌，所以要有主题；它自己不带 `Scaffold`，
   /// 这里也不需要外壳。
@@ -102,7 +89,7 @@ void main() {
 
       final decoration = buttonDecoration(tester);
       expect(decoration.boxShadow, isNull, reason: '禁用态不该有那圈蓝色投影');
-      expect(decoration.gradient, isNotNull, reason: '按钮本身的渐变必须还在');
+      expect(decoration.color, const Color(0xFF3478F6));
     });
   });
 
@@ -177,52 +164,14 @@ void main() {
       expect(blocked, 0, reason: '两个回调都给了也必须走 onTap');
     });
 
-    testWidgets('高光、投影与不透明度都还在', (tester) async {
+    testWidgets('新版主按钮使用实色且不绘制高光与投影', (tester) async {
       await tester.pumpWidget(host(PrimaryAction(label: '导入', onTap: () {})));
-
-      expect(litHighlight(), findsOneWidget, reason: '启用态必须有顶边高光');
-      final shadow = buttonDecoration(tester).boxShadow;
-      expect(shadow, isNotNull, reason: '启用态必须有那圈蓝色投影');
-      expect(shadow!.single.color,
-          const Color(0xFF007AFF).withValues(alpha: 0.24));
-      expect(shadow.single.blurRadius, 22);
-      expect(shadow.single.offset, const Offset(0, 10));
-      expect(opacityOf(tester), 1, reason: '启用态不能被调成半透明');
-    });
-
-    testWidgets('顶边高光被裁进圆角，不从左右上角溢出', (tester) async {
-      await tester.pumpWidget(host(PrimaryAction(label: '导入', onTap: () {})));
-
-      // 高光是一条 1px 高的直条，装不下 16px 的圆角——Flutter 会把它的圆角压到
-      // 0.5px（等于直角），两端于是横着伸出按钮轮廓，深色主题下就是那两根白刺。
-      final clip = find.descendant(
-        of: find.byType(PrimaryAction),
-        matching: find.byType(ClipPath),
-      );
-      expect(clip, findsOneWidget, reason: '按钮必须把子层裁进圆角');
-      expect(
-        find.descendant(of: clip, matching: litHighlight()),
-        findsOneWidget,
-        reason: '高光必须落在裁剪层之内，不能被留在轮廓外面',
-      );
-
-      final size = tester.getSize(clip);
-      final path = tester.widget<ClipPath>(clip).clipper!.getClip(size);
-      expect(
-        path.contains(const Offset(1, 0.5)),
-        isFalse,
-        reason: '左上圆角之外的像素必须被裁掉',
-      );
-      expect(
-        path.contains(Offset(size.width - 1, 0.5)),
-        isFalse,
-        reason: '右上圆角之外的像素必须被裁掉',
-      );
-      expect(
-        path.contains(Offset(size.width / 2, 0.5)),
-        isTrue,
-        reason: '顶边正中那截高光必须留着，别把整条都裁没了',
-      );
+      expect(litHighlight(), findsNothing);
+      final decoration = buttonDecoration(tester);
+      expect(decoration.color, const Color(0xFF3478F6));
+      expect(decoration.gradient, isNull);
+      expect(decoration.boxShadow, isNull);
+      expect(opacityOf(tester), 1);
     });
 
     testWidgets('点击调用 onTap', (tester) async {

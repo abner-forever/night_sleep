@@ -6,7 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../theme/app_tokens.dart';
 import 'atmosphere.dart';
-import 'liquid_glass.dart';
+import 'app_basics.dart';
 
 /// Shared chrome for a page pushed **over** the tab shell: a back pill, the page
 /// title, and a scrolling content column.
@@ -22,17 +22,18 @@ import 'liquid_glass.dart';
 ///
 /// Every page reached by a push goes through here so that stays in one place.
 ///
-/// 顶部那行（返回胶囊 + 标题）**上滑吸顶**：它随内容一起往上走一小段，随后钉在
-/// 顶部，内容从它下面滚过去；吸顶时补一层玻璃底板，字不会和滚上来的内容叠在一起。
+/// 顶部导航固定在系统安全区下方，滚动时补一层玻璃底板。
 class Subpage extends StatelessWidget {
   const Subpage({
     super.key,
     required this.title,
     required this.children,
+    this.maxContentWidth = 720,
   });
 
   final String title;
   final List<Widget> children;
+  final double maxContentWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -45,9 +46,9 @@ class Subpage extends StatelessWidget {
         backgroundColor: Colors.transparent,
         // **顶部不躲开状态栏**：吸顶条要铺到状态栏背后，滚起来之后和状态栏
         // 连成一块；状态栏的高度改由吸顶头自己算进去（见 `statusBarInset`）。
-        // 左右与底部照旧交给 SafeArea。
         body: SafeArea(
           top: false,
+          bottom: false,
           child: LayoutBuilder(
             builder: (context, constraints) => _content(
               context,
@@ -62,17 +63,16 @@ class Subpage extends StatelessWidget {
 
   Widget _content(BuildContext context, AppTokens tokens, double width) {
     final isWide = width >= kWideLayoutBreakpoint;
-    final horizontal = isWide ? 52.0 : 16.0;
-    final topPadding = isWide ? 48.0 : 24.0;
+    final horizontal = isWide ? 36.0 : 20.0;
 
     // 内容仍是「最宽 720、居中」，只是把限宽从 `ConstrainedBox` 换成了左右留白，
     // 好让吸顶条的玻璃底板可以铺满整个宽度（含状态栏背后），不被 720 截断。
-    final sideInset = (width - math.min(720.0, width)) / 2 + horizontal;
+    final sideInset =
+        (width - math.min(maxContentWidth, width)) / 2 + horizontal;
 
-    // 吸顶头的边界是固定值，行高必须跟着系统字号走——写死 36 的话，用户把字号
-    // 调大之后标题会把这一行顶出边界。返回键是定长图标，不参与换算。
     final textScaler = MediaQuery.textScalerOf(context);
-    final rowHeight = math.max(36.0, textScaler.scale(22) * 1.3);
+    final rowHeight =
+        math.max(kSubpageNavigationHeight, textScaler.scale(17) * 1.4);
 
     return CustomScrollView(
       slivers: [
@@ -83,12 +83,12 @@ class Subpage extends StatelessWidget {
             title: title,
             sideInset: sideInset,
             statusBarInset: MediaQuery.paddingOf(context).top,
-            topPadding: topPadding,
             rowHeight: rowHeight,
           ),
         ),
         SliverPadding(
-          padding: EdgeInsets.fromLTRB(sideInset, 0, sideInset, 40),
+          padding: EdgeInsets.fromLTRB(sideInset, 20, sideInset,
+              MediaQuery.paddingOf(context).bottom + 24),
           sliver: SliverList(
             delegate: SliverChildListDelegate(children),
           ),
@@ -100,9 +100,7 @@ class Subpage extends StatelessWidget {
 
 /// 吸顶的顶部导航。
 ///
-/// [maxExtent] 是「还没滚」的高度：状态栏 + 上留白 + 标题行 + 下留白，和第 0 屏
-/// 的旧排法一个数；[minExtent] 是吸顶后的高度：状态栏 + 标题行 + 上下各 12px。
-/// 滚动时这段差值被吃掉，标题行因此先随页面上移、再钉住。
+/// 高度为顶部系统安全区加导航行，默认导航行高 44，大字号时随文字增高。
 ///
 /// **状态栏那一截算在头部里**：页面铺到屏幕物理边缘（Android 也是 edge-to-edge），
 /// 底板因此能画到状态栏背后。少了这一截，吸顶条和状态栏之间会留一条底色不同的
@@ -113,7 +111,6 @@ class _SubpageHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.title,
     required this.sideInset,
     required this.statusBarInset,
-    required this.topPadding,
     required this.rowHeight,
   });
 
@@ -126,25 +123,14 @@ class _SubpageHeaderDelegate extends SliverPersistentHeaderDelegate {
   /// 状态栏高度；系统未预留状态栏空间时为 0。
   final double statusBarInset;
 
-  final double topPadding;
-
   /// 返回胶囊 / 标题行的高度（已按系统字号换算过）。
   final double rowHeight;
 
-  /// 未滚动时标题行下方的间距，与改动前一致。
-  static const double _bottomGap = 20;
-
-  /// 吸顶后胶囊上下的呼吸空间。
-  ///
-  /// 吸顶条要像一条导航栏，而不是把胶囊挤在两条边上；加上状态栏那一截
-  /// （安卓约 24–30px），整条在手机上约 84–90px 高。
-  static const double _pinnedInset = 12;
+  @override
+  double get maxExtent => statusBarInset + rowHeight;
 
   @override
-  double get maxExtent => statusBarInset + topPadding + rowHeight + _bottomGap;
-
-  @override
-  double get minExtent => statusBarInset + _pinnedInset * 2 + rowHeight;
+  double get minExtent => maxExtent;
 
   @override
   Widget build(
@@ -152,9 +138,7 @@ class _SubpageHeaderDelegate extends SliverPersistentHeaderDelegate {
     double shrinkOffset,
     bool overlapsContent,
   ) {
-    // 0 = 还没滚，1 = 已经钉住。底板与下留白都跟着它走。
-    final collapse = (shrinkOffset / (maxExtent - minExtent)).clamp(0.0, 1.0);
-    final bottomInset = _bottomGap + (_pinnedInset - _bottomGap) * collapse;
+    final collapse = (shrinkOffset / rowHeight).clamp(0.0, 1.0);
 
     return Stack(
       fit: StackFit.expand,
@@ -189,7 +173,8 @@ class _SubpageHeaderDelegate extends SliverPersistentHeaderDelegate {
         Positioned(
           left: sideInset,
           right: sideInset,
-          bottom: bottomInset,
+          top: statusBarInset,
+          bottom: 0,
           child: _headerRow(context),
         ),
       ],
@@ -201,21 +186,9 @@ class _SubpageHeaderDelegate extends SliverPersistentHeaderDelegate {
       children: [
         // **只有图标，没有文字标签。** 读屏靠 `semanticLabel` 说明它是返回；
         // 删掉文字之后不能让无障碍跟着一起消失。
-        LiquidGlass(
+        Pressable(
           key: const ValueKey('subpage-back'),
-          borderRadius: BorderRadius.circular(AppRadii.pill),
-          blur: 18,
-          saturation: 1.4,
-          tint: tokens.material,
-          expandWidth: false,
           semanticLabel: '返回',
-          shadow: [
-            BoxShadow(
-              color: const Color(0xFF1C2C52).withValues(alpha: 0.10),
-              blurRadius: 7,
-              offset: const Offset(0, 2),
-            ),
-          ],
           onTap: () {
             if (context.canPop()) {
               context.pop();
@@ -226,31 +199,39 @@ class _SubpageHeaderDelegate extends SliverPersistentHeaderDelegate {
           // The chevron is drawn inline as the prototype does, so it
           // keeps its 2.2 stroke and tight 9×15 proportion.
           child: SizedBox(
-            width: 36,
-            height: 36,
+            width: kSubpageNavigationHeight,
+            height: kSubpageNavigationHeight,
             child: Center(
               child: SizedBox(
                 width: 9,
                 height: 15,
-                child: CustomPaint(painter: _ChevronPainter(tokens.accent)),
+                child: CustomPaint(
+                  painter: _ChevronPainter(
+                    Theme.of(context).brightness == Brightness.dark
+                        ? tokens.textPrimary
+                        : Colors.black,
+                  ),
+                ),
               ),
             ),
           ),
         ),
-        const SizedBox(width: 8),
         Expanded(
           child: Text(
             title,
+            textAlign: TextAlign.center,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.6,
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+              height: 1.4,
+              letterSpacing: -0.3,
               color: tokens.textPrimary,
             ),
           ),
         ),
+        const SizedBox(width: kSubpageNavigationHeight),
       ],
     );
   }
@@ -261,7 +242,6 @@ class _SubpageHeaderDelegate extends SliverPersistentHeaderDelegate {
       oldDelegate.title != title ||
       oldDelegate.sideInset != sideInset ||
       oldDelegate.statusBarInset != statusBarInset ||
-      oldDelegate.topPadding != topPadding ||
       oldDelegate.rowHeight != rowHeight;
 }
 

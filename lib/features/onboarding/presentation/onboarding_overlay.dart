@@ -81,8 +81,8 @@ class _OnboardingOverlayState extends State<OnboardingOverlay> {
           padding: EdgeInsets.only(
             top: padding.top > 24 ? padding.top : 24,
             bottom: padding.bottom + 24,
-            left: 24,
-            right: 24,
+            left: padding.left + 24,
+            right: padding.right + 24,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -109,48 +109,53 @@ class _OnboardingOverlayState extends State<OnboardingOverlay> {
                 ),
               ),
               Expanded(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 360),
-                  switchInCurve: AppMotion.standardCurve,
-                  child: Column(
-                    key: ValueKey(_step),
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: 108,
-                        height: 108,
-                        decoration: BoxDecoration(
-                          color: tokens.accentSoft,
-                          borderRadius: BorderRadius.circular(32),
-                        ),
-                        alignment: Alignment.center,
-                        child: slide.icon(46, tokens.accent),
-                      ),
-                      const SizedBox(height: 24),
-                      Text(
-                        slide.title,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 26,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.78,
-                          color: tokens.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 352),
-                        child: Text(
-                          slide.body,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 15,
-                            height: 1.55,
-                            color: tokens.textSecondary,
+                child: Center(
+                  child: SingleChildScrollView(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 360),
+                      switchInCurve: AppMotion.standardCurve,
+                      child: Column(
+                        key: ValueKey(_step),
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 108,
+                            height: 108,
+                            decoration: BoxDecoration(
+                              color: tokens.accentSoft,
+                              borderRadius: BorderRadius.circular(32),
+                            ),
+                            alignment: Alignment.center,
+                            child: slide.icon(46, tokens.accent),
                           ),
-                        ),
+                          const SizedBox(height: 24),
+                          Text(
+                            slide.title,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.78,
+                              color: tokens.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 352),
+                            child: Text(
+                              slide.body,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 15,
+                                height: 1.55,
+                                color: tokens.textSecondary,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ),

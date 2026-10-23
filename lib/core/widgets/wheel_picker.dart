@@ -489,6 +489,7 @@ class PickerSheet extends StatelessWidget {
     final tokens = AppTokens.of(context);
 
     return AppSheet(
+      scrollable: true,
       showHandle: true,
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -539,12 +540,7 @@ class PickerSheet extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: EdgeInsets.fromLTRB(
-              20,
-              13,
-              20,
-              MediaQuery.of(context).padding.bottom + 22,
-            ),
+            padding: const EdgeInsets.fromLTRB(20, 13, 20, 22),
             child: child,
           ),
         ],

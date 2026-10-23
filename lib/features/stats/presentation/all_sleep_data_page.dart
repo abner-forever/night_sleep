@@ -8,7 +8,6 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_basics.dart';
 import '../../../core/widgets/app_icons.dart';
-import '../../../core/widgets/hero_surface.dart';
 import '../../../core/widgets/ios_controls.dart';
 import '../../../core/widgets/quiet_surface.dart';
 import '../../../core/widgets/subpage.dart';
@@ -317,33 +316,7 @@ class _SummaryCard extends StatelessWidget {
     // 目标达成只看**平均时长**这一件真的测过的事；没有记录时谈不上达标。
     final reached = average != null && average >= 7;
 
-    return HeroSurface(
-      borderRadius: BorderRadius.circular(AppRadii.card),
-      gradient: LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        // `linear-gradient(180deg, accent-soft 30%, transparent 45%)` 叠在
-        // `--ios-material-strong` 上：渐变叠底，所以先把两端的混色算出来再交给渐变。
-        colors: [
-          // `color-mix(accent-soft 30%, transparent)` 先按不透明度缩一遍 alpha，
-          // 再叠到实底上——两步不能合成一步（`colorMix` 的文档里写了为什么）。
-          Color.alphaBlend(
-            colorMix(tokens.accentSoft, 0.30, Colors.transparent),
-            tokens.materialStrong,
-          ),
-          tokens.materialStrong,
-        ],
-        stops: const [0, 0.45],
-      ),
-      borderColor: colorMix(tokens.accent, 0.12, tokens.glassBorder),
-      // `0 8px 26px rgba(36,53,91,.075)`——规格 §2.3 给这一张卡的值，不是某个令牌。
-      shadow: [
-        BoxShadow(
-          color: const Color(0xFF24355B).withValues(alpha: 0.075),
-          blurRadius: 26,
-          offset: const Offset(0, 8),
-        ),
-      ],
+    return QuietSurface(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

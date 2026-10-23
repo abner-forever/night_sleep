@@ -20,7 +20,7 @@ import '../../sleep/domain/sleep_quality.dart';
 import '../../sleep/domain/sleep_score.dart';
 import '../../sleep/domain/sleep_window.dart';
 import '../../sleep/presentation/widgets/event_tiles.dart';
-import '../../sleep/presentation/widgets/moon_arc.dart';
+import '../../sleep/presentation/widgets/sleep_summary.dart';
 import '../../sleep/presentation/widgets/quality_rating.dart';
 import '../../sleep/presentation/widgets/stage_style.dart';
 import 'review_duration_hero.dart';
@@ -179,70 +179,30 @@ class _LogPageState extends ConsumerState<LogPage> {
     final hours = window.durationHours;
 
     final items = <Widget>[
-      // ── Live duration preview ──────────────────────────────────────────
-      // 这一页的 hero（晨光，§2.2）：与回顾 Tab 那张记录头是同一张卡，内容不同。
       ReviewDurationHero(
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            MoonArc(durationHours: hours, size: 112),
-            const SizedBox(width: 20),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '睡眠时长',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.96,
-                      color: tokens.textMuted,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: [
-                      Text(
-                        '${hours.floor()}',
-                        style: AppTheme.num(
-                          context,
-                          size: 38,
-                          weight: FontWeight.w700,
-                          letterSpacing: -1.14,
-                        ),
-                      ),
-                      Text('h ',
-                          style: TextStyle(fontSize: 20, color: tokens.accent)),
-                      Text(
-                        '${((hours - hours.floor()) * 60).round()}',
-                        style: AppTheme.num(
-                          context,
-                          size: 38,
-                          weight: FontWeight.w700,
-                          letterSpacing: -1.14,
-                        ),
-                      ),
-                      Text('m',
-                          style: TextStyle(fontSize: 20, color: tokens.accent)),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    hours >= 7
-                        ? '✓ 睡眠充足'
-                        : hours >= 6
-                            ? '略显不足'
-                            : '⚠ 睡眠不足',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: durationBandColor(tokens, hours),
-                    ),
-                  ),
-                ],
-              ),
+            Row(
+              children: [
+                Expanded(
+                    child: Text('睡眠时长',
+                        style: TextStyle(
+                            fontSize: 12, color: tokens.textSecondary))),
+                AppIcons.moon(size: 22, color: tokens.accent),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SleepDuration(hours: hours, size: 46),
+            const SizedBox(height: 15),
+            Text(
+              hours >= 7
+                  ? '✓ 睡眠充足'
+                  : hours >= 6
+                      ? '略显不足'
+                      : '⚠ 睡眠不足',
+              style: TextStyle(
+                  fontSize: 11, color: durationBandColor(tokens, hours)),
             ),
           ],
         ),
@@ -272,7 +232,7 @@ class _LogPageState extends ConsumerState<LogPage> {
       const SectionHeader('睡眠质量'),
       QuietSurface(
         borderRadius: BorderRadius.circular(AppRadii.panel),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(8),
         // 未选时 `_quality` 是 `null`：五个药丸一个都不亮，行尾的反馈句也不出现。
         child: QualityChoice(
           value: _quality,
@@ -313,8 +273,8 @@ class _LogPageState extends ConsumerState<LogPage> {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 16),
           decoration: BoxDecoration(
-            color: tokens.accent,
-            borderRadius: BorderRadius.circular(AppRadii.panel),
+            color: tokens.primaryActionFill,
+            borderRadius: BorderRadius.circular(27),
           ),
           alignment: Alignment.center,
           child: Text(
@@ -339,7 +299,35 @@ class _LogPageState extends ConsumerState<LogPage> {
     // —— 推入页 pop 掉就没了，不存在需要重置的下一次。
     return Subpage(
       title: _isEditing ? '编辑记录' : '手动补录',
-      children: items,
+      maxContentWidth: 1080,
+      children: [
+        LayoutBuilder(builder: (context, constraints) {
+          final wide = constraints.maxWidth >= 720;
+          final available = constraints.maxWidth - (wide ? 28 : 0);
+          return Flex(
+            direction: wide ? Axis.horizontal : Axis.vertical,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: wide ? available / 2.2 : available,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: items.take(5).toList(),
+                ),
+              ),
+              SizedBox(width: wide ? 28 : 0, height: wide ? 0 : 6),
+              SizedBox(
+                width: wide ? available / 2.2 * 1.2 : available,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: items.skip(5).toList(),
+                ),
+              ),
+            ],
+          );
+        }),
+      ],
     );
   }
 }

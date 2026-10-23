@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/app_shell.dart';
 import '../../../core/config/app_config.dart';
+import '../../../core/platform/system_bars.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_basics.dart';
@@ -16,9 +18,12 @@ import '../../sleep/domain/sleep_entry.dart';
 import '../../sleep/domain/sleep_session.dart';
 import '../../sleep/presentation/sheets/detail_sheet.dart';
 import '../../sleep/presentation/widgets/stage_chart.dart';
+import '../../sleep/presentation/widgets/sleep_summary.dart';
 import '../../sleep/presentation/widgets/stage_style.dart';
 import '../domain/home_insight.dart';
 import 'widgets/sleep_hero.dart';
+
+const _homeHeaderTopColor = Color(0xFF0B3979);
 
 /// 「现在」的读取接缝。
 ///
@@ -57,6 +62,7 @@ class HomePage extends ConsumerWidget {
     // 所以加载与错误分支也要和数据分支的 ListView 用同一套顶部与横向留白。
     final inset = EdgeInsets.only(
       top: pageTopInset(context),
+      bottom: pageBottomInset(context),
       left: pageGutter(context),
       right: pageGutter(context),
     );
@@ -107,219 +113,441 @@ class _HomeContent extends StatelessWidget {
   final VoidCallback onOpenNoise;
   final VoidCallback onStartSleep;
 
-  /// Localised `9月27日 星期日`, built by hand so the app does not need to load
-  /// the zh_CN date-locale tables at startup.
-  static String _todayLine(DateTime now) {
-    const weekdays = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
-    return '${now.month}月${now.day}日 ${weekdays[now.weekday - 1]}';
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppTokens.of(context);
+    final today = records.firstOrNull;
+    final wide = MediaQuery.sizeOf(context).width >= kWideLayoutBreakpoint;
+    if (animateRing) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => onRingConsumed());
+    }
+    final stages = today == null
+        ? null
+        : Padding(
+            padding: EdgeInsets.all(wide ? 24 : 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SectionHeader('睡眠阶段', padding: EdgeInsets.zero),
+                SleepStageSummary(entry: today, horizontal: wide),
+              ],
+            ),
+          );
+    final overview = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _masthead(context, wide),
+        if (today != null)
+          SleepHeroCard(entry: today, animateRing: animateRing, wide: wide)
+        else
+          QuietSurface(
+            key: const ValueKey('home-first-night'),
+            tint: wide ? tokens.bgCard : const Color(0xFC0D1C3A),
+            borderColor: wide ? tokens.border : Colors.transparent,
+            padding: const EdgeInsets.all(20),
+            onTap: session == null
+                ? onStartSleep
+                : () => context.push('/sleep/session'),
+            semanticLabel: session == null ? '开始入睡' : '返回正在进行的睡眠',
+            child: Row(children: [
+              AppIcons.moon(
+                  size: 34, color: wide ? tokens.accent : Colors.white),
+              const SizedBox(width: 15),
+              Expanded(
+                  child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('还没有睡眠记录',
+                      style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: wide ? tokens.textPrimary : Colors.white)),
+                  const SizedBox(height: 5),
+                  Text('从今晚开始，了解你的睡眠',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: wide
+                              ? tokens.textMuted
+                              : const Color(0xFFA0B9D5))),
+                ],
+              )),
+            ]),
+          ),
+        if (wide && stages != null)
+          QuietSurface(
+            borderRadius:
+                const BorderRadius.vertical(bottom: Radius.circular(19)),
+            child: stages,
+          ),
+      ],
+    );
+    final insight = today == null
+        ? null
+        : QuietSurface(
+            padding: const EdgeInsets.all(14),
+            onTap: () => showSleepDetailSheet(context, today),
+            semanticLabel: '查看睡眠时长变化与详情',
+            child: Row(children: [
+              Container(
+                width: 39,
+                height: 39,
+                decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: tokens.good.withValues(alpha: .16)),
+                child: Center(
+                    child: AppIcons.moon(size: 24, color: tokens.accent)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                  child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                      durationInsightSentence(durationDelta(records
+                          .map((entry) => entry.durationHours)
+                          .toList())),
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: tokens.textPrimary)),
+                  const SizedBox(height: 4),
+                  Text(durationAdviceSentence(today.durationHours),
+                      style: TextStyle(
+                          fontSize: 10, height: 1.5, color: tokens.textMuted)),
+                ],
+              )),
+              const SizedBox(width: 6),
+              AppIcons.chevronRight(size: 17, color: tokens.textMuted),
+            ]),
+          );
+    final actions = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (insight != null) ...[insight, const SizedBox(height: 17)],
+        if (session != null)
+          _ActiveSessionCard(session: session!, now: now)
+        else
+          Pressable(
+            key: const ValueKey('home-start-sleep'),
+            onTap: onStartSleep,
+            semanticLabel: '开始入睡',
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 56),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+              decoration: BoxDecoration(
+                  color: tokens.primaryActionFill,
+                  borderRadius: BorderRadius.circular(28)),
+              child:
+                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                AppIcons.bed(size: 21, color: Colors.white),
+                const SizedBox(width: 8),
+                const Flexible(
+                    child: Text('开始入睡',
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.white))),
+              ]),
+            ),
+          ),
+        const SizedBox(height: 17),
+        _utilities(context),
+        if (records.any((entry) => entry.source == AppConfig.demoSource)) ...[
+          const SizedBox(height: 17),
+          const _DemoBadge(),
+        ],
+      ],
+    );
+    final history = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SectionHeader('最近记录'),
+        QuietSurface(
+          borderRadius: BorderRadius.circular(17),
+          child: Column(children: [
+            for (var index = 0; index < records.take(5).length; index++) ...[
+              if (index > 0) Divider(height: 1, color: tokens.border),
+              HomeRecordRow(entry: records[index]),
+            ],
+          ]),
+        ),
+      ],
+    );
+    return LayoutBuilder(builder: (context, constraints) {
+      final twoColumns = wide && constraints.maxWidth >= 850;
+      Widget buildList([ScrollController? controller]) => ListView(
+            controller: controller,
+            padding: EdgeInsets.only(bottom: pageBottomInset(context)),
+            children: [
+              if (wide)
+                Padding(
+                  padding:
+                      EdgeInsets.fromLTRB(36, pageTopInset(context), 36, 0),
+                  child: twoColumns
+                      ? Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                              Expanded(
+                                  flex: 115,
+                                  child: Column(children: [
+                                    overview,
+                                    const SizedBox(height: 20),
+                                    actions,
+                                  ])),
+                              const SizedBox(width: 30),
+                              Expanded(
+                                  flex: 100,
+                                  child: Padding(
+                                      padding: const EdgeInsets.only(top: 85),
+                                      child: history)),
+                            ])
+                      : Column(children: [
+                          overview,
+                          const SizedBox(height: 20),
+                          actions,
+                          if (records.isNotEmpty) ...[
+                            const SizedBox(height: 27),
+                            history,
+                          ],
+                        ]),
+                )
+              else ...[
+                AnnotatedRegion<SystemUiOverlayStyle>(
+                    value: appSystemUiOverlayStyle(Theme.of(context).brightness)
+                        .copyWith(
+                      statusBarBrightness: Brightness.dark,
+                      statusBarIconBrightness: Brightness.light,
+                    ),
+                    child: Stack(children: [
+                      const Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 34,
+                        child: DecoratedBox(
+                            key: ValueKey('home-header-background'),
+                            decoration: BoxDecoration(
+                              image: DecorationImage(
+                                  image: AssetImage(
+                                      'assets/images/night-lake.jpg'),
+                                  fit: BoxFit.cover,
+                                  alignment: Alignment(0, -.2)),
+                            ),
+                            child: DecoratedBox(
+                                decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  _homeHeaderTopColor,
+                                  Color(0x80183F76),
+                                  Color(0xFF0C2344)
+                                ],
+                                stops: [0, .45, 1],
+                              ),
+                            ))),
+                      ),
+                      Padding(
+                        padding: EdgeInsets.fromLTRB(
+                            16 + MediaQuery.paddingOf(context).left,
+                            pageTopInset(context),
+                            16 + MediaQuery.paddingOf(context).right,
+                            0),
+                        child: overview,
+                      ),
+                    ])),
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                      18 + MediaQuery.paddingOf(context).left,
+                      20,
+                      18 + MediaQuery.paddingOf(context).right,
+                      0),
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (stages != null) ...[
+                          stages,
+                          const SizedBox(height: 17)
+                        ],
+                        actions,
+                        if (records.isNotEmpty) ...[
+                          const SizedBox(height: 27),
+                          history
+                        ],
+                      ]),
+                ),
+              ],
+            ],
+          );
+      return wide ? buildList() : _HomePullBackground(builder: buildList);
+    });
+  }
+
+  Widget _masthead(BuildContext context, bool wide) {
+    final tokens = AppTokens.of(context);
+    final foreground = wide ? tokens.textPrimary : Colors.white;
+    return Container(
+      constraints: BoxConstraints(minHeight: wide ? 85 : 164),
+      padding: EdgeInsets.symmetric(horizontal: wide ? 0 : 5),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(
+            child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('夜深',
+                style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w600,
+                    color: foreground,
+                    letterSpacing: -.84)),
+            const SizedBox(height: 5),
+            Text('让每一次睡眠都有迹可循',
+                style: TextStyle(
+                    fontSize: 12,
+                    color: wide ? tokens.textMuted : const Color(0xFFDFECFF))),
+          ],
+        )),
+        const SizedBox(width: 12),
+        Padding(
+          padding: const EdgeInsets.only(top: 9),
+          child: Text('${now.month}月${now.day}日',
+              style: AppTheme.num(context,
+                  size: 11, weight: FontWeight.w400, color: foreground)),
+        ),
+      ]),
+    );
+  }
+
+  Widget _utilities(BuildContext context) {
+    final tokens = AppTokens.of(context);
+    final recent = records.take(7).toList();
+    final average = recent.isEmpty
+        ? null
+        : recent.fold<double>(0, (sum, entry) => sum + entry.durationHours) /
+            recent.length;
+    return IntrinsicHeight(
+      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Expanded(
+          child: QuietSurface(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Row(children: [
+                  AppIcons.moon(size: 18, color: tokens.accent),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text('最近 7 条平均时长',
+                        style:
+                            TextStyle(fontSize: 10, color: tokens.textMuted)),
+                  ),
+                ]),
+                const SizedBox(height: 10),
+                Text(
+                    average == null
+                        ? '暂无记录'
+                        : '${average.toStringAsFixed(1)} h',
+                    style: AppTheme.num(context,
+                        size: average == null ? 14 : 23,
+                        weight: FontWeight.w500,
+                        color: tokens.accent)),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: QuietSurface(
+            padding: const EdgeInsets.all(14),
+            onTap: onOpenNoise,
+            semanticLabel: '助眠音效',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Row(children: [
+                  AppIcons.music(size: 19, color: tokens.accent),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text('助眠音效',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: tokens.textPrimary)),
+                  ),
+                  AppIcons.chevronRight(size: 15, color: tokens.textMuted),
+                ]),
+                const SizedBox(height: 10),
+                Text('海浪 · 篝火 · 自然之声',
+                    style: TextStyle(
+                        fontSize: 11, height: 1.5, color: tokens.textMuted)),
+              ],
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+class _HomePullBackground extends StatefulWidget {
+  const _HomePullBackground({required this.builder});
+
+  final Widget Function(ScrollController) builder;
+
+  @override
+  State<_HomePullBackground> createState() => _HomePullBackgroundState();
+}
+
+class _HomePullBackgroundState extends State<_HomePullBackground> {
+  final _controller = ScrollController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final tokens = AppTokens.of(context);
-    final today = records.isEmpty ? null : records.first;
-    final hasDemoData =
-        records.any((entry) => entry.source == AppConfig.demoSource);
-
-    // Mean over the recorded nights only, capped at seven.
-    final recent = records.take(7).toList();
-    final averageHours = recent.isEmpty
-        ? 0.0
-        : recent.fold<double>(0, (sum, entry) => sum + entry.durationHours) /
-            recent.length;
-
-    // 最近记录那一列只摆五条。
-    final recentRecords = records.take(5).toList();
-
-    if (animateRing) {
-      // The reveal is consumed after this build; Home keeps its own snapshot.
-      WidgetsBinding.instance.addPostFrameCallback((_) => onRingConsumed());
-    }
-
-    return ListView(
-      padding: EdgeInsets.fromLTRB(
-        pageGutter(context),
-        pageTopInset(context),
-        pageGutter(context),
-        pageBottomInset(context),
-      ),
-      children: [
-        // 眉题是「问候 · 日期」（规格 §3.1）。时段由 `greetingFor` 判，
-        // 时间取 [homeNowProvider]，不另造时钟。
-        PageHeading(
-          eyebrow: '${greetingFor(now)} · ${_todayLine(now)}',
-          title: '睡眠概览',
-        ),
-        const SizedBox(height: 18),
-        if (hasDemoData) ...[
-          const _DemoBadge(),
-          const SizedBox(height: 12),
-        ],
-        if (today != null) ...[
-          SleepHeroCard(
-            entry: today,
-            // provider 给的就是最新在前，结论条那条差值直接吃它。
-            recentHours: records.map((entry) => entry.durationHours).toList(),
-            animateRing: animateRing,
-          ),
-          const SizedBox(height: 18),
-        ],
-        // 会话在跑时不再给「开始入睡」——那会开出第二个会话。主按钮位换成
-        // 一张「正在睡眠」卡，点它回到会话页。
-        //
-        // 文案逐字取自原型首页（「开始入睡」/「开启睡眠记录、鼾声检测与白噪音」），
-        // 只有一处例外：副标题**不写「鼾声检测」**——plan A 没接录音，那是我们不能
-        // 承诺的能力（偏差 #7 是产品红线），改成白噪音与夜景氛围这两件真做了的事。
-        if (session != null)
-          _ActiveSessionCard(session: session!, now: now)
-        else
-          PrimaryAction(
-            label: '开始入睡',
-            subtitle: '开启睡眠记录、白噪音与夜景氛围',
-            trailing:
-                AppIcons.moon(size: 20, color: Colors.white, strokeWidth: 2),
-            onTap: onStartSleep,
-          ),
-        // 会话进行中就不再摆空状态：它那句「开始入睡」的号召和上面那张卡
-        // 是互相打架的（卡片正说明会话已经在跑），而记录为空是会话刚开始
-        // 时的常态。
-        if (records.isEmpty && session == null) ...[
-          const SizedBox(height: 18),
-          EmptyState(
-            icon:
-                AppIcons.moon(size: 30, color: tokens.accent, strokeWidth: 1.6),
-            title: '还没有睡眠记录',
-            body: '记下你的第一晚，明早回来就能看到时长、评分与趋势。',
-            actionLabel: '开始入睡',
-            onAction: onStartSleep,
-          ),
-        ],
-        if (records.isNotEmpty) ...[
-          const SizedBox(height: 18),
-          Row(
+    return AnimatedBuilder(
+      animation: _controller,
+      child: widget.builder(_controller),
+      builder: (context, child) {
+        final distance = _controller.hasClients
+            ? (_controller.position.minScrollExtent - _controller.offset)
+                .clamp(0.0, double.infinity)
+            : 0.0;
+        return ClipRect(
+          child: Stack(
+            fit: StackFit.expand,
             children: [
-              Expanded(
-                child: QuietSurface(
-                  borderRadius: BorderRadius.circular(AppRadii.panel),
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          AppIcons.moon(
-                              size: 14,
-                              color: tokens.textMuted,
-                              strokeWidth: 1.8),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              '近 7 日均时',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.4,
-                                color: tokens.textMuted,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.baseline,
-                        textBaseline: TextBaseline.alphabetic,
-                        children: [
-                          Text(
-                            averageHours.toStringAsFixed(1),
-                            style: AppTheme.num(context,
-                                size: 24, weight: FontWeight.w700),
-                          ),
-                          Text(
-                            'h',
-                            style:
-                                TextStyle(fontSize: 16, color: tokens.accent),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '推荐 7–9h',
-                        style: TextStyle(fontSize: 12, color: tokens.textMuted),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: QuietSurface(
-                  borderRadius: BorderRadius.circular(AppRadii.panel),
-                  padding: const EdgeInsets.all(16),
-                  onTap: onOpenNoise,
-                  semanticLabel: '助眠音效',
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          AppIcons.music(
-                              size: 14,
-                              color: tokens.textMuted,
-                              strokeWidth: 1.8),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              '助眠音效',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.4,
-                                color: tokens.textMuted,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '白噪音',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: tokens.textPrimary,
+              if (distance > 0)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: distance + 1,
+                  child: AnnotatedRegion<SystemUiOverlayStyle>(
+                    value: appSystemUiOverlayStyle(Brightness.dark),
+                    child: const DecoratedBox(
+                      key: ValueKey('home-pull-background'),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Color(0xFF0C2344), _homeHeaderTopColor],
                         ),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '雨声 · 海浪 · 篝火',
-                        style: TextStyle(fontSize: 12, color: tokens.textMuted),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
+              child!,
             ],
           ),
-          const SizedBox(height: 18),
-          const SectionHeader('最近记录'),
-          // 扁平列表：一个容器（半径 18）装 5 行，行与行之间一条 1px 分隔线，
-          // 第一行上方没有（规格 §4.1）。一行一张卡的老形态一并换掉。
-          QuietSurface(
-            borderRadius: BorderRadius.circular(18),
-            padding: EdgeInsets.zero,
-            child: Column(
-              children: [
-                for (var i = 0; i < recentRecords.length; i++) ...[
-                  if (i > 0)
-                    Divider(height: 1, thickness: 1, color: tokens.border),
-                  HomeRecordRow(entry: recentRecords[i]),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ],
+        );
+      },
     );
   }
 }

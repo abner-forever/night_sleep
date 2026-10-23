@@ -5,7 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 /// 开屏页（原型 `SplashScreen`）。
 ///
-/// 深蓝渐变 + 月亮 logo + 星点 + 「夜深 / 听见夜晚，看见睡眠」+ 底部进度条。
+/// 深蓝渐变 + 月亮 logo + 「夜深 / 听见夜晚，看见睡眠」+ 底部进度条。
 /// 播完由调用方移除（[onFinished]），首次安装随后才轮到引导页。
 ///
 /// **时长是 1.6 秒，不是原型的 3.2 秒**（使用方裁定）：原型那 3.2 秒是网页首屏
@@ -20,8 +20,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 /// **只有一个有限时长的 `AnimationController`，没有 `Timer`、没有 `repeat()`**。
 /// 循环动画会让 `pumpAndSettle()` 永不收敛（`sleep_moon_mark.dart` 的 `_sync()`
 /// 注释记的就是这个坑），而挂真外壳的测试会在结束时报 pending timer。
-/// 原型的星点闪烁 / 光晕脉动 / 轨道环自转在原型里都是 `infinite`，这里一律改成
-/// **在这一条 1.6 秒时间轴上能跑完的有限形式**。
+/// Version 19 去掉星点、轨道环和图标光晕，保留品牌描线与文案的有限时间轴。
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key, required this.onFinished});
 
@@ -42,10 +41,6 @@ abstract final class _SplashPalette {
   static const night2 = Color(0xFF151145);
   static const glowBlue = Color(0x404C81FF); // rgba(76,129,255,.25)
   static const glowCyan = Color(0x1F68DAFF); // rgba(104,218,255,.12)
-  static const ringBlue = Color(0x1795C0FF); // rgba(149,192,255,.09)
-  static const ringViolet = Color(0x14B09BFF); // rgba(176,155,255,.08)
-  static const star = Color(0xFFDDECFF);
-  static const starGlow = Color(0xE6BFDCFF); // rgba(191,220,255,.9)
   static const copySub = Color(0xB8DDEBFF); // rgba(221,235,255,.72)
   static const progressTrack = Color(0x1FFFFFFF); // rgba(255,255,255,.12)
   static const progressFrom = Color(0xFF75D8FF);
@@ -86,18 +81,6 @@ const String splashLogoSvg = '''
 /// 原型 `@keyframes` 的时长（秒）与延迟（秒），原样抄自 `index.css`。
 /// 用的时候除以原型总时长 3.2 秒换算成这条 1.6 秒时间轴上的比例。
 const double _protoTotal = 3.2;
-
-/// 星点，取自原型的 `nth-child` 规则：位置、直径、闪烁延迟。
-const List<
-        ({double top, double? left, double? right, double size, double delay})>
-    _stars = [
-  (top: 0.18, left: 0.18, right: null, size: 3, delay: 0.2),
-  (top: 0.27, left: null, right: 0.17, size: 2, delay: 0.8),
-  (top: 0.63, left: 0.13, right: null, size: 2, delay: 1.4),
-  (top: 0.71, left: null, right: 0.19, size: 3, delay: 1.1),
-  (top: 0.12, left: 0.63, right: null, size: 2, delay: 1.8),
-  (top: 0.82, left: 0.67, right: null, size: 2, delay: 0.5),
-];
 
 class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
@@ -153,27 +136,6 @@ class _SplashScreenState extends State<SplashScreen>
                 fit: StackFit.expand,
                 children: [
                   const _Backdrop(),
-                  // 轨道环：原型 `splashOrbit` 转的是正圆，转动本身看不出来，
-                  // 真正可见的是 `scale(.96 ↔ 1.04)` 那下呼吸。就实现成呼吸。
-                  _OrbitRing(
-                    diameter:
-                        math.min(620, MediaQuery.sizeOf(context).width * 0.92),
-                    color: _SplashPalette.ringBlue,
-                    period: 7,
-                    elapsed: reduceMotion ? 0 : v * 1.6,
-                  ),
-                  _OrbitRing(
-                    diameter:
-                        math.min(450, MediaQuery.sizeOf(context).width * 0.68),
-                    color: _SplashPalette.ringViolet,
-                    period: 9,
-                    elapsed: reduceMotion ? 0 : v * 1.6,
-                  ),
-                  for (final star in _stars)
-                    _Star(
-                      spec: star,
-                      elapsed: reduceMotion ? 0 : v * 1.6,
-                    ),
                   Center(
                     child: Transform.translate(
                       // 原型 `.splash-brand { transform: translateY(-2vh) }`。
@@ -263,97 +225,6 @@ class _Backdrop extends StatelessWidget {
   }
 }
 
-/// 一圈细描边的正圆，按 `splashOrbit` 的 `scale(.96 ↔ 1.04)` 呼吸。
-class _OrbitRing extends StatelessWidget {
-  const _OrbitRing({
-    required this.diameter,
-    required this.color,
-    required this.period,
-    required this.elapsed,
-  });
-
-  final double diameter;
-  final Color color;
-
-  /// 原型那一轮的秒数（7 / 9）。
-  final double period;
-
-  /// 本时间轴已经过去的秒数。
-  final double elapsed;
-
-  @override
-  Widget build(BuildContext context) {
-    // `0% scale .96; 50% scale 1.04; 100% scale .96` —— 折成三角波即可。
-    final phase = elapsed / period;
-    final pulse = 1 - (2 * (phase % 1.0) - 1).abs();
-
-    return Center(
-      child: Container(
-        width: diameter * (0.96 + 0.08 * pulse),
-        height: diameter * (0.96 + 0.08 * pulse),
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: color),
-        ),
-      ),
-    );
-  }
-}
-
-/// 一颗闪烁的星点。
-class _Star extends StatelessWidget {
-  const _Star({required this.spec, required this.elapsed});
-
-  final ({
-    double top,
-    double? left,
-    double? right,
-    double size,
-    double delay
-  }) spec;
-  final double elapsed;
-
-  @override
-  Widget build(BuildContext context) {
-    // `splashStar` 的 2.4 秒一轮；延迟没到就停在起点，不做负相位回绕
-    // （回绕会在延迟处「啪」地跳一下）。
-    final phase = math.max(0.0, elapsed - spec.delay) / 2.4;
-    final pulse = 1 - (2 * (phase % 1.0) - 1).abs();
-    final opacity = 0.2 + 0.8 * pulse;
-    final scale = 0.7 + 0.65 * pulse;
-
-    return Positioned(
-      top: MediaQuery.sizeOf(context).height * spec.top,
-      left: spec.left == null
-          ? null
-          : MediaQuery.sizeOf(context).width * spec.left!,
-      right: spec.right == null
-          ? null
-          : MediaQuery.sizeOf(context).width * spec.right!,
-      child: Opacity(
-        opacity: opacity.clamp(0.0, 1.0),
-        child: Transform.scale(
-          scale: scale,
-          child: Container(
-            width: spec.size,
-            height: spec.size,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: _SplashPalette.star,
-              boxShadow: [
-                BoxShadow(
-                  color: _SplashPalette.starGlow,
-                  blurRadius: 10,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// logo + 文案。
 class _Brand extends StatelessWidget {
   const _Brand({required this.controller, required this.reduceMotion});
@@ -372,9 +243,6 @@ class _Brand extends StatelessWidget {
       1.0,
       const Cubic(0.18, 0.9, 0.26, 1.16),
     ).transform(v);
-    // `splashHalo`：2.2s 一轮，延迟 .6s，无限脉动 → 折成有限形式
-    final haloPhase = math.max(0.0, v * 1.6 - 0.6) / 2.2;
-    final halo = 1 - (2 * (haloPhase % 1.0) - 1).abs();
     // `splashCopyIn`：正文 .7s，延迟 1.38s / 1.55s
     final titleIn =
         _SplashScreenState._interval(1.38, 0.7, Curves.easeOut).transform(v);
@@ -396,22 +264,6 @@ class _Brand extends StatelessWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    // `splash-halo`：logo 外面那圈径向光晕。
-                    Opacity(
-                      opacity: 0.62 + 0.38 * halo,
-                      child: Transform.scale(
-                        scale: 1 + 0.12 * halo,
-                        child: const DecoratedBox(
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: RadialGradient(
-                              colors: [Color(0x4062BEFF), Color(0x0062BEFF)],
-                              stops: [0, 0.66],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
                     SvgPicture.string(
                       splashLogoSvg,
                       excludeFromSemantics: true,

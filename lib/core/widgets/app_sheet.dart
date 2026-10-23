@@ -1,11 +1,12 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
 import '../platform/haptics.dart';
 import '../theme/app_tokens.dart';
-import 'liquid_glass.dart';
+import 'quiet_surface.dart';
 
 /// How many bottom sheets are on screen.
 ///
@@ -43,6 +44,7 @@ Future<T?> showAppSheet<T>({
   required BuildContext context,
   required WidgetBuilder builder,
   bool isDismissible = true,
+  bool expanded = false,
 }) {
   // `rootNavigator: true` 与原来的 `showGeneralDialog` 默认值一致：弹层挂在根
   // Navigator 上，不随调用点的局部 Navigator 走。
@@ -58,6 +60,7 @@ Future<T?> showAppSheet<T>({
       pageBuilder: (context, animation, secondaryAnimation) => _SheetHost(
         animation: animation,
         isDismissible: isDismissible,
+        expanded: expanded,
         child: Builder(builder: builder),
       ),
     ),
@@ -103,11 +106,13 @@ class _SheetHost extends StatefulWidget {
     required this.child,
     required this.isDismissible,
     required this.animation,
+    required this.expanded,
   });
 
   final Widget child;
   final bool isDismissible;
   final Animation<double> animation;
+  final bool expanded;
 
   @override
   State<_SheetHost> createState() => _SheetHostState();
@@ -209,7 +214,7 @@ class _SheetHostState extends State<_SheetHost>
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
     final media = MediaQuery.of(context);
-    final isWide = media.size.width >= 640;
+    final isWide = media.size.width >= (widget.expanded ? 768 : 640);
 
     // The scrim fades. Only the panel slides.
     final scrim = FadeTransition(
@@ -229,44 +234,59 @@ class _SheetHostState extends State<_SheetHost>
             child: scrim,
           ),
         ),
-        Align(
-          alignment: Alignment.bottomCenter,
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0, 1),
-              end: Offset.zero,
-            ).animate(_curved),
-            // 位移在缩放的**外面**：拖拽跟手的是屏幕像素，不该被进场时那
-            // 1.5% 的缩放折算一遍。
-            child: AnimatedBuilder(
-              animation: _drag,
-              builder: (context, child) => Transform.translate(
-                offset: Offset(0, _drag.value),
-                child: child,
-              ),
-              child: ScaleTransition(
-                scale: _scale,
-                alignment: Alignment.bottomCenter,
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    _panelHeight = constraints.maxHeight;
-                    return ConstrainedBox(
-                      // 宽屏限宽，但**下沿一律贴屏幕底**。原型那条「宽屏浮起
-                      // 24px」是桌面浏览器的规则：这里照搬会在面板下缘留出
-                      // 一条遮罩，面板像是悬空断在屏幕底之上（使用方在 iPad
-                      // 横屏上实测后裁定，见规格第 8 章）。
-                      constraints: BoxConstraints(
-                        maxWidth: isWide ? 560 : double.infinity,
-                        maxHeight: media.size.height * 0.92,
-                      ),
-                      child: _SheetDragScope(
-                        onDragUpdate: _onDragUpdate,
-                        onDragEnd: _onDragEnd,
-                        onHandleTap: _dismiss,
-                        child: widget.child,
-                      ),
-                    );
-                  },
+        Positioned.fill(
+          left: media.padding.left,
+          right: media.padding.right,
+          bottom: media.viewInsets.bottom,
+          child: Align(
+            alignment: widget.expanded && isWide
+                ? Alignment.center
+                : Alignment.bottomCenter,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, 1),
+                end: Offset.zero,
+              ).animate(_curved),
+              // 位移在缩放的**外面**：拖拽跟手的是屏幕像素，不该被进场时那
+              // 1.5% 的缩放折算一遍。
+              child: AnimatedBuilder(
+                animation: _drag,
+                builder: (context, child) => Transform.translate(
+                  offset: Offset(0, _drag.value),
+                  child: child,
+                ),
+                child: ScaleTransition(
+                  scale: _scale,
+                  alignment: Alignment.bottomCenter,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      _panelHeight = constraints.maxHeight;
+                      return ConstrainedBox(
+                        // 宽屏限宽，但**下沿一律贴屏幕底**。原型那条「宽屏浮起
+                        // 24px」是桌面浏览器的规则：这里照搬会在面板下缘留出
+                        // 一条遮罩，面板像是悬空断在屏幕底之上（使用方在 iPad
+                        // 横屏上实测后裁定，见规格第 8 章）。
+                        constraints: BoxConstraints(
+                          maxWidth: isWide
+                              ? (widget.expanded ? 620 : 560)
+                              : double.infinity,
+                          maxHeight: math.max(
+                            0,
+                            widget.expanded
+                                ? constraints.maxHeight - (isWide ? 56 : 0)
+                                : math.min(constraints.maxHeight * 0.92,
+                                    constraints.maxHeight - media.padding.top),
+                          ),
+                        ),
+                        child: _SheetDragScope(
+                          onDragUpdate: _onDragUpdate,
+                          onDragEnd: _onDragEnd,
+                          onHandleTap: _dismiss,
+                          child: widget.child,
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ),
             ),
@@ -327,6 +347,8 @@ class AppSheet extends StatelessWidget {
     this.padding,
     this.scrollable = false,
     this.heightFactor,
+    this.expanded = false,
+    this.background,
   }) : assert(
           (child == null) != (slivers == null),
           'AppSheet 要么给 child，要么给 slivers——两者只能有一个。',
@@ -343,6 +365,8 @@ class AppSheet extends StatelessWidget {
   ///
   /// 睡眠详情页用 2/3 固定一个「半弹窗」：内容多了在面板里滚，内容少了面板也不缩。
   final double? heightFactor;
+  final bool expanded;
+  final Widget? background;
 
   /// 直接由 sliver 组成的正文，与 [child] 二选一。
   ///
@@ -357,8 +381,7 @@ class AppSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
     final media = MediaQuery.of(context);
-    final isWide = media.size.width >= 640;
-    final radius = Radius.circular(isWide ? AppRadii.sheet : AppRadii.sheet);
+    const radius = Radius.circular(AppRadii.sheet);
 
     final Widget content;
     if (slivers != null) {
@@ -379,43 +402,61 @@ class AppSheet extends StatelessWidget {
           padding: EdgeInsets.only(bottom: media.padding.bottom),
           child: padded,
         );
+      } else {
+        padded = Padding(
+          padding: EdgeInsets.only(bottom: media.padding.bottom),
+          child: padded,
+        );
       }
       content = padded;
     }
 
-    final panel = LiquidGlass(
-      borderRadius: BorderRadius.vertical(top: radius),
-      blur: 38,
-      saturation: 1.35,
+    final panel = QuietSurface(
+      borderRadius: expanded
+          ? (media.size.width >= 768
+              ? BorderRadius.circular(25)
+              : BorderRadius.zero)
+          : const BorderRadius.vertical(top: radius),
       tint: tokens.sheetBg,
       // 弹层按内容收放：不要像卡片那样强行撑满宿主宽度。
       expandWidth: false,
-      // 下沿贴着屏幕底，不需要再加一条底边亮线。
-      bottomEdge: false,
+      borderColor: Colors.transparent,
       // 阴影放在裁剪之外才不会被丢掉；原先写在 `ClipRRect` 里面，实际是看不见的。
-      shadow: [
+      shadow: const [
         BoxShadow(
-          color: Colors.black.withValues(alpha: isWide ? 0.18 : 0.14),
-          blurRadius: 44,
-          offset: const Offset(0, -14),
+          color: Color(0x15091729),
+          blurRadius: 30,
+          offset: Offset(0, -6),
         ),
       ],
       // A sheet is not a `Dialog`, and `showGeneralDialog` — unlike
       // `showDialog` — wraps its route in nothing. Without a `Material`
       // ancestor every `Text` in here falls back to Flutter's error style,
       // which renders as a yellow double underline under all of it.
-      child: Material(
-        type: MaterialType.transparency,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (showHandle) const _SheetHandle(),
-            Flexible(child: content),
-          ],
-        ),
+      child: Stack(
+        children: [
+          if (background != null) Positioned.fill(child: background!),
+          Material(
+            type: MaterialType.transparency,
+            child: SafeArea(
+              top: expanded && media.size.width < kWideLayoutBreakpoint,
+              bottom: false,
+              left: false,
+              right: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (showHandle) const _SheetHandle(),
+                  Flexible(child: content),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
 
+    if (expanded) return SizedBox.expand(child: panel);
     if (heightFactor == null) return panel;
     return SizedBox(height: media.size.height * heightFactor!, child: panel);
   }

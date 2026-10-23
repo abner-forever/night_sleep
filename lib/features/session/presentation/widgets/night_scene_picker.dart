@@ -103,7 +103,7 @@ class NightScenePicker extends StatelessWidget {
       scrollDirection: Axis.horizontal,
       padding: padding,
       itemCount: NightScene.values.length,
-      separatorBuilder: (_, __) => const SizedBox(width: 10),
+      separatorBuilder: (_, __) => const SizedBox(width: 9),
       itemBuilder: (context, index) {
         final option = NightScene.values[index];
         return NightSceneChoice(
@@ -148,7 +148,7 @@ class NightSceneChoice extends StatelessWidget {
         // 卡片里的标签 `Text` 会再生成一份语义，不排掉的话读屏会把「银河」念两遍。
         excludeSemantics: true,
         child: SizedBox(
-          width: 68,
+          width: NightStyle.scenePreviewWidth,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -170,6 +170,12 @@ class NightSceneChoice extends StatelessWidget {
                 transformAlignment: Alignment.center,
                 decoration: BoxDecoration(
                   gradient: scene.previewGradient,
+                  image: DecorationImage(
+                    image: AssetImage(scene.photoAsset),
+                    fit: BoxFit.cover,
+                    colorFilter: const ColorFilter.mode(
+                        Color(0x663478F6), BlendMode.srcATop),
+                  ),
                   borderRadius: BorderRadius.circular(NightStyle.previewRadius),
                   border: Border.all(
                     color: selected

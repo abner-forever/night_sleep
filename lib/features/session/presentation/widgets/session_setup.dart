@@ -241,32 +241,22 @@ class _SessionSetupBodyState extends ConsumerState<SessionSetupBody> {
       child: const Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          SleepMoonOrbit(size: 102),
+          SleepMoonOrbit(size: 70),
           SizedBox(height: 15),
-          Text(
-            '晚安',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.8,
-              color: NightStyle.greetingInk,
-            ),
-          ),
-          SizedBox(height: 5),
           Text(
             '准备好休息了吗？',
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 29,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -1.16, // -.04em × 29
+              fontSize: 23,
+              fontWeight: FontWeight.w600,
+              letterSpacing: -.5,
               color: NightStyle.textPrimary,
             ),
           ),
           SizedBox(height: 7),
           Text(
             '放下今天，让夜晚慢下来。',
-            style: TextStyle(fontSize: 14, color: NightStyle.heroBodyInk),
+            style: TextStyle(fontSize: 12, color: NightStyle.heroBodyInk),
           ),
         ],
       ),

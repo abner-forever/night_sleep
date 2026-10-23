@@ -8,10 +8,17 @@ import 'stage_style.dart';
 
 /// `AIRing` — a 50px circular gauge showing a 0–100 score.
 class ScoreRing extends StatelessWidget {
-  const ScoreRing({super.key, required this.score, this.size = 50});
+  const ScoreRing(
+      {super.key,
+      required this.score,
+      this.size = 50,
+      this.prominent = false,
+      this.estimated = false});
 
   final int score;
   final double size;
+  final bool prominent;
+  final bool estimated;
 
   @override
   Widget build(BuildContext context) {
@@ -29,17 +36,36 @@ class ScoreRing extends StatelessWidget {
             painter: _ScoreRingPainter(
               progress: (score / 100).clamp(0.0, 1.0),
               color: color,
-              trackColor: tokens.borderStrong,
+              trackColor: prominent
+                  ? tokens.textPrimary.withValues(alpha: .14)
+                  : tokens.borderStrong,
+              gradient: prominent
+                  ? LinearGradient(colors: [
+                      tokens.stageRem,
+                      tokens.stageDeep,
+                      tokens.stageLight
+                    ])
+                  : null,
             ),
           ),
-          Text(
-            '$score',
-            style: AppTheme.num(
-              context,
-              size: 12,
-              weight: FontWeight.w700,
-              color: color,
-            ),
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                '$score',
+                style: AppTheme.num(
+                  context,
+                  size: prominent ? 29 : 12,
+                  weight: prominent ? FontWeight.w500 : FontWeight.w700,
+                  color: prominent ? tokens.textPrimary : color,
+                ),
+              ),
+              if (prominent) ...[
+                const SizedBox(height: 3),
+                Text(estimated ? '估算评分' : '睡眠评分',
+                    style: TextStyle(fontSize: 9, color: tokens.textSecondary)),
+              ],
+            ],
           ),
         ],
       ),
@@ -52,11 +78,13 @@ class _ScoreRingPainter extends CustomPainter {
     required this.progress,
     required this.color,
     required this.trackColor,
+    this.gradient,
   });
 
   final double progress;
   final Color color;
   final Color trackColor;
+  final Gradient? gradient;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -80,6 +108,9 @@ class _ScoreRingPainter extends CustomPainter {
       ..strokeWidth = strokeWidth
       ..strokeCap = StrokeCap.round
       ..color = color;
+    if (gradient != null) {
+      progressPaint.shader = gradient!.createShader(Offset.zero & size);
+    }
 
     canvas.drawArc(
       Rect.fromCircle(center: centre, radius: radius),
@@ -94,5 +125,6 @@ class _ScoreRingPainter extends CustomPainter {
   bool shouldRepaint(_ScoreRingPainter oldDelegate) =>
       oldDelegate.progress != progress ||
       oldDelegate.color != color ||
-      oldDelegate.trackColor != trackColor;
+      oldDelegate.trackColor != trackColor ||
+      oldDelegate.gradient != gradient;
 }

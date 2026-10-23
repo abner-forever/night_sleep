@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_theme.dart';
@@ -79,17 +80,97 @@ class NoiseTile extends StatelessWidget {
     required this.active,
     required this.onTap,
     required this.width,
+    this.photo = false,
   });
 
   final NoiseOption option;
   final bool active;
   final VoidCallback onTap;
   final double width;
+  final bool photo;
 
   @override
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
     final color = active ? option.color : tokens.textMuted;
+
+    if (photo) {
+      final cover = switch (option.id) {
+        'ocean' => 'ocean',
+        'fire' => 'fire',
+        'stream' => 'waterfall',
+        _ => 'forest',
+      };
+      return Semantics(
+        button: true,
+        selected: active,
+        label: '${option.label}，${active ? '停止播放' : '播放'}',
+        excludeSemantics: true,
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            width: width,
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                  color: active ? tokens.accent : Colors.transparent, width: 2),
+            ),
+            child: AspectRatio(
+              aspectRatio: 1.06,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(15),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.asset('assets/images/$cover.jpg', fit: BoxFit.cover),
+                    const DecoratedBox(
+                        decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Color(0x1A061B36), Color(0xB3061B36)],
+                        stops: [.2, 1],
+                      ),
+                    )),
+                    Positioned(
+                        top: 10,
+                        left: 11,
+                        child: option.icon(20, const Color(0xFFD2E4F7))),
+                    Positioned(
+                      left: 12,
+                      right: 42,
+                      bottom: 12,
+                      child: Text(option.label,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600)),
+                    ),
+                    Positioned(
+                      right: 11,
+                      bottom: 12,
+                      child: Container(
+                        width: 25,
+                        height: 25,
+                        alignment: Alignment.center,
+                        decoration: const BoxDecoration(
+                            color: Colors.white, shape: BoxShape.circle),
+                        child: active
+                            ? AppIcons.stop(
+                                size: 12, color: const Color(0xFF24476C))
+                            : AppIcons.play(
+                                size: 12, color: const Color(0xFF24476C)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -130,9 +211,6 @@ class NoiseTile extends StatelessWidget {
   }
 }
 
-/// `.slider-thumb` — 24px, matching the design.
-const double _thumbSize = 24;
-
 /// Volume slider shared by the sleep-sounds sheet and the session drawer.
 class VolumeSlider extends StatelessWidget {
   const VolumeSlider({
@@ -155,83 +233,16 @@ class VolumeSlider extends StatelessWidget {
         AppIcons.volume(size: 18, color: tokens.textMuted, strokeWidth: 1.5),
         const SizedBox(width: 12),
         Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              void update(double dx) {
-                if (constraints.maxWidth <= 0) return;
-                onChanged((dx / constraints.maxWidth).clamp(0.0, 1.0));
-              }
-
-              // The design positions the thumb with `left: <value>%` plus
-              // `translateX(-50%)`, i.e. centred on the value, and lets it
-              // overhang the track ends. Here it is centred but clamped inside
-              // the track, so it never gets clipped at 0% or 100%.
-              final trackWidth = constraints.maxWidth;
-              final thumbLeft = (value * trackWidth - _thumbSize / 2).clamp(
-                  0.0, (trackWidth - _thumbSize).clamp(0.0, double.infinity));
-
-              return GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTapDown: (details) => update(details.localPosition.dx),
-                onHorizontalDragStart: (details) =>
-                    update(details.localPosition.dx),
-                onHorizontalDragUpdate: (details) =>
-                    update(details.localPosition.dx),
-                child: SizedBox(
-                  height: 28,
-                  child: Stack(
-                    children: [
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        top: (28 - 5) / 2,
-                        height: 5,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: tokens.borderStrong,
-                            borderRadius: BorderRadius.circular(AppRadii.pill),
-                          ),
-                        ),
-                      ),
-                      // `left: 0` — the fill grows from the left edge, never
-                      // from the middle.
-                      Positioned(
-                        left: 0,
-                        top: (28 - 5) / 2,
-                        width: value * trackWidth,
-                        height: 5,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: color,
-                            borderRadius: BorderRadius.circular(AppRadii.pill),
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        left: thumbLeft,
-                        top: (28 - _thumbSize) / 2,
-                        child: Container(
-                          width: _thumbSize,
-                          height: _thumbSize,
-                          decoration: BoxDecoration(
-                            color: tokens.bgCardSolid,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: color, width: 2.5),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.22),
-                                blurRadius: 6,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
+          child: Semantics(
+            label: '音量',
+            child: SizedBox(
+              height: 44,
+              child: CupertinoSlider(
+                value: value,
+                activeColor: color,
+                onChanged: onChanged,
+              ),
+            ),
           ),
         ),
         const SizedBox(width: 12),

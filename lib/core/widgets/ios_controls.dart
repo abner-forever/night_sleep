@@ -4,7 +4,6 @@ import '../platform/haptics.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_tokens.dart';
 import 'glass_surface.dart';
-import 'liquid_glass.dart';
 import 'quiet_surface.dart';
 
 /// `ios-toggle` — a 52×32 track with a 26px thumb that travels 20px.
@@ -232,7 +231,7 @@ class _IosToggleState extends State<IosToggle> with TickerProviderStateMixin {
 /// Segment label style, shared by the width measurement and the painted text so
 /// the two can never disagree.
 const _kSegmentTextStyle = TextStyle(
-  fontSize: 14,
+  fontSize: 12,
   fontWeight: FontWeight.w600,
   fontFeatures: AppTheme.tabular,
 );
@@ -293,16 +292,11 @@ class SegmentedControl<T> extends StatelessWidget {
 
         return SizedBox(
           width: totalWidth,
-          child: LiquidGlass(
-            borderRadius: BorderRadius.circular(10),
-            blur: 18,
-            saturation: 1.45,
-            tint: tokens.bgInput,
-            // 小控件上整圈白边会显得太粗；留一点轮廓就够了。
-            rimOpacity: 0.6,
-            // 轨道是「凹进去」的，不跟内容卡共用那层大阴影。
-            shadow: const [],
-            expandWidth: false,
+          child: Container(
+            decoration: BoxDecoration(
+              color: tokens.bgInput,
+              borderRadius: BorderRadius.circular(10),
+            ),
             padding: const EdgeInsets.all(3),
             child: Stack(
               children: [
@@ -355,11 +349,10 @@ class _SegmentCapsule extends StatelessWidget {
       decoration: BoxDecoration(
         color: tokens.bgCardSolid,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: tokens.liquidRim, width: 0.5),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.14),
-            blurRadius: 5,
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 4,
             offset: const Offset(0, 2),
           ),
         ],
@@ -396,7 +389,9 @@ class _Segment extends StatelessWidget {
       onTap: onTap,
       child: SizedBox(
         width: width,
-        child: Padding(
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 31),
+          alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           // 文字颜色跟着胶囊一起走，而不是等胶囊落位后「啪」地换色。
           child: AnimatedDefaultTextStyle(

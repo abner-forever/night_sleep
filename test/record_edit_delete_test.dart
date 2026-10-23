@@ -299,7 +299,7 @@ void main() {
 
       expect(find.text('保存修改'), findsNothing, reason: '保存后应离开编辑页');
       expect(find.text('保存中…'), findsNothing, reason: '保存流程必须能走完');
-      expect(find.text('睡眠概览'), findsOneWidget, reason: '应回到标签外壳');
+      expect(find.text('夜深'), findsOneWidget, reason: '应回到标签外壳');
       expect(
         await database.allRecords(),
         hasLength(1),
@@ -455,8 +455,7 @@ void main() {
     /// 10 分钟超时（这不是推测，这条用例第一版就是这么挂的）。
     testWidgets('确认后记录被删除，并且真的走到了删录音文件那一步', (tester) async {
       final entry = await seedManual();
-      const path =
-          '/data/user/0/com.abner.night_sleep/files/clips/clip-1.wav';
+      const path = '/data/user/0/com.abner.night_sleep/files/clips/clip-1.wav';
 
       await database.insertClips([
         SoundClipsCompanion.insert(

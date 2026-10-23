@@ -143,7 +143,6 @@ void main() {
     testWidgets('是「准备入睡」而不是「没有正在进行的睡眠」', (tester) async {
       await pumpSetup(tester);
 
-      expect(find.text('晚安'), findsOneWidget);
       expect(find.text('准备好休息了吗？'), findsOneWidget);
       expect(find.text('放下今天，让夜晚慢下来。'), findsOneWidget);
       expect(find.text('睡眠模式'), findsOneWidget);
@@ -493,7 +492,7 @@ void main() {
     });
   });
 
-  testWidgets('宽屏下两态内容居中限宽 680', (tester) async {
+  testWidgets('宽屏下两态内容居中限宽 540', (tester) async {
     await pumpSetup(tester, size: const Size(1200, 2000));
 
     // 量内容列本身。**不能再用 `ListView.first`**：v3.10 起入睡前态是一条
@@ -503,7 +502,7 @@ void main() {
       of: find.byType(SleepSessionPage),
       matching: find.byType(SessionSetupBody),
     );
-    expect(tester.getSize(content).width, 680);
+    expect(tester.getSize(content).width, 540);
     expect(
       tester.getCenter(content).dx,
       600,

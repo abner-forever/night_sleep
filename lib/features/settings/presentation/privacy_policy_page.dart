@@ -144,9 +144,14 @@ class _PrivacyPolicyPageState extends State<PrivacyPolicyPage> {
         backgroundColor: tokens.bgBase,
         foregroundColor: tokens.textPrimary,
         surfaceTintColor: Colors.transparent,
-        title: const Text('隐私协议'),
+        centerTitle: true,
+        title: const Text('隐私协议',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
         leading: IconButton(
           tooltip: '返回',
+          color: Theme.of(context).brightness == Brightness.dark
+              ? tokens.textPrimary
+              : Colors.black,
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
           onPressed: () => context.pop(),
         ),

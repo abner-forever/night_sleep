@@ -15,6 +15,7 @@ import '../widgets/noise_controls.dart';
 Future<void> showNoiseSheet(BuildContext context) {
   return showAppSheet<void>(
     context: context,
+    expanded: true,
     builder: (context) => const NoiseSheet(),
   );
 }
@@ -181,6 +182,8 @@ class _NoiseSheetState extends State<NoiseSheet>
     final failure = _failure;
 
     return AppSheet(
+      expanded: true,
+      showHandle: false,
       // 内容比视口高时（iPhone 横屏、iPad 分屏）允许滚动：面板高度上限是屏高的
       // 92%，装不下的部分会被 `ClipRRect` 裁掉，音量条与定时 chips 就再也够不着。
       // 安全区下边距交给这里的滚动视图留（下面的 `Padding` 不再重复计一遍）。
@@ -208,29 +211,16 @@ class _NoiseSheetState extends State<NoiseSheet>
                     const SizedBox(height: 20),
                   ],
                   Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
+                    spacing: 12,
+                    runSpacing: 12,
                     children: [
                       for (final option in kNoiseOptions)
                         NoiseTile(
                           option: option,
                           active: option.id == _activeId,
                           onTap: () => _select(option),
-                          // 全部条目排成一行，格子宽度按**面板自身**的可用宽度与
-                          // **条数**算，不是屏幕宽度、也不写死列数：宽屏下面板被
-                          // `_SheetHost` 限到 560px，拿屏幕宽度算会把每格撑爆
-                          // （iPad 横屏下一行只放得下一个，内容溢出被裁掉）；
-                          // 写死列数则会在条数变化时留下孤行。
-                          // 末尾减 2 是给 `Wrap` 留的取整余量：正好等分时累加出来的
-                          // 小数误差会让最后一格翻到下一行。
-                          // `spacing: 10` 见下面的 `Wrap`。
-                          width: math.max(
-                            0,
-                            (constraints.maxWidth -
-                                    10 * (kNoiseOptions.length - 1) -
-                                    2) /
-                                kNoiseOptions.length,
-                          ),
+                          photo: true,
+                          width: (constraints.maxWidth - 12) / 2,
                         ),
                     ],
                   ),

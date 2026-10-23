@@ -152,22 +152,9 @@ class _SleepMoonOrbitState extends State<SleepMoonOrbit>
         ),
         child: child,
       ),
-      child: Container(
+      child: SizedBox(
         width: d,
         height: d,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: const Color(0x2E96A7FF)),
-          gradient: const RadialGradient(
-            colors: [Color(0x33758DED), Color(0x0F4A59A9), Color(0x00000000)],
-            stops: [0, .60, .62],
-          ),
-          boxShadow: const [
-            // 原型用 `box-shadow: 0 0 50px rgba(89,105,205,.15)` 加一层外发光。
-            // 这也是月亮那一圈被 flutter_svg 丢掉的外发光的近似（见文件头注释）。
-            BoxShadow(color: Color(0x265969CD), blurRadius: 50),
-          ],
-        ),
         child: Center(child: SleepMoonMark(size: d * 0.79)),
       ),
     );

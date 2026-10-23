@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import '../../../app/app_shell.dart';
 import '../../../app/app_toast.dart';
 import '../../../core/config/app_config.dart';
-import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_basics.dart';
 import '../../../core/widgets/app_icons.dart';
@@ -17,6 +16,7 @@ import '../../sleep/domain/sleep_quality.dart';
 import '../../sleep/domain/sleep_score.dart';
 import '../../sleep/presentation/widgets/event_tiles.dart';
 import '../../sleep/presentation/widgets/quality_rating.dart';
+import '../../sleep/presentation/widgets/sleep_summary.dart';
 import 'review_duration_hero.dart';
 import 'review_night_picker.dart';
 
@@ -71,6 +71,7 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
 
     final inset = EdgeInsets.only(
       top: pageTopInset(context),
+      bottom: pageBottomInset(context),
       left: pageGutter(context),
       right: pageGutter(context),
     );
@@ -107,15 +108,29 @@ class _ReviewPageState extends ConsumerState<ReviewPage> {
     if (selected == null) {
       children.add(_NoNightState(hasDemoData: records.isNotEmpty));
     } else {
-      children.add(
-        _NightHeader(
-          entry: selected,
-          onTap: () => _pickNight(real, selected),
-        ),
-      );
-      const SizedBox(height: 18);
-      // 用 id 作 key：换到另一晚时重建表单，质量、事件、备注都从新记录重新预填。
-      children.add(_ReviewForm(key: ValueKey(selected.id), entry: selected));
+      children.add(LayoutBuilder(builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 720;
+        final available = constraints.maxWidth - (wide ? 28 : 0);
+        return Flex(
+          direction: wide ? Axis.horizontal : Axis.vertical,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: wide ? available / 2.2 : available,
+              child: _NightHeader(
+                entry: selected,
+                onTap: () => _pickNight(real, selected),
+              ),
+            ),
+            SizedBox(width: wide ? 28 : 0, height: wide ? 0 : 24),
+            SizedBox(
+              width: wide ? available / 2.2 * 1.2 : available,
+              child: _ReviewForm(key: ValueKey(selected.id), entry: selected),
+            ),
+          ],
+        );
+      }));
     }
 
     return ListView(
@@ -150,58 +165,30 @@ class _NightHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
-    final hours = entry.durationHours.floor();
-    final minutes = ((entry.durationHours - hours) * 60).round();
-
     return ReviewDurationHero(
-      padding: const EdgeInsets.all(16),
       onTap: onTap,
       semanticLabel: '换一晚回顾',
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  formatDate(entry.wakeLocal),
-                  style: AppTheme.num(
-                    context,
-                    size: 20,
-                    weight: FontWeight.w700,
-                    color: tokens.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${entry.bedtimeLabel} → ${entry.wakeLabel}',
-                  style: TextStyle(fontSize: 14, color: tokens.textSecondary),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '来自：${sourceLabel(entry.source)}',
-                  style: TextStyle(fontSize: 12, color: tokens.textMuted),
-                ),
-              ],
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+          Row(
             children: [
-              Text(
-                '${hours}h ${minutes}m',
-                style: AppTheme.num(
-                  context,
-                  size: 16,
-                  weight: FontWeight.w700,
-                  color: tokens.accent,
-                ),
-              ),
-              const SizedBox(height: 4),
-              AppIcons.chevronDown(
-                  size: 16, color: tokens.textMuted, strokeWidth: 2),
+              Expanded(
+                  child: Text(formatDate(entry.wakeLocal),
+                      style: TextStyle(
+                          fontSize: 12, color: tokens.textSecondary))),
+              AppIcons.moon(size: 22, color: tokens.accent),
+              const SizedBox(width: 12),
+              AppIcons.chevronDown(size: 16, color: tokens.textMuted),
             ],
           ),
+          const SizedBox(height: 12),
+          SleepDuration(hours: entry.durationHours, size: 46),
+          const SizedBox(height: 15),
+          SleepTimes(entry: entry, size: 12),
+          const SizedBox(height: 12),
+          Text('来自：${sourceLabel(entry.source)}',
+              style: TextStyle(fontSize: 11, color: tokens.textMuted)),
         ],
       ),
     );
@@ -307,7 +294,7 @@ class _ReviewFormState extends ConsumerState<_ReviewForm> {
         const SectionHeader('睡眠质量'),
         QuietSurface(
           borderRadius: BorderRadius.circular(AppRadii.panel),
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(8),
           // 还没有评分时 `_quality` 是 `null`：五个药丸一个都不亮，行尾既不写
           // 「未评分」也不写别的占位（`QualityChoice` 自己管这一条）。
           child: QualityChoice(
