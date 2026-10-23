@@ -133,6 +133,7 @@ void main() {
     expect(find.textContaining('未收到传感器数据'), findsOneWidget);
     expect(find.text('—°'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('重新连接'), 150);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('重新连接'));
     await tester.pump();
     tester

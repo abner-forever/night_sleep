@@ -39,11 +39,12 @@ abstract final class AppTheme {
       // The prototype fades the top of the scroll content instead of drawing a
       // hard divider under the header.
       appBarTheme: AppBarTheme(
+        toolbarHeight: kSubpageNavigationHeight,
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
-        centerTitle: false,
+        centerTitle: true,
         foregroundColor: tokens.textPrimary,
       ),
       dividerTheme: DividerThemeData(
@@ -125,9 +126,8 @@ abstract final class AppTheme {
         );
 
     return TextTheme(
-      // `h1` in the prototype: clamp(2rem, 5vw, 2.5rem), weight 700, -.04em.
-      displaySmall: t(36, FontWeight.w700, spacing: -1.4, height: 1.08),
-      headlineMedium: t(26, FontWeight.w700, spacing: -0.9, height: 1.12),
+      displaySmall: t(29, FontWeight.w700, spacing: -0.8, height: 1.2),
+      headlineMedium: t(28, FontWeight.w600, spacing: -0.7, height: 1.2),
       headlineSmall: t(20, FontWeight.w700, spacing: -0.5),
       titleLarge: t(17, FontWeight.w700, spacing: -0.4),
       titleMedium: t(15, FontWeight.w600, spacing: -0.2),

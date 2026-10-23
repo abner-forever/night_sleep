@@ -3,17 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_tokens.dart';
 import 'app_basics.dart';
 
-/// 安静实体面——原型的 `.quiet-surface` / `.home-utility-card` / `.stats-metric-card`
-/// / `.review-event-option` / `.settings-surface` 一族。
-///
-/// 它存在的理由就是**不参与氛围**：实底、不模糊、阴影极淡，和玻璃卡同处一屏时
-/// 主动退到后面去。所以它刻意**不复用** `GlassSurface`——那条绘制路径里套着
-/// `BackdropFilter`、1px 顶部高光与 115° 斜向扫光，三样都是玻璃之所以是玻璃的东西。
-/// 用 `blur: 0` 关掉模糊会留下一层每帧都要合成、却什么都不做的 `BackdropFilter`，
-/// 而列表里滚过的每一张卡都背这个成本。
-///
-/// 与 `GlassSurface` 的差别只有三处，都是**减法**：没有模糊、没有高光、
-/// 填充取 [AppTokens.quietFill] 而不是 [AppTokens.material]。
+/// 新版实体卡片：实底、细边框，并保留表单所需的 Material 祖先。
 class QuietSurface extends StatelessWidget {
   const QuietSurface({
     super.key,

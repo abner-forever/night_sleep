@@ -36,6 +36,7 @@ class _QualityRatingSheetState extends State<_QualityRatingSheet> {
     final tokens = AppTokens.of(context);
 
     return AppSheet(
+      scrollable: true,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -86,7 +87,7 @@ class _QualityRatingSheetState extends State<_QualityRatingSheet> {
               ],
             ),
           ),
-          SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
+          const SizedBox(height: 16),
         ],
       ),
     );

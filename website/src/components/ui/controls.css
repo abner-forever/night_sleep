@@ -9,7 +9,7 @@
   padding: 4px;
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
-  background: var(--surface);
+  background: var(--surface-inset);
   box-shadow: var(--shadow-xs);
 }
 
@@ -37,8 +37,9 @@
 
 .segmented__btn[aria-checked='true'],
 .segmented__btn[aria-pressed='true'] {
-  background: var(--gradient-brand);
-  color: #ffffff;
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: var(--shadow-xs);
 }
 
 /* 语言分段固定宽度，避免切换时布局跳动 */

@@ -18,6 +18,49 @@ enum NightScene {
   final String id;
   final String label;
 
+  String get photoAsset => switch (this) {
+        NightScene.ocean => 'assets/images/ocean.jpg',
+        NightScene.firefly => 'assets/images/forest.jpg',
+        NightScene.rain => 'assets/images/rain.jpg',
+        _ => 'assets/images/night-lake.jpg',
+      };
+
+  Gradient get photoTint => switch (this) {
+        NightScene.aurora => _css(
+            160,
+            const [Color(0xAD103C64), Color(0x661B6E70), Color(0xFF061426)],
+            const [0, .35, .90]),
+        NightScene.ocean => _css(
+            180, const [Color(0x88071B3B), Color(0xFF061426)], const [0, .90]),
+        NightScene.moon => _css(
+            180,
+            const [Color(0xBD153665), Color(0x66061426), Color(0xFF061426)],
+            const [0, .35, .90]),
+        NightScene.cloud => _css(
+            180,
+            const [Color(0x994C6286), Color(0x6616395B), Color(0xFF061426)],
+            const [0, .40, .95]),
+        NightScene.firefly => _css(
+            180, const [Color(0xB30C2847), Color(0xFF061426)], const [0, .95]),
+        NightScene.galaxy => _css(
+            160,
+            const [Color(0xB3302C67), Color(0xB316254A), Color(0xFF061426)],
+            const [0, .40, .95]),
+        NightScene.rain => _css(
+            180, const [Color(0xA80C2847), Color(0xFF061426)], const [0, .95]),
+        NightScene.meteor => _css(180, const [
+            Color(0xEB0B3979),
+            Color(0x80183F76),
+            Color(0xC7061426),
+            Color(0xFF061426)
+          ], const [
+            0,
+            .35,
+            .68,
+            1
+          ]),
+      };
+
   /// 原型 `useState<SleepScene>('meteor')` 的初值。
   static const fallback = NightScene.meteor;
 

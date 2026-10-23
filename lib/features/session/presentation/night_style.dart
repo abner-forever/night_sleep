@@ -1,20 +1,13 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 
-/// 会话页（「正在睡眠」）自己的材质与调色板。
-///
-/// **为什么不吃 `AppTokens`**：新原型的最终生效层把全站换成了扁平原生风
-/// （`.glass` 不再模糊/描边/投影、底色改 `#f4f5f8`、主按钮改纯色），而这一轮的范围
-/// **只到会话页**——把那些值塞进 `AppTokens` 会连带改掉首页/回顾/统计/设置四页
-/// （见规格 §16.7 与偏差 #32）。约定不破：一个概念仍只有一处，只是这一处落在这一页。
-///
-/// 值逐条取自原型 `index.css` 的 `.sleep-mode` / `.sleep-events` /
-/// `.sleep-option-card` / `.sleep-event-*` / `.sleep-hold-button` /
-/// `.sleep-navigation-back` / `.sleep-settings-sheet` 等规则，注释里标出原始字面量。
 abstract final class NightStyle {
   // ── 卡片 ────────────────────────────────────────────────────────────────
-  /// `.sleep-events`（激活态）：`linear-gradient(145deg, .075, .035)`。
-  static const eventsFillTop = Color(0x13FFFFFF); // rgba(255,255,255,.075)
-  static const eventsFillBottom = Color(0x09FFFFFF); // rgba(255,255,255,.035)
+  /// Version 19 的深蓝实体事件面板。
+  static const eventsFillTop = Color(0xD9102640);
+  static const eventsFillBottom = Color(0xD9102640);
+
   /// `.sleep-option-card`：`1px rgba(255,255,255,.09)` 描边。
   static const cardStroke = Color(0x17FFFFFF); // rgba(255,255,255,.09)
   /// `.sleep-event-row` 的分隔线。
@@ -44,20 +37,20 @@ abstract final class NightStyle {
   /// 「录音中」那颗小灯。只在录音服务确实在录时出现。
   static const liveDot = Color(0xFFFF6B6B);
 
-  static const iconInk = Color(0xFFAEBDFF);
+  static const iconInk = Color(0xFFA9CBFF);
   static const iconFill = Color(0x1F7E91E9); // rgba(126,145,233,.12)
   /// `.sleep-event-state`（「记录中」「已设置」）。
-  static const stateInk = Color(0xFF9FAFEF);
+  static const stateInk = Color(0xFFA9CBFF);
 
   /// `.sleep-alarm-time`（可点的起床时刻胶囊）的文字色：`color: #bdc9ff`。
-  static const alarmTimeInk = Color(0xFFBDC9FF);
+  static const alarmTimeInk = Color(0xFFC9DEFF);
 
   /// `.sleep-scene-choice.is-selected` 的文字色。
-  static const selectedInk = Color(0xFFC4D0FF);
+  static const selectedInk = Color(0xFFE9F3FF);
 
   /// `.sleep-scene-choice.is-selected .sleep-scene-preview` 的描边与外圈。
-  static const selectedStroke = Color(0xB8AEBEFF); // rgba(174,190,255,.72)
-  static const selectedGlow = Color(0x2E7A8FEB); // rgba(122,143,235,.18)
+  static const selectedStroke = Color(0xFF74A5FF);
+  static const selectedGlow = Color(0x00000000);
 
   // ── 场景选择器 ──────────────────────────────────────────────────────────
   /// 激活态场景选择器的外框：`.sleep-active .sleep-scene-picker-compact`
@@ -82,13 +75,13 @@ abstract final class NightStyle {
   static const holdFill = Color(0x57707ECA); // rgba(112,126,202,.34)
 
   // ── 白噪音弹窗 ──────────────────────────────────────────────────────────
-  static const sheetFillTop = Color(0xF7232A44); // rgba(35,42,68,.97)
-  static const sheetFillBottom = Color(0xFA0D111F); // rgba(13,17,31,.98)
+  static const sheetFillTop = Color(0xFF11243D);
+  static const sheetFillBottom = Color(0xFF11243D);
   static const sheetStroke = Color(0x1FFFFFFF); // rgba(255,255,255,.12)
   static const scrim = Color(0x9402050C); // rgba(2,5,12,.58)
   static const handle = Color(0x33E1E5F4); // rgba(225,229,244,.20)
   /// 弹窗里「音量」「播放时长」两块的内底色：`rgba(255,255,255,.035)`。
-  static const fieldFill = Color(0x09FFFFFF);
+  static const fieldFill = Color(0x14183458);
 
   /// `.sleep-settings-sheet` 的 `box-shadow: 0 -22px 70px rgba(0,0,0,.38)`。
   static const sheetShadow = Color(0x61000000); // rgba(0,0,0,.38)
@@ -105,9 +98,8 @@ abstract final class NightStyle {
   /// [cardStroke] 是同一个口径。
   static const noiseTileIdleStroke = Color(0x12FFFFFF);
 
-  /// `.sleep-full-noise-grid button.is-selected` 的
-  /// `background: rgba(126,145,233,.16)`。
-  static const noiseTileFill = Color(0x297E91E9);
+  /// 音效选中态沿用新版蓝色强调底。
+  static const noiseTileFill = Color(0xC73478F6);
 
   /// 同上选中态格的 `border-color: rgba(172,188,255,.34)`（文字色即 [selectedInk]）。
   static const noiseTileStroke = Color(0x57ACBCFF);
@@ -123,21 +115,20 @@ abstract final class NightStyle {
 
   // ── 入睡前（setup）态 ───────────────────────────────────────────────────
   //
-  // 值取自原型最终生效层那段 `/* ── Immersive sleep controls ── */`
-  // （index.css:1730–1960），它覆盖了前面第 1557 行起的同名规则。
-  /// `.sleep-control-deck`：`linear-gradient(145deg, .09, .04)` + 描边 + 外阴影。
-  static const deckFillTop = Color(0x17FFFFFF); // rgba(255,255,255,.09)
-  static const deckFillBottom = Color(0x0AFFFFFF); // rgba(255,255,255,.04)
-  static const deckStroke = Color(0x1AFFFFFF); // rgba(255,255,255,.10)
-  static const deckShadow = Color(0x29000000); // rgba(0,0,0,.16)
+  // 取自 Version 19 最终生效的照片场景与实体面板规则。
+  static const deckFillTop = Color(0xBF102640);
+  static const deckFillBottom = Color(0xBF102640);
+  static const deckStroke = Color(0x0AB8D6FF);
+  static const deckShadow = Color(0x00000000);
 
   /// `.sleep-mode-kicker`（「睡眠模式」）。
   static const kickerInk = Color(0x80E1E5F4); // rgba(225,229,244,.50)
   /// `.sleep-greeting`（「晚安」）。
-  static const greetingInk = Color(0xFF9EAFF3);
+  static const greetingInk = Color(0xFFDCEAFF);
 
   /// `.sleep-setup-hero > p:last-child`（「放下今天…」）。
-  static const heroBodyInk = Color(0x8FE1E5F4); // rgba(225,229,244,.56)
+  static const heroBodyInk = Color(0xFFC4D4EE);
+
   /// `.sleep-start-note`（「屏幕将保持暗色…」）。
   static const startNoteInk = Color(0x5CE1E5F4); // rgba(225,229,244,.36)
 
@@ -147,7 +138,7 @@ abstract final class NightStyle {
 
   /// `.sleep-control-label > span`（「常用白噪音」）与右侧「完整设置」。
   static const controlLabelInk = Color(0x7AE1E5F4); // rgba(225,229,244,.48)
-  static const controlActionInk = Color(0xFFAEBDFF);
+  static const controlActionInk = Color(0xFFA9CBFF);
 
   /// `.sleep-control-copy small`（控制行副标题）。
   static const controlMutedInk = Color(0x6BE1E5F4); // rgba(225,229,244,.42)
@@ -156,41 +147,39 @@ abstract final class NightStyle {
 
   /// `.sleep-quick-sound-list button` 的三态。
   static const quickSoundInk = Color(0x7AE1E5F4); // rgba(225,229,244,.48)
-  static const quickSoundFill = Color(0x09FFFFFF); // rgba(255,255,255,.035)
+  static const quickSoundFill = Color(0x14183458);
   static const quickSoundStroke = Color(0x0FFFFFFF); // rgba(255,255,255,.06)
-  static const quickSoundSelectedInk = Color(0xFFC3CEFF);
-  static const quickSoundSelectedFill =
-      Color(0x267E91E9); // rgba(126,145,233,.15)
+  static const quickSoundSelectedInk = Color(0xFFE9F3FF);
+  static const quickSoundSelectedFill = Color(0xC73478F6);
   static const quickSoundSelectedStroke =
       Color(0x47ACBCFF); // rgba(172,188,255,.28)
 
-  /// `.sleep-start-button`：`linear-gradient(135deg, #687fe2, #6962c7)` + 外阴影 + 内高光。
-  static const startGradient = [Color(0xFF687FE2), Color(0xFF6962C7)];
+  /// 新版开始按钮采用纯蓝色、无阴影的胶囊。
+  static const startGradient = [Color(0xFF4B7DF8), Color(0xFF4B7DF8)];
   static const startInk = Color(0xFFFFFFFF); // color: #fff
-  static const startShadow = Color(0x524450A4); // rgba(68,80,164,.32)
-  static const startInnerHighlight =
-      Color(0x33FFFFFF); // inset 0 1px rgba(255,255,255,.20)
+  static const startShadow = Color(0x00000000);
+  static const startInnerHighlight = Color(0x00000000);
 
   // ── 尺寸 ────────────────────────────────────────────────────────────────
   static const cardRadius = 22.0; // .sleep-option-card / .sleep-events
-  static const sheetRadius = 30.0; // .sleep-settings-sheet
+  static const sheetRadius = 24.0; // .sleep-settings-sheet
   static const pickerRadius = 20.0; // 激活态的场景选择器
-  static const previewRadius = 13.0; // .sleep-scene-preview
+  static const previewRadius = 9.0; // .sleep-scene-preview
   static const eventIconSize = 34.0; // .sleep-event-icon
   static const eventIconRadius = 12.0;
   static const eventRowMinHeight = 61.0; // .sleep-event-row
   /// setup 的控制行图标底板：`.sleep-control-row .sleep-option-icon` 是 35，
   /// 比事件行的 34 大一格——原型里这两条规则各写各的，故不合并。
   static const setupIconSize = 35.0; // .sleep-control-row .sleep-option-icon
-  static const deckRadius = 28.0; // .sleep-control-deck
+  static const deckRadius = 20.0; // .sleep-control-deck
   static const quickSoundMinHeight = 47.0; // .sleep-quick-sound-list button
   static const quickSoundRadius = 14.0;
-  static const setupStartMinHeight = 58.0; // .sleep-start-button
-  static const setupStartRadius = 18.0;
+  static const setupStartMinHeight = 55.0; // .sleep-start-button
+  static const setupStartRadius = 27.0;
   static const holdButtonMinHeight = 56.0;
   static const holdButtonRadius = 18.0;
-  static const scenePreviewWidth = 64.0;
-  static const scenePreviewHeight = 42.0;
+  static const scenePreviewWidth = 53.0;
+  static const scenePreviewHeight = 34.0;
 
   /// 系统开了「减弱动态效果」没有。对应原型 CSS 里的
   /// `@media (prefers-reduced-motion: reduce)`。
@@ -205,6 +194,10 @@ abstract final class NightStyle {
   /// （`flex-direction: column`，图标在上、标签在下，间距 3）。
   static bool narrowDeck(BuildContext context) =>
       MediaQuery.sizeOf(context).width <= 390;
+
+  /// 两种会话状态共用的滤镜入口；新版面板使用实底，不再叠加毛玻璃。
+  static ui.ImageFilter deckFilter() =>
+      ui.ImageFilter.blur(sigmaX: 0, sigmaY: 0);
 
   /// `@media (min-height: 860px)`：入睡前态 hero 从 230 撑到 **285**。
   ///

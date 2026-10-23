@@ -26,10 +26,11 @@ class AndroidReleaseTest(unittest.TestCase):
 
     def test_verify_binary_version_matches_source(self):
         metadata = self.version('0.49.0-beta.1+2')
-        valid = "package: name='com.example.night_sleep' versionCode='2' versionName='0.49.0-beta.1' platformBuildVersionName='16'\n"
+        valid = "package: name='com.abner.night_sleep' versionCode='2' versionName='0.49.0-beta.1' platformBuildVersionName='16'\n"
         verify_badging(valid, metadata)
         for badging in (valid.replace("versionCode='2'", "versionCode='1'"),
                         valid.replace("versionName='0.49.0-beta.1'", "versionName='0.49.0'"),
+                        valid.replace('com.abner.night_sleep', 'com.example.night_sleep'),
                         valid + 'application-debuggable\n', ''):
             with self.subTest(badging=badging), self.assertRaises(ValueError):
                 verify_badging(badging, metadata)

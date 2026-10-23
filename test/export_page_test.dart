@@ -1,12 +1,18 @@
+import 'dart:io';
+
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sleep/core/theme/app_theme.dart';
+import 'package:night_sleep/core/database/app_database.dart' show AppDatabase;
 import 'package:night_sleep/core/theme/app_tokens.dart';
 import 'package:night_sleep/features/settings/data/export_sharer.dart';
+import 'package:night_sleep/features/settings/data/sleep_backup_service.dart';
 import 'package:night_sleep/features/settings/domain/sleep_export.dart';
 import 'package:night_sleep/features/settings/presentation/export_page.dart';
 import 'package:night_sleep/features/sleep/data/sleep_repository.dart';
+import 'package:night_sleep/features/sleep/data/clip_store.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_entry.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_quality.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_stage.dart';
@@ -30,6 +36,30 @@ class _FakeSharer implements ExportSharer {
     received = files;
     this.subject = subject;
     return outcome;
+  }
+}
+
+class _FakeBackupService extends SleepBackupService {
+  _FakeBackupService(AppDatabase database)
+      : super(
+          database: database,
+          clips: ClipFileStore(baseDirectory: () async => Directory.systemTemp),
+        );
+
+  List<SleepEntry>? received;
+
+  @override
+  Future<BackupExport> export(List<SleepEntry> entries,
+      {required DateTime now}) async {
+    received = entries;
+    return const BackupExport(
+      ExportFile.local(
+        fileName: '完整备份.zip',
+        localPath: '/temp/完整备份.zip',
+        mimeType: 'application/zip',
+      ),
+      missingAudioCount: 1,
+    );
   }
 }
 
@@ -60,6 +90,7 @@ void main() {
   Future<void> pumpRoute(
     WidgetTester tester, {
     required ExportSharer sharer,
+    SleepBackupService? backupService,
     List<SleepEntry> entries = const [],
 
     /// 让 provider 落到**错误**态：这一支要证明「读不到」没有被说成「没有」。
@@ -77,6 +108,8 @@ void main() {
             return entries;
           }),
           exportSharerProvider.overrideWithValue(sharer),
+          if (backupService != null)
+            sleepBackupServiceProvider.overrideWithValue(backupService),
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
@@ -95,6 +128,8 @@ void main() {
     ]);
 
     expect(find.text('暂无可导出的记录'), findsOneWidget);
+    expect(find.text('睡眠数据管理'), findsOneWidget);
+    expect(find.text('从备份恢复'), findsOneWidget);
     expect(find.textContaining('已排除 2 条演示记录'), findsOneWidget);
 
     // 禁用态的文字必须降级，规格明写「置灰」。
@@ -137,6 +172,7 @@ void main() {
     await pumpRoute(tester, sharer: _FakeSharer(), readError: true);
 
     expect(find.text('无法读取记录'), findsOneWidget);
+    expect(find.text('从备份恢复'), findsOneWidget);
     expect(find.textContaining('数据库坏了'), findsOneWidget);
     // 库里可能有一堆记录，只是这一刻读不出来——把它说成「没有」就是替用户下了
     // 一个没根据的结论，那正是这一页最不该犯的错。
@@ -175,6 +211,21 @@ void main() {
     expect(sharer.received!.first.content, contains('a'));
     // 这一页没有演示记录，就不该出现「已排除」那一行。
     expect(find.textContaining('已排除'), findsNothing);
+  });
+
+  testWidgets('完整备份按钮交出 ZIP 文件并提示缺失录音', (tester) async {
+    final database = AppDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    final backup = _FakeBackupService(database);
+    final sharer = _FakeSharer();
+    await pumpRoute(tester,
+        sharer: sharer, backupService: backup, entries: [entry(id: 'a')]);
+    await tester.tap(find.text('导出完整备份（含录音）'));
+    await tester.pumpAndSettle();
+    expect(backup.received!.single.id, 'a');
+    expect(sharer.received!.single.mimeType, 'application/zip');
+    expect(sharer.received!.single.localPath, '/temp/完整备份.zip');
+    expect(find.text('1 段音频文件已缺失，备份中保留了对应的声音事件。'), findsOneWidget);
   });
 
   testWidgets('点导出 JSON 交出一份完整存档', (tester) async {

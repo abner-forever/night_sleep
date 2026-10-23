@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:night_sleep/core/theme/app_theme.dart';
+import 'package:night_sleep/core/widgets/app_logo.dart';
 import 'package:night_sleep/features/settings/data/app_update_controller.dart';
 import 'package:night_sleep/features/settings/presentation/about_page.dart';
 import 'package:night_sleep/features/settings/presentation/privacy_policy_page.dart';
@@ -73,6 +74,7 @@ void main() {
   testWidgets('about displays a readable version and legal entries',
       (tester) async {
     final updater = await pumpAbout(tester);
+    expect(find.byType(AppLogo), findsOneWidget);
     expect(find.text('关于夜深'), findsOneWidget);
     expect(find.text('版本号'), findsOneWidget);
     expect(find.text('0.49.0（Beta 2）'), findsOneWidget);

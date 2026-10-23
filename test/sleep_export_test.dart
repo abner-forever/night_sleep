@@ -365,7 +365,7 @@ void main() {
     expect(file.mimeType, SleepExporter.jsonMime);
     expect(doc['format'], 'night-sleep-export');
     expect(doc['version'], 1);
-    expect(doc['schemaVersion'], 2);
+    expect(doc['schemaVersion'], 10);
     expect(doc['recordCount'], 1);
     expect(doc['excludedDemoCount'], 0);
     expect(doc['exportedAtUtc'], now.toUtc().toIso8601String());

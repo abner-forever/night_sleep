@@ -61,6 +61,10 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(home: Scaffold(body: NightBackdrop(scene: scene))),
     );
+    await tester.runAsync(() => precacheImage(
+          AssetImage(scene.photoAsset),
+          tester.element(find.byType(NightBackdrop)),
+        ));
     // 这里**不能**用 pumpAndSettle：开了动画时它会 `timed out`。
     await tester.pump();
   }

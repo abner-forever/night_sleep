@@ -16,6 +16,7 @@ import '../../../../core/widgets/app_basics.dart';
 import '../../../../core/widgets/app_icons.dart';
 import '../../../../core/widgets/app_sheet.dart';
 import '../../../../core/widgets/confirm_dialog.dart';
+import '../../../../core/widgets/quiet_surface.dart';
 import '../../../settings/data/insight_credentials.dart';
 import '../../../settings/data/insight_service.dart';
 import '../../../settings/data/model_catalog.dart';
@@ -26,22 +27,15 @@ import '../../data/sleep_repository.dart';
 import '../../domain/insight_prompt.dart';
 import '../../domain/sleep_entry.dart';
 import '../../domain/sleep_insight.dart';
-import '../../domain/sleep_stage.dart';
-import '../widgets/score_ring.dart';
+import '../widgets/sleep_summary.dart';
 import '../widgets/stage_chart.dart';
-import '../widgets/stage_style.dart';
 import 'sound_card.dart';
-
-/// 详情面板的高度 = 屏幕高度 × 这个比例（2/3 的「半弹窗」）。
-///
-/// 定高之后内容一律在面板里滚：内容多的记录不会把面板顶到满高，内容少的
-/// 也不会缩成一个矮条——同一个入口每次点开都是同一块地方。
-const double _kSheetHeightFactor = 2 / 3;
 
 /// Opens the detail sheet for [entry].
 Future<void> showSleepDetailSheet(BuildContext context, SleepEntry entry) {
   return showAppSheet<void>(
     context: context,
+    expanded: true,
     builder: (context) => DetailSheet(entry: entry),
   );
 }
@@ -287,7 +281,12 @@ class _DetailSheetState extends ConsumerState<DetailSheet> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => Theme(
+        data: AppTheme.dark(),
+        child: Builder(builder: _buildContent),
+      );
+
+  Widget _buildContent(BuildContext context) {
     final tokens = AppTokens.of(context);
     final entry = _entry;
     final score = entry.score;
@@ -306,164 +305,96 @@ class _DetailSheetState extends ConsumerState<DetailSheet> {
     );
 
     final blocks = <Widget>[
-      // ── Title + score ──────────────────────────────────────────────
-      Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  entry.dateLabel,
-                  style: AppTheme.num(
-                    context,
-                    size: 12,
-                    color: tokens.textMuted,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '睡眠详情',
-                  style: TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.9,
-                    color: tokens.textPrimary,
-                  ),
-                ),
-              ],
-            ),
+      Padding(
+        padding: EdgeInsets.only(
+          top: MediaQuery.sizeOf(context).width >= 768 ? 24 : 12,
+          bottom: 20,
+        ),
+        child: Row(children: [
+          Pressable(
+            key: const ValueKey('sleep-detail-back'),
+            onTap: () => Navigator.of(context).pop(),
+            semanticLabel: '返回上一页',
+            child: SizedBox(
+                width: 44,
+                height: 44,
+                child: Center(
+                    child: Transform.flip(
+                        flipX: true,
+                        child: AppIcons.chevronRight(
+                            size: 20, color: tokens.textPrimary)))),
           ),
-          if (score != null) ...[
-            const SizedBox(width: 12),
-            ScoreRing(score: score),
-            const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '睡眠评分',
-                  style: TextStyle(fontSize: 12, color: tokens.textMuted),
-                ),
-                Text(
-                  score >= 85
-                      ? '优秀'
-                      : score >= 70
-                          ? '良好'
-                          : '一般',
+          Expanded(
+              child: Text('睡眠详情',
+                  textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: score >= 85 ? tokens.accentViolet : tokens.accent,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      color: tokens.textPrimary))),
+          SizedBox(
+              width: 44,
+              child: Center(
+                  child: AppIcons.moon(size: 18, color: tokens.textSecondary))),
+        ]),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(7, 0, 7, 24),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(entry.dateLabel,
+              style: AppTheme.num(context,
+                  size: 11,
+                  weight: FontWeight.w400,
+                  color: tokens.textSecondary)),
+          const SizedBox(height: 13),
+          Wrap(
+              spacing: 23,
+              runSpacing: 12,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                SleepDuration(hours: entry.durationHours, size: 46),
+                if (score != null)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 17, vertical: 9),
+                    decoration: BoxDecoration(
+                        color: const Color(0x5C3478F6),
+                        border: Border.all(color: const Color(0x3073A8FF)),
+                        borderRadius: BorderRadius.circular(25)),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Text('$score 分',
+                          style: AppTheme.num(context,
+                              size: 22, weight: FontWeight.w500)),
+                      const SizedBox(height: 3),
+                      Text(entry.isEstimated ? '本地估算' : '睡眠评分',
+                          style: TextStyle(
+                              fontSize: 9, color: tokens.textSecondary)),
+                    ]),
                   ),
-                ),
-              ],
+              ]),
+          const SizedBox(height: 15),
+          SleepTimes(entry: entry, size: 11),
+        ]),
+      ),
+      QuietSurface(
+        tint: const Color(0xDD10243C),
+        borderColor: const Color(0x0DADC9ED),
+        borderRadius: BorderRadius.circular(20),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const SectionHeader('睡眠阶段', padding: EdgeInsets.zero),
+          if (entry.hasStages) ...[
+            const SizedBox(height: 20),
+            StageBarChart(
+              stages: entry.stages,
+              height: 95,
+              caption:
+                  '${entry.bedtimeLabel} 入睡 → ${entry.wakeLabel} 起床 · 柱高代表睡眠阶段',
             ),
           ],
-        ],
+          SleepStageSummary(entry: entry),
+        ]),
       ),
-      const SizedBox(height: 16),
-
-      // ── Bedtime / duration / wake ──────────────────────────────────
-      Row(
-        children: [
-          _StatTile(
-            label: '入睡',
-            value: entry.bedtimeLabel,
-            color: tokens.accent,
-          ),
-          const SizedBox(width: 8),
-          _StatTile(
-            label: '时长',
-            value: _durationLabel(entry),
-            color: tokens.textPrimary,
-          ),
-          const SizedBox(width: 8),
-          _StatTile(
-            label: '起床',
-            value: entry.wakeLabel,
-            color: tokens.accentViolet,
-          ),
-        ],
-      ),
-
-      // ── Hypnogram ──────────────────────────────────────────────────
-      if (entry.hasStages) ...[
-        const SizedBox(height: 16),
-        InsetPanel(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '睡眠阶段',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 1.14,
-                  color: tokens.textMuted,
-                ),
-              ),
-              const SizedBox(height: 12),
-              StageBarChart(
-                stages: entry.stages,
-                height: 56,
-                legend: true,
-                caption:
-                    '${entry.bedtimeLabel} 入睡 → ${entry.wakeLabel} 起床 · 柱高代表睡眠阶段',
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  for (final stage in SleepStageType.charted) ...[
-                    Expanded(
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 3),
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: tokens.bgCard,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Column(
-                          children: [
-                            Text(
-                              stage.label,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: tokens.textMuted,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              '${entry.stagePercent(stage)}%',
-                              style: AppTheme.num(
-                                context,
-                                size: 18,
-                                weight: FontWeight.w700,
-                                color: stageColor(tokens, stage),
-                              ),
-                            ),
-                            Text(
-                              '${entry.minutesFor(stage)}m',
-                              style: AppTheme.num(
-                                context,
-                                size: 12,
-                                color: tokens.textMuted,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ],
-          ),
-        ),
-      ],
+      const SizedBox(height: 15),
 
       // ── Sound events ───────────────────────────────────────────────
       const SizedBox(height: 16),
@@ -744,10 +675,12 @@ class _DetailSheetState extends ConsumerState<DetailSheet> {
     // 面板定高，正文一律**按需构建**：第一帧只建视口里那几张卡，不再把整晚的
     // 卡片连同各自的 38 根波形条一次建完——那一步会把弹层的进场动画整个吃掉。
     return AppSheet(
-      heightFactor: _kSheetHeightFactor,
+      expanded: true,
+      showHandle: false,
+      background: const _DetailBackground(),
       slivers: [
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
           sliver: SliverList(
             delegate: SliverChildBuilderDelegate(
               (context, index) => blocks[index],
@@ -757,12 +690,6 @@ class _DetailSheetState extends ConsumerState<DetailSheet> {
         ),
       ],
     );
-  }
-
-  String _durationLabel(SleepEntry entry) {
-    final hours = entry.durationHours.floor();
-    final minutes = ((entry.durationHours - hours) * 60).round();
-    return '${hours}h ${minutes}m';
   }
 }
 
@@ -821,42 +748,42 @@ class _SheetAction extends StatelessWidget {
   }
 }
 
-class _StatTile extends StatelessWidget {
-  const _StatTile({
-    required this.label,
-    required this.value,
-    required this.color,
-  });
-
-  final String label;
-  final String value;
-  final Color color;
+class _DetailBackground extends StatelessWidget {
+  const _DetailBackground();
 
   @override
-  Widget build(BuildContext context) {
-    final tokens = AppTokens.of(context);
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: tokens.bgMuted,
-          borderRadius: BorderRadius.circular(AppRadii.panel),
-        ),
-        child: Column(
-          children: [
-            Text(label,
-                style: TextStyle(fontSize: 12, color: tokens.textMuted)),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              style: AppTheme.num(context,
-                  size: 17, weight: FontWeight.w700, color: color),
+  Widget build(BuildContext context) => const ColoredBox(
+        color: Color(0xFF061426),
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: SizedBox(
+            height: 340,
+            width: double.infinity,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                  image: DecorationImage(
+                      image: AssetImage('assets/images/night-lake.jpg'),
+                      fit: BoxFit.cover,
+                      alignment: Alignment(0, -.12))),
+              child: DecoratedBox(
+                  decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                    Color(0xED0D2B60),
+                    Color(0x99102950),
+                    Color(0xFF061426)
+                  ],
+                          stops: [
+                    0,
+                    .48,
+                    1
+                  ]))),
             ),
-          ],
+          ),
         ),
-      ),
-    );
-  }
+      );
 }
 
 /// 「重新生成」按钮。

@@ -32,14 +32,16 @@ export function IosStoreButton({ size = 'md' }) {
     </button>
   )
 }
-export default function StoreButtons({ size = 'md', className = '' }) {
+export default function StoreButtons({ size = 'md', className = '', showBeta = true }) {
   return (
     <div className={`store-buttons ${className}`}>
       <StoreButton size={size} />
-      <Link className="btn btn--outline" to="/download?section=beta-download">Beta 测试版</Link>
+      {showBeta && (
+        <Link className="btn btn--outline" to="/download?section=beta-download">Beta 测试版</Link>
+      )}
       <IosStoreButton size={size} />
       <Link className="btn btn--outline" to="/?section=devices">
-        看看应用 <ArrowRight size={17} />
+        手机与 iPad 预览 <ArrowRight size={17} />
       </Link>
     </div>
   )

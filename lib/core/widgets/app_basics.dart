@@ -62,10 +62,7 @@ class _PressableState extends State<Pressable> {
   }
 }
 
-/// The prototype's section label: 12px, semibold, wide tracking, muted.
-///
-/// `.uppercase` is explicitly disabled in the design (`text-transform: none`),
-/// so the Chinese labels are rendered as authored.
+/// 新版分区标题。
 class SectionHeader extends StatelessWidget {
   const SectionHeader(this.label, {super.key, this.padding});
 
@@ -80,17 +77,17 @@ class SectionHeader extends StatelessWidget {
       child: Text(
         label,
         style: TextStyle(
-          fontSize: 12,
+          fontSize: 15,
           fontWeight: FontWeight.w600,
-          letterSpacing: 0.96,
-          color: tokens.textMuted,
+          letterSpacing: -0.2,
+          color: tokens.textPrimary,
         ),
       ),
     );
   }
 }
 
-/// Page title block: an optional eyebrow line above a 36px bold heading.
+/// 页面标题与可选的辅助说明。
 class PageHeading extends StatelessWidget {
   const PageHeading({super.key, this.eyebrow, required this.title});
 
@@ -119,10 +116,10 @@ class PageHeading extends StatelessWidget {
         Text(
           title,
           style: TextStyle(
-            fontSize: 34,
+            fontSize: 29,
             fontWeight: FontWeight.w700,
-            letterSpacing: -1.4,
-            height: 1.08,
+            letterSpacing: -0.8,
+            height: 1.2,
             color: tokens.textPrimary,
           ),
         ),
@@ -228,7 +225,7 @@ class EmptyState extends StatelessWidget {
   }
 }
 
-/// `primary-action` — the gradient call-to-action bar.
+/// 新版实色主操作按钮。
 ///
 /// The prototype composes these from a label block plus a trailing icon, laid
 /// out with `space-between`; [subtitle] and [trailing] reproduce that.
@@ -272,60 +269,16 @@ class PrimaryAction extends StatelessWidget {
         onTap: onTap ?? onBlockedTap,
         // 触觉反馈只属于启用态：禁用态给提示时不该有「按下了」的手感。
         haptic: enabled,
-        // Mirrors the 58px minimum height from the design.
         semanticLabel: semanticLabel ?? label,
         child: Container(
-          constraints: const BoxConstraints(minHeight: 58),
-          // 子层裁进按钮的圆角里。下面那条顶边高光只有 1px 高，装不下 16px 的圆角
-          // ——Flutter 会把圆角压成 0.5px，等于直角，两端于是横向溢出到按钮轮廓之外。
-          // 深色主题下黑底把那两截衬成白刺，就是「顶部白线、左右上角尤其明显」。
-          //
-          // 裁剪层落在 DecoratedBox 之内：投影照旧画在裁剪层外面，不受影响。
+          constraints: const BoxConstraints(minHeight: 56),
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            gradient: tokens.primaryActionGradient,
-            borderRadius: BorderRadius.circular(AppRadii.panel),
-            // 投影和下面那条顶边高光一样，都是给启用态走的：一颗 60% 不透明的
-            // 禁用按钮不该再带一圈蓝色光晕。
-            //
-            // 启用态的数值 `0 10px 22px rgba(0,122,255,.24)` 按设计的数字调过，
-            // 没有取更大的模糊半径：按钮横跨整个内容列，再大就会被贴在屏幕边缘的
-            // 滚动视图裁掉。
-            boxShadow: enabled
-                ? [
-                    BoxShadow(
-                      color: const Color(0xFF007AFF).withValues(alpha: 0.24),
-                      blurRadius: 22,
-                      offset: const Offset(0, 10),
-                    ),
-                  ]
-                : null,
+            color: tokens.primaryActionFill,
+            borderRadius: BorderRadius.circular(17),
           ),
-          // The highlight is a sibling of the padding, not inside it. Nested
-          // inside, `top: 0` resolves to the top of the *content* box — which put
-          // a stray white hairline 16px down, straight through the label.
           child: Stack(
             children: [
-              // 顶边高光只给启用态。`inset 0 1px` 的镜面高光是给「可按」的按钮打
-              // 的，落到一颗 60% 不透明的禁用按钮上，就成了它身上最跳的元素——用户
-              // 报的「按钮上方一根白线」就是它（位置没错，错在用了不该用的状态）。
-              if (enabled)
-                // `inset 0 1px rgba(255,255,255,.25)` — Flutter's BoxShadow has no
-                // inset mode, so the lit top edge is painted instead.
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: 1,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.25),
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(AppRadii.panel),
-                      ),
-                    ),
-                  ),
-                ),
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 19, vertical: 16),

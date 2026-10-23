@@ -87,7 +87,7 @@ const kAmplitudeWindow = Duration(milliseconds: 100);
 /// `logcat` 里这一行：
 ///
 /// ```
-/// AudioRecord: set(): inputSource 9, sampleRate 16000, ... com.example.night_sleep
+/// AudioRecord: set(): inputSource 9, sampleRate 16000, ... com.abner.night_sleep
 /// ```
 ///
 /// `inputSource 9` 就是 `UNPROCESSED`——**源打开成功了**（没抛异常，所以「打不开就

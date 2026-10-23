@@ -366,7 +366,18 @@ class _NightBackdropState extends State<NightBackdrop>
           AnimatedContainer(
             duration: const Duration(milliseconds: 900),
             curve: Curves.ease,
-            decoration: BoxDecoration(gradient: widget.scene.background),
+            decoration: BoxDecoration(
+              color: const Color(0xFF061426),
+              image: DecorationImage(
+                image: AssetImage(widget.scene.photoAsset),
+                fit: BoxFit.cover,
+                alignment: const Alignment(0, -.16),
+              ),
+            ),
+          ),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 900),
+            decoration: BoxDecoration(gradient: widget.scene.photoTint),
           ),
           AnimatedBuilder(
             animation: _clock,

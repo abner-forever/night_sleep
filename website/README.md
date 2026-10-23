@@ -16,7 +16,19 @@ npm run build
 npm run preview -- --host 127.0.0.1
 ```
 
-网站配色与 Flutter APP 对齐，采用蓝色至靛紫渐变、冷灰浅色底和黑色深色底；保留原 `sass-web` 的光斑面积与透明度、柔光背景、卡片投影、滚动入场和鼠标视差，光斑改为天蓝与靛紫。默认跟随系统，支持浅色、深色主题；文案依据当前应用，截图来自 `../docs/images/`，转换为 WebP。截图中包含演示数据，不表示每次启动都有这些记录。
+网站结合 SaaS 展示风格与当前 Flutter APP 的视觉语言：浅蓝底、白色实体卡片、深蓝主题和纯蓝主按钮沿用应用配色；渐变标题、蓝紫柔光、设备展示光环、滚动入场和轻微鼠标视差保留官网的科技感。内容卡片使用更轻的投影、圆角与悬浮反馈，较强层次集中在设备展示及下载区。默认跟随系统，支持浅色、深色主题。首页和睡眠回顾展示当前应用截图；「应用预览」可切换概览、会话、声音面板、统计与设置，同时展示手机和 iPad 的实际布局，截图随网站主题切换。会话仍使用应用自身的独立深色界面。
+
+## 截图维护
+
+当前图片于 2026-10-23 从 iPhone 16 Pro 与 iPad Pro 11 英寸（M4）竖屏模拟器重新采集，包含演示数据；Flutter 截图不含原生状态栏与手势条。iPad 使用真实侧栏 / 宽屏界面，图片保持各自比例，不裁切成手机截图。
+
+在仓库根目录运行 `integration_test/visual_upgrade_test.dart`，按根目录 README 的说明保存手机和平板深浅主题截图，再执行：
+
+```sh
+python3 tool/update_website_screenshots.py screenshots/<本轮目录>
+```
+
+转换脚本需要 Pillow。它从同一批原图更新 `docs/images/` 的精选 PNG 与本目录 `public/screenshots/` 的 WebP，手机宽 720、平板宽 1000，等比缩放。命名为 `<页面>.webp` / `<页面>-dark.webp`，iPad 文件增加 `ipad-` 前缀；页面映射见脚本的 `SCREENS`。界面更新后需同时检查官网深浅主题、窄屏和宽屏，避免图片缺失或设备比例失真。
 
 ## GitHub Pages
 
@@ -48,7 +60,7 @@ App 的“关于夜深 → 隐私协议”使用系统 WebView 打开同一页�
 
 1. 日常将应用变更合并到 `beta` 并推送，自动发布 Beta。只有明确要求发布正式版时，才将 `beta` 合并到 `main` 并推送，自动发布正式包，随后同步回 `beta`。
 2. Android Actions 根据发布历史和 Conventional Commits 自动计算版本、Beta 序号与全局构建号，检查、测试、构建并核验版本与长期签名；不需要修改 `pubspec.yaml` 或打标签。
-3. 构建通过后，针对源码提交自动创建标签，上传全部附件后公开 Release；Beta 标记为 Pre-release，正式版设为 Latest。重跑已发布提交不产生重复版本；详细规则见 `../docs/release-plan.md`。
+3. 构建通过后，针对源码提交自动创建标签，仅上传 APK 和 App 检查更新所需的 `release.json`，再公开 Release；核验文件保留在 Actions Artifact，说明放在发布正文。Beta 标记为 Pre-release，正式版设为 Latest。重跑已发布提交不产生重复版本；详细规则见 `../docs/release-plan.md`。
 4. 官网无需修改源码或重新构建；用户重新访问页面、缓存到期后会自动获取新版本。草稿阶段不会被官网读取，已有 Release 禁止覆盖。
 
 官网保留 iOS 的 App Store 入口并标注「暂缓支持」。`0.49.0-beta.2+3` 起配置项目专用长期签名，早期测试签名版本需导出记录并卸载迁移；证书保管见 `../docs/android-signing.md`，真机验收边界见 `../docs/release-plan.md`。

@@ -26,6 +26,7 @@ import 'package:night_sleep/features/session/presentation/widgets/hold_to_finish
 import 'package:night_sleep/features/session/presentation/widgets/night_backdrop.dart';
 import 'package:night_sleep/features/session/presentation/widgets/night_scene_picker.dart';
 import 'package:night_sleep/features/session/presentation/widgets/session_events_card.dart';
+import 'package:night_sleep/features/session/presentation/widgets/sleep_moon_mark.dart';
 import 'package:night_sleep/features/sleep/data/clip_analyzer.dart';
 import 'package:night_sleep/features/sleep/data/night_recorder.dart';
 import 'package:night_sleep/features/sleep/data/noise_player.dart';
@@ -402,6 +403,41 @@ void main() {
     expect(find.text('07:00 起床闹钟'), findsOneWidget);
   });
 
+  testWidgets('进行中页面沿用月亮 hero 与底部统一控制面板', (tester) async {
+    final start = DateTime(2026, 8, 30, 23, 14);
+    await pumpSession(
+      tester,
+      session: sessionAt(start, alarmEnabled: true),
+      now: start.add(const Duration(hours: 1)),
+    );
+
+    final moon = find.byType(SleepMoonOrbit);
+    final deck = find.byKey(const ValueKey('sleep-live-deck'));
+    expect(moon, findsOneWidget);
+    expect(deck, findsOneWidget);
+    expect(
+      find.descendant(of: deck, matching: find.byType(NightScenePicker)),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: deck, matching: find.byType(SessionEventsCard)),
+      findsOneWidget,
+    );
+
+    // 参考入睡前页：月亮 hero 在中间，场景与事件统一收在它下方的一张 deck 里。
+    expect(tester.getCenter(moon).dy, lessThan(tester.getRect(deck).top));
+    expect(
+      tester.getRect(deck).bottom,
+      lessThanOrEqualTo(tester.getRect(find.byType(HoldToFinishButton)).top),
+    );
+    expect(
+      tester.getRect(find.byType(HoldToFinishButton)).top -
+          tester.getRect(deck).bottom,
+      greaterThanOrEqualTo(12),
+      reason: '长按按钮与上方 deck 之间要留出呼吸空间',
+    );
+  });
+
   testWidgets('常暗的会话页自己那一层系统栏样式压过应用那一层', (tester) async {
     final start = DateTime(2026, 8, 30, 23, 14);
     // 外层给**浅色**主题：那样 `appSystemUiOverlayRegion` 算出的是「浅色页面配深色
@@ -575,7 +611,7 @@ void main() {
     // 首页在会话进行中也会显示「正在睡眠」卡（Task 8），所以不能再靠这两个字
     // 判断在不在会话页——改用只有会话页才有的「收起」，并确认回到了首页。
     expect(find.text('收起'), findsNothing, reason: '收起就是离开会话页');
-    expect(find.text('睡眠概览'), findsOneWidget, reason: '收起应回到首页');
+    expect(find.text('夜深'), findsOneWidget, reason: '收起应回到首页');
     expect(
       await SleepRepository(database).loadAll(),
       isEmpty,

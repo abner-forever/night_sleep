@@ -159,7 +159,7 @@ def publish(repository, directory):
         gh('release', 'create', metadata['tag'], '--repo', repository,
            '--target', identity['source_sha'], '--draft', '--title',
            f"夜深 Android {metadata['version']}", '--notes-file', str(notes))
-    assets = [str(item) for item in folder.iterdir() if item.is_file() and item != notes]
+    assets = [str(folder / metadata['filename']), str(folder / 'release.json')]
     gh('release', 'upload', metadata['tag'], '--repo', repository, '--clobber', *assets)
     beta = identity['branch'] == 'beta'
     gh('release', 'edit', metadata['tag'], '--repo', repository, '--draft=false',

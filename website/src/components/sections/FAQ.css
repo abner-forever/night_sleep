@@ -57,8 +57,8 @@
 
 .faq-item.is-open .faq-item__icon {
   transform: rotate(180deg);
-  background: var(--gradient-brand);
-  color: #ffffff;
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 /* 高度动画：grid-template-rows 0fr → 1fr，无需 JS 测量 */

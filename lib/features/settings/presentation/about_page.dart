@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../app/app_toast.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_icons.dart';
+import '../../../core/widgets/app_logo.dart';
 import '../../../core/widgets/app_sheet.dart';
 import '../../../core/widgets/ios_controls.dart';
 import '../../../core/widgets/subpage.dart';
@@ -113,13 +114,7 @@ class _AboutPageState extends ConsumerState<AboutPage> {
                 padding: const EdgeInsets.symmetric(vertical: 32),
                 child: Column(
                   children: [
-                    ListIconBadge(
-                      background: tokens.accentSoft,
-                      size: 80,
-                      radius: 24,
-                      child: AppIcons.moon(
-                          size: 42, color: tokens.accent, strokeWidth: 1.5),
-                    ),
+                    const AppLogo(size: 80, cornerRadius: 24),
                     const SizedBox(height: 16),
                     Text('夜深',
                         style: TextStyle(

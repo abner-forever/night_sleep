@@ -37,6 +37,7 @@ class SessionEventsCard extends ConsumerStatefulWidget {
     required this.session,
     required this.now,
     this.compact = false,
+    this.embedded = false,
   });
 
   final SleepSession session;
@@ -44,6 +45,12 @@ class SessionEventsCard extends ConsumerStatefulWidget {
 
   /// 高度受限时收紧行间距，文字和状态保持完整。
   final bool compact;
+
+  /// 作为更大的会话控制面板的一部分渲染时，去掉自己的卡片外壳。
+  ///
+  /// 进行中态把场景选择与睡眠事件收进同一张 deck；这里再画一层背景会在
+  /// 玻璃卡里套一张玻璃卡，既破坏层级也更难读。
+  final bool embedded;
 
   @override
   ConsumerState<SessionEventsCard> createState() => _SessionEventsCardState();
@@ -132,6 +139,132 @@ class _SessionEventsCardState extends ConsumerState<SessionEventsCard> {
     final started = session.startAtUtc.toLocal();
     final wake = minutesToClock(session.wakeMinutes);
 
+    final body = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            const Text(
+              '当前睡眠事件',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: NightStyle.textHeading,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              '${_hhmm(started)} 开始',
+              style: AppTheme.num(
+                context,
+                size: 10,
+                color: NightStyle.textFaint,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 5),
+
+        // ── 开始睡眠 ──────────────────────────────────────────────────
+        _EventRow(
+          compact: widget.compact,
+          icon: AppIcons.moon(
+              size: 18, color: NightStyle.iconInk, strokeWidth: 1.5),
+          title: '开始睡眠',
+          subtitle: '睡眠时长正在记录',
+          trailing: const _StateText('记录中'),
+        ),
+
+        // ── 白噪音 ────────────────────────────────────────────────────
+        //
+        // **只在真有声音在放时才出现**（原型 `{selectedNoise && …}`）。控制器的
+        // `_activeId` 语义就是「选中**并正在播放**」（冷启动对账正是靠这条语义清掉
+        // 「库里写着在播、其实没声」的假值），所以「没有这一行」与「没在播」是同一件事：
+        // 「播完」与「从未选过」在界面上本就不可区分，再画一个「已停止」就是在显示一个
+        // 我们并未追踪的状态（偏差 #33）。
+        if (noise.activeId != null)
+          _EventRow(
+            compact: widget.compact,
+            icon: AppIcons.music(
+                size: 18, color: NightStyle.iconInk, strokeWidth: 1.5),
+            title: noise.activeOption?.label ?? '白噪音',
+            subtitle: _noiseSubtitle(noise),
+            trailing: const _SoundWave(),
+          ),
+
+        // ── 起床闹钟 ──────────────────────────────────────────────────
+        //
+        // 闹钟开着时出现（原型 `{alarmEnabled && …}`），右侧只写状态——时刻与开关
+        // 都在入睡前那一屏定好了，这里不再给可点的胶囊与开关（偏差 #30 撤销）。
+        // **副标题一个字不改**：剩余时间、「已超过起床时间」与手动结束的指令、以及
+        // 投递强度标注都是这一屏真正要对用户说的话（后者是产品红线）。
+        //
+        // **睡过头时即使没设闹钟也要出现**：`wakeMinutes` 是用户自己定的计划目标，
+        // 「已经过了这个点、请手动结束」是这一屏唯一会告诉他的动作指令（§16.5 把它
+        // 挪到了这里）。因为没设闹钟就把这句话一起藏掉，等于把睡过头的人留在
+        // 一个只会一直计时的页面上。右侧这时不写「已设置」——那会是假话。
+        if (session.alarmEnabled || session.overdueAt(widget.now))
+          _EventRow(
+            compact: widget.compact,
+            icon: AppIcons.clock(
+                size: 18, color: NightStyle.iconInk, strokeWidth: 1.5),
+            title: '$wake 起床闹钟',
+            subtitle: _alarmStatus,
+            trailing: session.alarmEnabled
+                ? const _StateText('已设置')
+                : const SizedBox.shrink(),
+          ),
+
+        // 投递强度的如实标注就贴在那一行下面：用户正是在这里做决定。
+        if (session.alarmEnabled)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 10),
+            child: Text(
+              ReminderScheduler.wakeAlarmDeliveryNote,
+              style: TextStyle(
+                fontSize: 11,
+                height: 1.45,
+                color: NightStyle.textFaint,
+              ),
+            ),
+          ),
+
+        // ── 鼾声检测 ──────────────────────────────────────────────────
+        _EventRow(
+          compact: widget.compact,
+          icon: AppIcons.snore(
+              size: 18, color: NightStyle.iconInk, strokeWidth: 1.5),
+          title: '鼾声/梦话记录',
+          // 副标题写**录音服务的实际状态**，不是那个偏好值。从前那句
+          // 「尚未接入录音，开关只保存偏好」在 plan B 落地后已经成了假话（偏差 #7
+          // 作废）；现在每一个字都对应一件正在发生或确实没发生的事。
+          subtitle: _recordingSubtitle(recording),
+          // 最后一行不画分隔线（原型 `.sleep-event-row:last-child`）。
+          isLast: true,
+          // 真在录的时候挂一盏灯。**它只在 `recording` 这一态亮**——一盏写着
+          // 「正在聆听」却什么都没在听的灯，正是偏差 #31 当初要挡的东西。
+          live: recording.status.isRecording,
+          trailing: IosToggle(
+            value: _recordingEnabled,
+            semanticLabel: '鼾声/梦话记录',
+            onChanged: _toggleRecording,
+          ),
+        ),
+      ],
+    );
+
+    if (widget.embedded) {
+      return Padding(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          widget.compact ? 8 : 12,
+          16,
+          widget.compact ? 8 : 14,
+        ),
+        child: body,
+      );
+    }
+
     return Container(
       decoration: BoxDecoration(
         gradient: const LinearGradient(
@@ -145,119 +278,7 @@ class _SessionEventsCardState extends ConsumerState<SessionEventsCard> {
       padding: widget.compact
           ? const EdgeInsets.fromLTRB(14, 8, 14, 8)
           : const EdgeInsets.fromLTRB(16, 14, 16, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              const Text(
-                '当前睡眠事件',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: NightStyle.textHeading,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                '${_hhmm(started)} 开始',
-                style: AppTheme.num(
-                  context,
-                  size: 10,
-                  color: NightStyle.textFaint,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 5),
-
-          // ── 开始睡眠 ──────────────────────────────────────────────────
-          _EventRow(
-            compact: widget.compact,
-            icon: AppIcons.moon(
-                size: 18, color: NightStyle.iconInk, strokeWidth: 1.5),
-            title: '开始睡眠',
-            subtitle: '睡眠时长正在记录',
-            trailing: const _StateText('记录中'),
-          ),
-
-          // ── 白噪音 ────────────────────────────────────────────────────
-          //
-          // **只在真有声音在放时才出现**（原型 `{selectedNoise && …}`）。控制器的
-          // `_activeId` 语义就是「选中**并正在播放**」（冷启动对账正是靠这条语义清掉
-          // 「库里写着在播、其实没声」的假值），所以「没有这一行」与「没在播」是同一件事：
-          // 「播完」与「从未选过」在界面上本就不可区分，再画一个「已停止」就是在显示一个
-          // 我们并未追踪的状态（偏差 #33）。
-          if (noise.activeId != null)
-            _EventRow(
-              compact: widget.compact,
-              icon: AppIcons.music(
-                  size: 18, color: NightStyle.iconInk, strokeWidth: 1.5),
-              title: noise.activeOption?.label ?? '白噪音',
-              subtitle: _noiseSubtitle(noise),
-              trailing: const _SoundWave(),
-            ),
-
-          // ── 起床闹钟 ──────────────────────────────────────────────────
-          //
-          // 闹钟开着时出现（原型 `{alarmEnabled && …}`），右侧只写状态——时刻与开关
-          // 都在入睡前那一屏定好了，这里不再给可点的胶囊与开关（偏差 #30 撤销）。
-          // **副标题一个字不改**：剩余时间、「已超过起床时间」与手动结束的指令、以及
-          // 投递强度标注都是这一屏真正要对用户说的话（后者是产品红线）。
-          //
-          // **睡过头时即使没设闹钟也要出现**：`wakeMinutes` 是用户自己定的计划目标，
-          // 「已经过了这个点、请手动结束」是这一屏唯一会告诉他的动作指令（§16.5 把它
-          // 挪到了这里）。因为没设闹钟就把这句话一起藏掉，等于把睡过头的人留在
-          // 一个只会一直计时的页面上。右侧这时不写「已设置」——那会是假话。
-          if (session.alarmEnabled || session.overdueAt(widget.now))
-            _EventRow(
-              compact: widget.compact,
-              icon: AppIcons.clock(
-                  size: 18, color: NightStyle.iconInk, strokeWidth: 1.5),
-              title: '$wake 起床闹钟',
-              subtitle: _alarmStatus,
-              trailing: session.alarmEnabled
-                  ? const _StateText('已设置')
-                  : const SizedBox.shrink(),
-            ),
-
-          // 投递强度的如实标注就贴在那一行下面：用户正是在这里做决定。
-          if (session.alarmEnabled)
-            const Padding(
-              padding: EdgeInsets.only(bottom: 10),
-              child: Text(
-                ReminderScheduler.wakeAlarmDeliveryNote,
-                style: TextStyle(
-                  fontSize: 11,
-                  height: 1.45,
-                  color: NightStyle.textFaint,
-                ),
-              ),
-            ),
-
-          // ── 鼾声检测 ──────────────────────────────────────────────────
-          _EventRow(
-            compact: widget.compact,
-            icon: AppIcons.snore(
-                size: 18, color: NightStyle.iconInk, strokeWidth: 1.5),
-            title: '鼾声/梦话记录',
-            // 副标题写**录音服务的实际状态**，不是那个偏好值。从前那句
-            // 「尚未接入录音，开关只保存偏好」在 plan B 落地后已经成了假话（偏差 #7
-            // 作废）；现在每一个字都对应一件正在发生或确实没发生的事。
-            subtitle: _recordingSubtitle(recording),
-            // 最后一行不画分隔线（原型 `.sleep-event-row:last-child`）。
-            isLast: true,
-            // 真在录的时候挂一盏灯。**它只在 `recording` 这一态亮**——一盏写着
-            // 「正在聆听」却什么都没在听的灯，正是偏差 #31 当初要挡的东西。
-            live: recording.status.isRecording,
-            trailing: IosToggle(
-              value: _recordingEnabled,
-              semanticLabel: '鼾声/梦话记录',
-              onChanged: _toggleRecording,
-            ),
-          ),
-        ],
-      ),
+      child: body,
     );
   }
 

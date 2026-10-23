@@ -23,7 +23,7 @@ gradle.taskGraph.whenReady {
 }
 
 android {
-    namespace = "com.example.night_sleep"
+    namespace = "com.abner.night_sleep"
     // 36 / 24 是 Flutter 3.47.5 的模板默认值（FlutterExtension.kt 里的
     // compileSdkVersion = 36、minSdkVersion = 24）。**已经逐个核过本工程全部带 Android
     // 实现的插件的下界**（读的是它们自己的 android/build.gradle，不是文档）：
@@ -45,12 +45,7 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        // 占位配置，与 iOS 的 `com.example.nightSleep` **不同名**：
-        // 那是 Flutter 两条模板各自的默认（iOS 把 night_sleep 转成 camelCase，
-        // Android 保留 snake_case）。两者是两个独立的商店身份，不要求一致；
-        // 待项目方给出真实 ID 后一并替换（总规格 §10 第 1 条）。
-        applicationId = "com.example.night_sleep"
+        applicationId = "com.abner.night_sleep"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

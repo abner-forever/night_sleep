@@ -8,7 +8,6 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_basics.dart';
 import '../../../core/widgets/app_icons.dart';
-import '../../../core/widgets/hero_surface.dart';
 import '../../../core/widgets/ios_controls.dart';
 import '../../../core/widgets/quiet_surface.dart';
 import '../../sleep/data/sleep_repository.dart';
@@ -38,6 +37,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
     // 所以加载与错误分支也要和数据分支的 ListView 用同一套顶部与横向留白。
     final inset = EdgeInsets.only(
       top: pageTopInset(context),
+      bottom: pageBottomInset(context),
       left: pageGutter(context),
       right: pageGutter(context),
     );
@@ -76,7 +76,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 const Expanded(
-                  child: PageHeading(eyebrow: '睡眠统计', title: '趋势分析'),
+                  child: PageHeading(eyebrow: '睡眠统计', title: '统计'),
                 ),
                 if (records.isNotEmpty)
                   Padding(
@@ -123,6 +123,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
                     for (final period in StatsPeriod.values)
                       SegmentOption(value: period, label: period.label),
                   ],
+                  expand: true,
                   selected: _period,
                   onChanged: (period) => setState(() {
                     _period = period;
@@ -177,37 +178,8 @@ class _DurationChartCard extends StatelessWidget {
     final showDayLabels = stats.period.days <= 14;
     final barGap = stats.period.days > 14 ? 3.0 : 8.0;
 
-    return HeroSurface(
-      borderRadius: BorderRadius.circular(AppRadii.card),
+    return QuietSurface(
       padding: const EdgeInsets.all(20),
-      // 规格 §2.3：描边 = `accent` 12% 混 `glassBorder`。
-      borderColor: colorMix(tokens.accent, 0.12, tokens.glassBorder),
-      // 底色 = 线性 180deg（`accentSoft` 30% → 45% 处透明）叠 `materialStrong`。
-      // `HeroSurface` 只接一个 `Gradient`，所以那两层先压平成一条渐变：顶端是叠完的
-      // 颜色，45% 处落到 `materialStrong` 本身（再往下由末色延伸），与两层叠出来等价。
-      gradient: LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          // `color-mix(accent-soft 30%, transparent)` 先按不透明度缩一遍 alpha，
-          // 再叠到实底上——两步不能合成一步（`colorMix` 的文档里写了为什么）。
-          Color.alphaBlend(
-            colorMix(tokens.accentSoft, 0.30, Colors.transparent),
-            tokens.materialStrong,
-          ),
-          tokens.materialStrong,
-        ],
-        stops: const [0.0, 0.45],
-      ),
-      // 规格给的是原型里的阴影字面量（`0 8px 26px rgba(36,53,91,.075)`）。
-      shadow: const [
-        BoxShadow(
-          color: Color(0x1324355B),
-          blurRadius: 26,
-          offset: Offset(0, 8),
-        ),
-      ],
-      // 这一张**不带角光晕**：规格 §2.3 只给了描边、底色、阴影三样。
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -511,7 +483,7 @@ class _Bar extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: selected ? 1 : 0.82),
                   borderRadius:
-                      const BorderRadius.vertical(top: Radius.circular(8)),
+                      const BorderRadius.vertical(top: Radius.circular(5)),
                   boxShadow: selected
                       ? [
                           BoxShadow(
@@ -540,44 +512,9 @@ class _ScoreCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
     final average = stats.averageScore!;
-    final dark = tokens == AppTokens.dark;
 
-    // 底：`accentSoft` 38% 混 `materialStrong`；深色那一套规格给的是字面量
-    // `rgba(32,32,38,.9)`（比 `materialStrong` 更实、更暗）。
-    final base = dark
-        ? const Color(0xE6202026)
-        : colorMix(tokens.accentSoft, 0.38, tokens.materialStrong);
-
-    return HeroSurface(
-      borderRadius: BorderRadius.circular(AppRadii.panel),
+    return QuietSurface(
       padding: const EdgeInsets.all(20),
-      // 描边 = `accentViolet` 18% 混 `glassBorder`。
-      borderColor: colorMix(tokens.accentViolet, 0.18, tokens.glassBorder),
-      // 底色 = 径向 `circle at 90% 8%`（`accentViolet` 18% → 42% 处透明）叠在上面那个底上。
-      // 两层同样先压平成一条渐变。`radius` 是**短板长的几分之几**，而原型的 `circle`
-      // 默认按 farthest-corner 铺开：这一张约 358×204，角到角 ≈ 372，按短板折回来就是 1.8。
-      gradient: RadialGradient(
-        center: const Alignment(0.8, -0.84), // 90% / 8%
-        radius: 1.8,
-        colors: [
-          Color.alphaBlend(
-            dark
-                ? const Color(0x2E7869DC)
-                : tokens.accentViolet.withValues(alpha: 0.18),
-            base,
-          ),
-          base,
-        ],
-        stops: const [0.0, 0.42],
-      ),
-      // `0 8px 24px rgba(69,70,153,.08)`——原型里给死的字面量。
-      shadow: const [
-        BoxShadow(
-          color: Color(0x14454699),
-          blurRadius: 24,
-          offset: Offset(0, 8),
-        ),
-      ],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -586,11 +523,11 @@ class _ScoreCard extends StatelessWidget {
               AppIcons.ai(size: 15, color: tokens.accent, strokeWidth: 1.8),
               const SizedBox(width: 8),
               Text(
-                '本周睡眠评分',
+                '睡眠评分',
                 style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: tokens.accent,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: tokens.textPrimary,
                 ),
               ),
             ],
@@ -604,8 +541,8 @@ class _ScoreCard extends StatelessWidget {
                 '$average',
                 style: AppTheme.num(
                   context,
-                  size: 52,
-                  weight: FontWeight.w700,
+                  size: 43,
+                  weight: FontWeight.w600,
                   letterSpacing: -2.08,
                 ),
               ),

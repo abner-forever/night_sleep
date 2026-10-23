@@ -47,6 +47,10 @@ class SystemExportSharer implements ExportSharer {
 
       final attachments = <XFile>[];
       for (final file in files) {
+        if (file.localPath != null) {
+          attachments.add(XFile(file.localPath!, mimeType: file.mimeType));
+          continue;
+        }
         final target = File(path.join(directory.path, file.fileName));
         // 文件名带日期，同一天重复导出覆盖同一路径。不做主动清理：
         // 临时目录由系统回收，自己扫一遍删旧文件既多一份代码，

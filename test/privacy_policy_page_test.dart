@@ -40,6 +40,7 @@ void main() {
     expect(request.body, isNull);
     expect(webview.controller.javaScriptMode, JavaScriptMode.unrestricted);
     expect(find.byType(WebViewWidget), findsOneWidget);
+    expect(tester.getSize(find.byType(AppBar)).height, 44);
     expect(find.byType(LinearProgressIndicator), findsOneWidget);
     webview.delegate.onPageFinished(request.uri.toString());
     await tester.pump();

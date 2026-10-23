@@ -9,6 +9,9 @@ import subprocess
 import tempfile
 
 
+APPLICATION_ID = 'com.abner.night_sleep'
+
+
 def read_version(path):
     match = re.search(
         r'^version:\s*(\d+\.\d+\.\d+(?:-(?:beta|rc)\.[1-9]\d*)?)\+([1-9]\d*)\s*$',
@@ -50,7 +53,7 @@ def verify_badging(badging, metadata):
     name, build, version = package.groups()
     if version != metadata['version'] or build != str(metadata['build_number']):
         raise ValueError('APK versionName/versionCode does not match pubspec')
-    if name != 'com.example.night_sleep':
+    if name != APPLICATION_ID:
         raise ValueError('Unexpected application ID')
     if 'application-debuggable' in badging:
         raise ValueError('Release APK must not be debuggable')
@@ -88,11 +91,13 @@ def package(args, metadata):
         **metadata, 'sha256': digest, 'size': len(payload),
         'signing': 'release', 'certificate_sha256': certificate_sha256, 'demo_data': False,
         'source_sha': args.source_sha, 'branch': args.branch,
+        'application_id': APPLICATION_ID,
     }, ensure_ascii=False, indent=2) + '\n')
     (output / 'README.txt').write_text(
         f"夜深 Android {metadata['version']}（构建 {metadata['build_number']}）\n"
         '使用夜深专用长期签名；演示数据关闭。\n'
-        '包名暂为 com.example.night_sleep。\n'
+        f'Android 包名为 {APPLICATION_ID}。\n'
+        '与旧 com.example.night_sleep 包名不同，需单独安装，旧包数据不会自动迁移；请先在旧应用导出记录保留。\n'
         '助眠录音与模型授权说明请阅读仓库 README。\n'
         '尚未验证本次 APK 的真机安装、锁屏录音及升级覆盖。\n'
         '从旧测试签名版本迁移需先导出记录、卸载后再安装；后续使用同一长期签名更新。\n'

@@ -196,7 +196,7 @@ void main() {
     );
   });
 
-  testWidgets('面板高度固定为屏幕的三分之二，与内容多少无关', (tester) async {
+  testWidgets('手机详情铺满屏幕，与内容多少无关', (tester) async {
     for (final clips in [0, 2]) {
       final entry = await seedNight(clips: clips);
       await pumpSheet(
@@ -208,8 +208,8 @@ void main() {
 
       expect(
         tester.getSize(find.byType(AppSheet)).height,
-        closeTo(900 * 2 / 3, 0.5),
-        reason: '$clips 段时面板没有落在 2/3 屏',
+        closeTo(900, 0.5),
+        reason: '$clips 段时详情没有铺满屏幕',
       );
 
       tester
@@ -239,7 +239,7 @@ void main() {
       reason: '首帧把 60 张卡全建了——又回到打开卡顿的老路',
     );
     // sliver 路径的左右留白与整块滚动那条路一致（430 − 20 × 2）。
-    expect(tester.getSize(find.byType(SoundCard).first).width, 390);
+    expect(tester.getSize(find.byType(SoundCard).first).width, 398);
 
     await tester.scrollUntilVisible(
       find.text('编辑记录'),

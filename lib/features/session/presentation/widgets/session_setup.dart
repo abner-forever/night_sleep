@@ -1,5 +1,3 @@
-import 'dart:ui' as ui;
-
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -198,10 +196,11 @@ class _SessionSetupBodyState extends ConsumerState<SessionSetupBody> {
   /// 「开始睡眠」+ 底部提示。钉在安全区之上，底部留白 = 安全区 + 20。
   Widget _footer() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
       child: Column(
         children: [
           _startButton(),
+          const SizedBox(height: 8),
           const Text(
             '屏幕将保持暗色，轻触夜景即可切换氛围',
             textAlign: TextAlign.center,
@@ -242,32 +241,22 @@ class _SessionSetupBodyState extends ConsumerState<SessionSetupBody> {
       child: const Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          SleepMoonOrbit(size: 102),
+          SleepMoonOrbit(size: 70),
           SizedBox(height: 15),
-          Text(
-            '晚安',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.8,
-              color: NightStyle.greetingInk,
-            ),
-          ),
-          SizedBox(height: 5),
           Text(
             '准备好休息了吗？',
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 29,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -1.16, // -.04em × 29
+              fontSize: 23,
+              fontWeight: FontWeight.w600,
+              letterSpacing: -.5,
               color: NightStyle.textPrimary,
             ),
           ),
           SizedBox(height: 7),
           Text(
             '放下今天，让夜晚慢下来。',
-            style: TextStyle(fontSize: 14, color: NightStyle.heroBodyInk),
+            style: TextStyle(fontSize: 12, color: NightStyle.heroBodyInk),
           ),
         ],
       ),
@@ -296,7 +285,7 @@ class _SessionSetupBodyState extends ConsumerState<SessionSetupBody> {
         ],
       ),
       child: BackdropFilter(
-        filter: _deckFilter(),
+        filter: NightStyle.deckFilter(),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -485,26 +474,6 @@ class _SessionSetupBodyState extends ConsumerState<SessionSetupBody> {
     final percent = (noise.volume * 100).round();
     return '${option.label} · $percent% · ${noise.timerMinutes} 分钟';
   }
-}
-
-/// `backdrop-filter: blur(24px) saturate(130%)`。
-///
-/// `ImageFilter` 没有内置的 saturate 构造器（`top_fade.dart` 的注释里记过这条路），
-/// 自己按 Rec.709 权重构造饱和度矩阵，再用 `ImageFilter.compose` 与 blur 合成。
-ui.ImageFilter _deckFilter() {
-  const s = 1.3;
-  const lr = 0.2126 * (1 - s);
-  const lg = 0.7152 * (1 - s);
-  const lb = 0.0722 * (1 - s);
-  return ui.ImageFilter.compose(
-    outer: const ui.ColorFilter.matrix(<double>[
-      lr + s, lg, lb, 0, 0, //
-      lr, lg + s, lb, 0, 0, //
-      lr, lg, lb + s, 0, 0, //
-      0, 0, 0, 1, 0, //
-    ]),
-    inner: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-  );
 }
 
 /// 常用白噪音的一格：`.sleep-quick-sound-list button`。

@@ -33,38 +33,48 @@ class EventTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
+    final selectedColor = tokens.accent;
 
-    // 四宫格是**安静实体面**（原型 `.review-event-option`），不是玻璃。
-    // 选中态照原型：`color-mix(事件色 11%, bgCard)` 当底色 + 1.5px 事件色 38%
-    // 描边；未选中交给安静面自己的底与 1px `glassBorder`。
+    // 选中态统一为品牌蓝，事件数据与回调保持原样。
     return QuietSurface(
-      borderRadius: BorderRadius.circular(AppRadii.panel),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      borderRadius: BorderRadius.circular(14),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
       // 选中态是「整张换底换边」：补一帧过渡，按下才像按了一下，
       // 而不是像在两张卡之间瞬切。
       animateChanges: true,
-      tint: selected
-          ? Color.alphaBlend(color.withValues(alpha: 0.11), tokens.bgCard)
-          : null,
-      borderColor: selected ? color.withValues(alpha: 0.38) : null,
-      borderWidth: selected ? 1.5 : 1,
+      tint: selected ? tokens.accentSoft : null,
+      borderColor: selected ? selectedColor.withValues(alpha: 0.38) : null,
+      borderWidth: 1,
       onTap: () {
         AppHaptics.select();
         onTap();
       },
       child: Row(
         children: [
-          icon(selected ? color : tokens.textMuted),
-          const SizedBox(width: 10),
-          Flexible(
+          icon(selected ? selectedColor : tokens.textMuted),
+          const SizedBox(width: 8),
+          Expanded(
             child: Text(
               label,
               style: TextStyle(
-                fontSize: 14,
+                fontSize: 12,
                 fontWeight: FontWeight.w500,
-                color: selected ? color : tokens.textSecondary,
+                color: selected ? selectedColor : tokens.textSecondary,
               ),
             ),
+          ),
+          const SizedBox(width: 6),
+          Container(
+            width: 16,
+            height: 16,
+            decoration: BoxDecoration(
+              color: selected ? selectedColor : Colors.transparent,
+              borderRadius: BorderRadius.circular(5),
+              border: Border.all(
+                  color: selected ? selectedColor : tokens.borderStrong),
+            ),
+            child:
+                selected ? AppIcons.check(size: 12, color: Colors.white) : null,
           ),
         ],
       ),

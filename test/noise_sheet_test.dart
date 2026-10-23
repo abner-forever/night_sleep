@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sleep/core/theme/app_theme.dart';
@@ -47,9 +48,11 @@ class _FakePlayer extends NoisePlayer {
 }
 
 void main() {
-  Future<void> pumpSheet(WidgetTester tester, NoisePlayer player) async {
+  Future<void> pumpSheet(WidgetTester tester, NoisePlayer player,
+      {FakeViewPadding padding = const FakeViewPadding()}) async {
     tester.view.physicalSize = const Size(430, 900);
     tester.view.devicePixelRatio = 1.0;
+    tester.view.padding = padding;
     addTearDown(tester.view.reset);
 
     await tester.pumpWidget(
@@ -69,6 +72,15 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 250));
   }
+
+  testWidgets('全屏音效弹层的关闭与标题位于状态栏下方', (tester) async {
+    await pumpSheet(tester, _FakePlayer(),
+        padding: const FakeViewPadding(top: 59, bottom: 34));
+    expect(tester.getTopLeft(find.text('助眠音效')).dy, greaterThanOrEqualTo(59));
+    expect(tester.getTopLeft(find.text('关闭')).dy, greaterThanOrEqualTo(59));
+    expect(find.text('关闭').hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('选中一个声音会把它交给播放器', (tester) async {
     final player = _FakePlayer();
@@ -131,16 +143,7 @@ void main() {
     await settle(tester);
     player.calls.clear();
 
-    // Candidates are 28px tall and wide. The sheet's drag handle matches too —
-    // it is the same height and spans the sheet — so take the lowest one, which
-    // is the slider.
-    final candidates = tester
-        .widgetList<GestureDetector>(find.byType(GestureDetector))
-        .map((widget) => tester.getRect(find.byWidget(widget)))
-        .where((rect) => rect.height == 28 && rect.width > 120)
-        .toList();
-    expect(candidates, isNotEmpty, reason: '找不到音量条');
-    final track = candidates.reduce((a, b) => a.top > b.top ? a : b);
+    final track = tester.getRect(find.byType(CupertinoSlider));
 
     await tester.dragFrom(track.center, Offset(-track.width / 4, 0));
     await settle(tester);
@@ -159,12 +162,7 @@ void main() {
     );
   });
 
-  testWidgets('宽屏下面板限宽，五格仍是一行且不溢出', (tester) async {
-    // iPad 横屏。格子宽度曾经按**屏幕**宽度算，而面板在 ≥640px 时被
-    // `_SheetHost` 限到 560px：每格被算成 271px，`Wrap` 一行只放得下一个，
-    // 内容整体溢出 217px 并被裁掉（音量条与定时 chips 从此够不着）。
-    // 这个尺寸下 `NoiseSheet` 不能直接摆进 `Scaffold`——那样没有限宽，
-    // 复现不出这条。必须走真实的 `showNoiseSheet`。
+  testWidgets('宽屏下面板限宽，照片网格保持两列且不溢出', (tester) async {
     tester.view.physicalSize = const Size(1194, 834);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -200,18 +198,18 @@ void main() {
         .toList();
     expect(
       rects.map((rect) => rect.left).toSet().length,
-      kNoiseOptions.length,
-      reason: '五格应各占一列、排成一行',
+      2,
+      reason: '音效照片应排成两列',
     );
     expect(
       rects.map((rect) => rect.top).toSet().length,
-      1,
-      reason: '五格应排成一行，不该翻行',
+      3,
+      reason: '五条音效按两列排成三行',
     );
     for (final rect in rects) {
       expect(rect.left, greaterThanOrEqualTo(panel.left));
       expect(rect.right, lessThanOrEqualTo(panel.right));
-      expect(rect.bottom, lessThanOrEqualTo(panel.bottom));
+      expect(rect.width, lessThanOrEqualTo(panel.width / 2));
     }
   });
 

@@ -182,64 +182,19 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  // 这一条断言的是 iPhone 16 Pro 的具体数字，**必须钉住平台**：`tabBarFloat`
-  // 在 Android 上整个让开安全区（见 `app_shell.dart`），而 widget 测试默认跑在
-  // android 上，不钉就量的是另一套几何。
-  testWidgets(
-    '手机布局下贴着屏幕底边，高度 = 底部预留 + 20',
-    (tester) async {
-      await pumpShell(tester);
-
-      final band = tester.getRect(find.byType(BottomFade));
-      expect(band.bottom, tester.getRect(find.byType(AppShell)).bottom);
-      // iPhone 16 Pro：预留 101（胶囊 65 + 浮起 20 + 呼吸 16）+ 20。
-      expect(band.height, 121);
-      // 与页面底部留白同源：留白一变，带子必须跟着变。
-      final reserve = tester
-          .widget<ListView>(find.byType(ListView))
-          .padding!
-          .resolve(TextDirection.ltr)
-          .bottom;
-      expect(band.height, closeTo(reserve + 20, 0.01));
-    },
-    variant: TargetPlatformVariant.only(TargetPlatform.iOS),
-  );
-
-  testWidgets('无安全区时高度 113', (tester) async {
-    await pumpShell(tester, safeBottom: 0);
-
-    // 预留 93（65 + 12 + 16）+ 20。
-    expect(tester.getRect(find.byType(BottomFade)).height, 113);
-  });
-
-  testWidgets('带子排在标签条之前，胶囊在带子之上', (tester) async {
+  testWidgets('新版手机底栏不再叠加底部模糊带', (tester) async {
     await pumpShell(tester);
-
-    // `Stack` 的子项顺序就是绘制顺序（后画的在上）。带子必须**不是**最后一项，
-    // 否则它会去模糊画在它之前的玻璃胶囊。
-    final stack = tester.widget<Stack>(
-      find
-          .ancestor(of: find.byType(BottomFade), matching: find.byType(Stack))
-          .first,
-    );
-    final bandIndex = stack.children.indexWhere(
-      (child) => child is Positioned && child.child is BottomFade,
-    );
-    expect(bandIndex, isNonNegative, reason: '带子没有被 Positioned 包住');
-    expect(
-      bandIndex,
-      lessThan(stack.children.length - 1),
-      reason: '带子排到了最后一项——它会去模糊玻璃胶囊本身',
-    );
-  });
-
-  testWidgets('宽屏（≥768px）不渲染带子', (tester) async {
-    await pumpShell(tester, size: const Size(1024, 900));
-
     expect(find.byType(BottomFade), findsNothing);
+    expect(find.byKey(const ValueKey('app-bottom-navigation')), findsOneWidget);
   });
 
-  testWidgets('弹层打开时带子不收起', (tester) async {
+  testWidgets('宽屏使用侧栏', (tester) async {
+    await pumpShell(tester, size: const Size(1024, 900));
+    expect(find.byType(BottomFade), findsNothing);
+    expect(find.byKey(const ValueKey('app-bottom-navigation')), findsNothing);
+  });
+
+  testWidgets('弹层打开时顶部渐隐收起，底栏仍保留', (tester) async {
     await pumpShell(tester);
 
     // 先把页面滚起来，让顶部带处于「该显示」的状态。否则拿 `TopFade` 当对照组时
@@ -260,15 +215,14 @@ void main() {
       reason: '对照组：顶部带确实响应了 openSheetCount',
     );
     expect(
-      find.byType(BottomFade),
+      find.byKey(const ValueKey('app-bottom-navigation')),
       findsOneWidget,
-      reason: '底部带不随弹层收起——这条就是本轮要守的行为',
     );
   });
 
   // 同样按 iPhone 的几何来量（安全区 34pt、胶囊离底 20pt），所以钉住 iOS。
   testWidgets(
-    '带子盖住的位置仍能点到内容',
+    '底栏上方的内容仍可点击',
     (tester) async {
       var taps = 0;
       tester.view.physicalSize = const Size(402, 874);
@@ -305,7 +259,7 @@ void main() {
 
       // 屏幕底上方 8pt：在带子（高 121）里面，但在**胶囊之下**——胶囊占离底
       // 20–85pt，点在那里会被标签条接走，测的就不是这条带了。
-      await tester.tapAt(const Offset(200, 874 - 8));
+      await tester.tapAt(const Offset(200, 874 - 120));
       expect(taps, 1);
     },
     variant: TargetPlatformVariant.only(TargetPlatform.iOS),

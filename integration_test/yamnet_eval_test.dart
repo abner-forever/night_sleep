@@ -13,7 +13,7 @@
 //
 // 跑法：
 //   flutter test integration_test/yamnet_eval_test.dart -d <serial>
-//   adb exec-out run-as com.example.night_sleep cat files/yamnet_scores.txt > scores.txt
+//   adb exec-out run-as com.abner.night_sleep cat files/yamnet_scores.txt > scores.txt
 //
 // 它读的是**手机上真实录到的片段**（`getApplicationSupportDirectory()/clips/`），
 // 不是打包进来的样本——所以它量到的就是使用方那个房间、那台手机上的东西。
@@ -269,7 +269,7 @@ Float64List _probeSignal(double seconds) {
 String _rssMb() => (ProcessInfo.currentRss / 1024 / 1024).toStringAsFixed(1);
 
 /// 报告写进 App 的**内部**目录，跑完用 `run-as` 取：
-///   adb exec-out run-as com.example.night_sleep cat files/yamnet_scores.txt
+///   adb exec-out run-as com.abner.night_sleep cat files/yamnet_scores.txt
 ///
 /// **不用外部私有目录**：真机上实测 `addTearDown` 里那次 `getExternalStorageDirectory()`
 /// 拿不到目录（测试失败后平台通道已经拆了），异常还被这里的 catch 吞掉，报告凭空消失。

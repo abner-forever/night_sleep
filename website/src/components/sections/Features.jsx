@@ -4,14 +4,13 @@ import {
   Alarm,
   AudioLines,
   Mic,
-  Smartphone,
-  Tablet,
+  Chart,
   Waves,
 } from '../ui/Icons.jsx'
 import './Features.css'
 
 // 与 locale 中 features.items 的顺序一一对应
-const ICONS = [Waves, Mic, AudioLines, AudioLines, Tablet, Alarm]
+const ICONS = [Waves, AudioLines, Mic, AudioLines, Chart, Alarm]
 
 // 每个功能对应的辅助图示标签（取自同一份文案）
 const TAGS = [
@@ -19,7 +18,7 @@ const TAGS = [
   '8 种夜景 · 5 种声音',
   '端侧模型',
   '手动标注优先',
-  'CSV · JSON',
+  '趋势 · 备份 · 导出',
   '提醒 · 评星',
 ]
 

@@ -186,7 +186,7 @@ void main() {
       // 不是不透明，底下那条路由就还在树上——「露出的是首页」因此有据可查，
       // 而不是「滑开之后才发现底下是块黑板」。
       expect(
-        find.text('睡眠概览'),
+        find.text('夜深'),
         findsOneWidget,
         reason: '首页应当还在下面那条路由里',
       );
@@ -253,7 +253,7 @@ void main() {
       await dragHeaderSlowly(tester, 400);
 
       expect(find.byType(SleepSessionPage), findsNothing, reason: '过阈值应当滑走');
-      expect(find.text('睡眠概览'), findsOneWidget, reason: '回到的是首页');
+      expect(find.text('夜深'), findsOneWidget, reason: '回到的是首页');
       expect(
         player.calls,
         isNot(contains('stop')),
@@ -278,7 +278,7 @@ void main() {
         duration: const Duration(seconds: 2),
       );
 
-      expect(find.text('睡眠概览'), findsOneWidget, reason: '下拉就是离开这一页');
+      expect(find.text('夜深'), findsOneWidget, reason: '下拉就是离开这一页');
       expect(player.calls.last, 'stop', reason: '没有会话在跑，试听不该留在后台（偏差 #37）');
       expect(
         await database.activeSession(),
@@ -410,7 +410,7 @@ void main() {
       await tester.pump(AppDurations.standard);
       await tester.pump(const Duration(milliseconds: 50));
       expect(find.byType(SleepSessionPage), findsNothing);
-      expect(find.text('睡眠概览'), findsOneWidget);
+      expect(find.text('夜深'), findsOneWidget);
     });
   });
 
@@ -444,7 +444,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(SleepSessionPage), findsNothing, reason: '点击就该收起');
-      expect(find.text('睡眠概览'), findsOneWidget);
+      expect(find.text('夜深'), findsOneWidget);
     });
   });
 }

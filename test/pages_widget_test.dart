@@ -121,7 +121,7 @@ void main() {
   setUpAll(
     () => PackageInfo.setMockInitialValues(
       appName: '夜深',
-      packageName: 'com.example.night_sleep',
+      packageName: 'com.abner.night_sleep',
       version: '0.1.0',
       buildNumber: '1',
       buildSignature: '',
@@ -316,16 +316,63 @@ void main() {
       );
 
   group('首页', () {
+    for (final dark in [false, true]) {
+      for (final wide in [false, true]) {
+        testWidgets('${dark ? '深色' : '浅色'}${wide ? '宽屏' : '手机'}下拉背景与回弹',
+            (tester) async {
+          await pumpPage(
+            tester,
+            Theme(
+              data: (dark ? AppTheme.dark() : AppTheme.light())
+                  .copyWith(platform: TargetPlatform.iOS),
+              child: home(),
+            ),
+            entries: await demoEntries(),
+            surface: Size(wide ? 1024 : 430, 932),
+          );
+          final scroll = find.byType(Scrollable).last;
+          final background = find.byKey(const ValueKey('home-pull-background'));
+          expect(background, findsNothing);
+          final gesture = await tester.startGesture(tester.getCenter(scroll));
+          await gesture.moveBy(const Offset(0, 300));
+          await tester.pump();
+          final position = tester.state<ScrollableState>(scroll).position;
+          expect(position.pixels, lessThan(position.minScrollExtent));
+          if (wide) {
+            expect(background, findsNothing);
+          } else {
+            final gap = tester.getRect(background);
+            final header = tester
+                .getRect(find.byKey(const ValueKey('home-header-background')));
+            expect(gap.top, 0);
+            expect(gap.left, 0);
+            expect(gap.right, 430);
+            expect(gap.bottom, closeTo(header.top + 1, 1));
+          }
+          await gesture.up();
+          await tester.pump();
+          await tester.pump(const Duration(seconds: 2));
+          await tester.pump();
+          expect(position.pixels, closeTo(position.minScrollExtent, 1));
+          expect(background, findsNothing);
+          await tester.drag(scroll, const Offset(0, -250));
+          await tester.pump(const Duration(seconds: 1));
+          expect(background, findsNothing);
+          expect(tester.takeException(), isNull);
+        });
+      }
+    }
+
     testWidgets('空状态引导用户记录第一晚', (tester) async {
       await pumpPage(tester, home());
 
-      expect(find.text('睡眠概览'), findsOneWidget);
+      expect(find.text('夜深'), findsOneWidget);
       expect(find.text('还没有睡眠记录'), findsOneWidget);
       // 主按钮与空状态行动按钮都落到同一个「开始入睡」（原型首页的文案）。
       expect(find.text('开始入睡'), findsWidgets);
       // Nothing fabricated without data.
       expect(find.text('昨夜睡眠'), findsNothing);
-      expect(find.text('近 7 日均时'), findsNothing);
+      expect(find.text('暂无记录'), findsOneWidget);
       expect(find.textContaining('正在显示演示数据'), findsNothing);
     });
 
@@ -333,7 +380,10 @@ void main() {
       await pumpPage(tester, home(), entries: await demoEntries());
 
       expect(find.text('昨夜睡眠'), findsOneWidget);
-      expect(find.text('详情'), findsOneWidget);
+      expect(
+          find.byWidgetPredicate((widget) =>
+              widget is Pressable && widget.semanticLabel == '查看昨夜睡眠详情'),
+          findsOneWidget);
       expect(find.text('最近记录'), findsOneWidget);
       // 8h05m on the newest demo night.
       expect(find.text('8'), findsWidgets);
@@ -385,7 +435,7 @@ void main() {
       await pumpPage(tester, home(), activeSession: null);
 
       // 主按钮那一个是 `PrimaryAction`：钉住「是这一颗」，而不是「页面上有这两个字」。
-      expect(find.widgetWithText(PrimaryAction, '开始入睡'), findsOneWidget);
+      expect(find.byKey(const ValueKey('home-start-sleep')), findsOneWidget);
       expect(find.text('记录昨夜睡眠'), findsNothing);
     });
 
@@ -393,7 +443,16 @@ void main() {
       await pumpPage(tester, home(), activeSession: null);
 
       expect(find.text('记录第一晚'), findsNothing);
-      expect(find.widgetWithText(EmptyState, '开始入睡'), findsOneWidget);
+      final action = find.byKey(const ValueKey('home-first-night'));
+      expect(action, findsOneWidget);
+      expect(
+          tester
+              .widget<Semantics>(find
+                  .descendant(of: action, matching: find.byType(Semantics))
+                  .first)
+              .properties
+              .label,
+          '开始入睡');
     });
 
     testWidgets('有会话时显示「正在睡眠」卡并可回到会话页', (tester) async {
@@ -444,7 +503,7 @@ void main() {
       await tester.tap(find.text('收起'));
       await tester.pumpAndSettle();
 
-      expect(find.text('睡眠概览'), findsOneWidget);
+      expect(find.text('夜深'), findsOneWidget);
       expect(await database.activeSession(), isNull);
     });
   });
@@ -587,7 +646,7 @@ void main() {
     testWidgets('空数据不显示虚假趋势', (tester) async {
       await pumpPage(tester, const StatsPage());
 
-      expect(find.text('趋势分析'), findsOneWidget);
+      expect(find.text('统计'), findsOneWidget);
       expect(find.text('暂无统计数据'), findsOneWidget);
       expect(find.text('每日睡眠时长'), findsNothing);
     });
@@ -610,7 +669,7 @@ void main() {
     testWidgets('演示洞察被呈现并附免责声明', (tester) async {
       await pumpPage(tester, const StatsPage(), entries: await demoEntries());
 
-      expect(find.text('本周睡眠评分'), findsOneWidget);
+      expect(find.text('睡眠评分'), findsOneWidget);
       expect(find.textContaining('不构成医疗建议'), findsWidgets);
       expect(find.text('梦话记录'), findsOneWidget);
     });
@@ -706,6 +765,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(find.text('睡眠记录与分析'), 200,
           scrollable: find.byType(Scrollable).first);
+      await tester.ensureVisible(find.text('睡眠记录与分析'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('睡眠记录与分析'));
       await tester.pumpAndSettle();
       expect(find.byType(AboutPage), findsOneWidget);
@@ -764,16 +825,13 @@ void main() {
       expect(find.text('数据与隐私'), findsOneWidget);
       expect(find.text('关于'), findsOneWidget);
 
-      // 原型那五条 + 我们必须保留的四条（导出是偏差 #18、删除全部数据是规格 §7、
-      // 演示数据是调试期功能、罗盘是本实现新增）。
       for (final label in [
         '外观',
         '睡眠设置',
         '罗盘',
         '睡眠数据导入',
         '睡眠洞察',
-        '睡眠数据导出',
-        '删除全部本地数据',
+        '睡眠数据管理',
         '清除缓存',
       ]) {
         expect(find.text(label), findsOneWidget, reason: '根页少了「$label」这一行');
@@ -786,6 +844,9 @@ void main() {
       expect(find.text('就寝提醒'), findsNothing);
       expect(find.text('起床提醒'), findsNothing);
       expect(find.text('夜间声音录制'), findsNothing);
+      expect(find.text('从备份恢复'), findsNothing);
+      expect(find.text('删除全部本地数据'), findsNothing);
+      expect(find.text('演示数据'), findsNothing);
     });
 
     testWidgets('清除缓存显示真实占用，清完变成「暂无缓存」', (tester) async {
@@ -902,7 +963,7 @@ void main() {
     });
 
     testWidgets('删除全部数据前要求二次确认', (tester) async {
-      await pumpPage(tester, const SettingsPage());
+      await pumpRoute(tester, const ExportPage());
 
       await tester.tap(find.text('删除全部本地数据'));
       await tester.pumpAndSettle();
@@ -915,7 +976,7 @@ void main() {
     });
 
     testWidgets('危险操作行用垃圾桶图标并套了 danger 底板', (tester) async {
-      await pumpPage(tester, const SettingsPage());
+      await pumpRoute(tester, const ExportPage());
 
       final row = find.ancestor(
         of: find.text('删除全部本地数据'),
@@ -932,7 +993,7 @@ void main() {
       // 图标身份断得到：`SvgPicture.bytesLoader` 是公开字段，`SvgStringLoader`
       // 又实现了值相等（逐字符比 SVG 文本、比 theme 与 colorMapper）。
       // 这一条钉的正是本任务要钉的行为——换回借来的「停止」方块就会红。
-      final tokens = AppTokens.of(tester.element(find.byType(SettingsPage)));
+      final tokens = AppTokens.of(tester.element(find.byType(ExportPage)));
       final rendered = tester.widget<SvgPicture>(
         find.descendant(of: row, matching: find.byType(SvgPicture)),
       );
@@ -950,56 +1011,77 @@ void main() {
   });
 
   group('二级页顶部导航', () {
-    testWidgets('上滑吸顶：返回胶囊先随页面上移，随后钉在顶部', (tester) async {
-      // 模拟安卓的状态栏（24px）：吸顶条必须铺到它背后，而不是从它下面才开始。
-      tester.view.padding = const FakeViewPadding(top: 24);
+    for (final width in [430.0, 1024.0]) {
+      for (final brightness in Brightness.values) {
+        for (final topInset in [0.0, 24.0, 59.0]) {
+          testWidgets('导航保持 44 高度并保留安全区：$width / $brightness / $topInset',
+              (tester) async {
+            tester.view.padding = FakeViewPadding(top: topInset);
+            addTearDown(tester.view.resetPadding);
+
+            await pumpWithOverrides(
+              tester,
+              Theme(
+                data: brightness == Brightness.dark
+                    ? AppTheme.dark()
+                    : AppTheme.light(),
+                child: Subpage(
+                  title: '测试标题',
+                  children: [
+                    for (var index = 0; index < 30; index++)
+                      SizedBox(height: 80, child: Text('第 $index 行')),
+                  ],
+                ),
+              ),
+              surface: Size(width, 800),
+            );
+
+            final back = find.byKey(const ValueKey('subpage-back'));
+            final band = find.byKey(const ValueKey('subpage-header-band'));
+            final initialBack = tester.getRect(back);
+            expect(initialBack.top, topInset);
+            expect(initialBack.size, const Size(44, 44));
+            expect(tester.getRect(band),
+                Rect.fromLTWH(0, 0, width, topInset + 44));
+            expect(
+                tester.getTopLeft(find.text('第 0 行')).dy, topInset + 44 + 20);
+            expect(tester.getCenter(find.text('测试标题')).dx, width / 2);
+            expect(tester.widget<Opacity>(band).opacity, 0);
+
+            for (var scroll = 0; scroll < 2; scroll++) {
+              await tester.drag(
+                  find.byType(CustomScrollView), const Offset(0, -400));
+              await tester.pumpAndSettle();
+              expect(tester.getRect(back), initialBack);
+              expect(tester.getRect(band).height, topInset + 44);
+              expect(tester.widget<Opacity>(band).opacity, 1);
+              expect(tester.takeException(), isNull);
+            }
+          });
+        }
+      }
+    }
+
+    testWidgets('大字号增高导航行时仍避开系统安全区', (tester) async {
+      tester.view.padding = const FakeViewPadding(top: 59);
+      tester.platformDispatcher.textScaleFactorTestValue = 3;
       addTearDown(tester.view.resetPadding);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
 
       await pumpWithOverrides(
         tester,
-        Subpage(
-          title: '测试标题',
-          children: [
-            for (var i = 0; i < 30; i++)
-              SizedBox(height: 80, child: Text('第 $i 行')),
-          ],
-        ),
+        const Subpage(title: '测试标题', children: [SizedBox(height: 1200)]),
         surface: const Size(430, 800),
       );
 
-      final pill = find.byKey(const ValueKey('subpage-back'));
-      expect(
-        tester.getTopLeft(pill).dy,
-        24 + 24,
-        reason: '第 0 屏：状态栏 + 原来的顶部留白',
-      );
-
-      await tester.drag(find.byType(CustomScrollView), const Offset(0, -400));
-      await tester.pumpAndSettle();
-
-      expect(
-        tester.getTopLeft(pill).dy,
-        24 + 12,
-        reason: '吸顶后胶囊在状态栏下方 12px——吸顶条比原先高，不再贴着状态栏',
-      );
-      expect(find.text('测试标题'), findsOneWidget, reason: '标题也要跟着吸顶');
-
-      // 底板从屏幕最顶上开始画，状态栏那一截是它的一部分——深色模式下不能有
-      // 一条底色不同的横带把导航和状态栏切开。
+      final title = tester.getRect(find.text('测试标题'));
       final band = tester.getRect(
         find.byKey(const ValueKey('subpage-header-band')),
       );
-      expect(band.top, 0, reason: '吸顶底板没有铺到状态栏背后');
-      expect(
-        band.height,
-        24 + 12 * 2 + 36,
-        reason: '吸顶底板高度 = 状态栏 + 胶囊行 + 上下各 12px',
-      );
-
-      // 再滚一段：仍然钉在原处，不是滚到某个位置才生效一次。
-      await tester.drag(find.byType(CustomScrollView), const Offset(0, -400));
-      await tester.pumpAndSettle();
-      expect(tester.getTopLeft(pill).dy, 24 + 12);
+      expect(title.top, greaterThanOrEqualTo(59));
+      expect(title.bottom, lessThanOrEqualTo(band.bottom));
+      expect(band.height, greaterThan(59 + 44));
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('返回键只有图标，没有文字标签；读屏仍然知道它是返回', (tester) async {
@@ -1229,7 +1311,9 @@ void main() {
       // 没有它，文字会落到 Flutter 的错误样式（黄色双下划线），背景会是黑的。
       // 这个 bug 在本项目真出现过一次，所以每个二级页都要接上这条守卫。
       await pumpRoute(tester, const ExportPage());
-      expectProperlyRendered(tester, '睡眠数据导出');
+      expectProperlyRendered(tester, '睡眠数据管理');
+      expect(find.text('演示数据'), findsOneWidget);
+      expect(find.text('删除全部本地数据'), findsOneWidget);
     });
 
     testWidgets('导出页的「预览表格」进表格预览页', (tester) async {
@@ -1482,7 +1566,8 @@ void main() {
       for (final label in ['首页', '回顾', '统计', '设置']) {
         expect(find.text(label), findsWidgets, reason: '少了「$label」');
       }
-      expect(find.text('助眠音效'), findsOneWidget, reason: '底部那张卡仍在');
+      expect(find.text('助眠音效'), findsWidgets, reason: '底部那张卡仍在');
+      expect(tester.getTopLeft(find.text('助眠音效').first).dx, lessThan(220));
     });
   });
 

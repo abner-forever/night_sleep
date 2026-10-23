@@ -11,7 +11,6 @@ import './Download.css'
 export default function Download() {
   const { t, tList } = useI18n()
   const [state, setState] = useState({ loading: true, download: null, beta: null })
-  const [copied, setCopied] = useState(false)
   const [retry, setRetry] = useState(0)
   useEffect(() => {
     let active = true
@@ -174,29 +173,6 @@ export default function Download() {
               </div>
             </header>
             <IosStoreButton size="lg" />
-          </Reveal>
-          <Reveal className="download-reminder">
-            <div>
-              <h3>也可以把页面留给稍后的自己。</h3>
-              <p role="status" aria-live="polite">
-                {copied
-                  ? '链接已复制。'
-                  : '下载地址会在此页更新，收藏页面即可。'}
-              </p>
-            </div>
-            <button
-              className="btn btn--outline"
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(pageUrl)
-                  setCopied(true)
-                } catch {
-                  window.prompt('复制下载页地址', pageUrl)
-                }
-              }}
-            >
-              复制下载页链接
-            </button>
           </Reveal>
         </div>
       </section>

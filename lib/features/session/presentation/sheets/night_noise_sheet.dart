@@ -112,31 +112,37 @@ class _NightNoiseSheetHostState extends State<_NightNoiseSheetHost>
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.bottomCenter,
-      child: AnimatedBuilder(
-        animation: _drag,
-        // **必须带 `child:`**：不带的话每一帧都会重建整块面板（宫格、音量条、
-        // 圆角与投影全在里面）。
-        builder: (context, child) => Transform.translate(
-          offset: Offset(0, _drag.value),
-          child: child,
-        ),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            _availableHeight = constraints.maxHeight;
-            return ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: 620,
-                maxHeight: MediaQuery.sizeOf(context).height * .88,
-              ),
-              child: _NightNoiseSheet(
-                onHandleDragUpdate: _onDragUpdate,
-                onHandleDragEnd: _onDragEnd,
-                onHandleDragCancel: _onDragCancel,
-              ),
-            );
-          },
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SafeArea(
+        bottom: false,
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: AnimatedBuilder(
+            animation: _drag,
+            // **必须带 `child:`**：不带的话每一帧都会重建整块面板（宫格、音量条、
+            // 圆角与投影全在里面）。
+            builder: (context, child) => Transform.translate(
+              offset: Offset(0, _drag.value),
+              child: child,
+            ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                _availableHeight = constraints.maxHeight;
+                return ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: 620,
+                    maxHeight: constraints.maxHeight * .88,
+                  ),
+                  child: _NightNoiseSheet(
+                    onHandleDragUpdate: _onDragUpdate,
+                    onHandleDragEnd: _onDragEnd,
+                    onHandleDragCancel: _onDragCancel,
+                  ),
+                );
+              },
+            ),
+          ),
         ),
       ),
     );
@@ -203,7 +209,7 @@ class _NightNoiseSheet extends ConsumerWidget {
             Flexible(
               child: SingleChildScrollView(
                 padding: EdgeInsets.fromLTRB(
-                    20, 0, 20, MediaQuery.paddingOf(context).bottom + 24),
+                    20, 0, 20, MediaQuery.paddingOf(context).bottom + 12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   mainAxisSize: MainAxisSize.min,
@@ -247,14 +253,15 @@ class _NightNoiseSheet extends ConsumerWidget {
 
                     // ── 三列网格：关闭 + 五种声音（正好两行） ────────────────
                     GridView(
+                      padding: EdgeInsets.zero,
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       gridDelegate:
                           const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 3,
-                        mainAxisSpacing: 9,
-                        crossAxisSpacing: 9,
-                        mainAxisExtent: 72,
+                        mainAxisSpacing: 8,
+                        crossAxisSpacing: 8,
+                        mainAxisExtent: 64,
                       ),
                       children: [
                         _NightNoiseTile(
@@ -276,7 +283,7 @@ class _NightNoiseSheet extends ConsumerWidget {
                       ],
                     ),
 
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
 
                     // ── 音量 ────────────────────────────────────────────────
                     _NightBlock(
@@ -293,7 +300,7 @@ class _NightNoiseSheet extends ConsumerWidget {
                       ),
                     ),
 
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
 
                     // ── 播放时长 ────────────────────────────────────────────
                     _NightBlock(
@@ -340,7 +347,7 @@ class _NightNoiseSheet extends ConsumerWidget {
                       ),
                     ],
 
-                    const SizedBox(height: 13),
+                    const SizedBox(height: 10),
                     // 会话里的白噪音不归弹窗播放，生命周期比它长——两句话都要在。
                     const Text(
                       '点选声音可试听，开始睡眠后会按当前设置播放。',
@@ -348,7 +355,7 @@ class _NightNoiseSheet extends ConsumerWidget {
                       style:
                           TextStyle(fontSize: 10, color: NightStyle.textFaint),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     const Text(
                       '退到后台或锁屏后声音会停（后台播放未接入）。',
                       textAlign: TextAlign.center,
@@ -453,7 +460,7 @@ class _NightNoiseTile extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               icon,
-              const SizedBox(height: 7),
+              const SizedBox(height: 5),
               Text(
                 label,
                 style: TextStyle(
@@ -486,7 +493,7 @@ class _NightBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(15),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: NightStyle.fieldFill,
         borderRadius: BorderRadius.circular(18),
@@ -521,7 +528,7 @@ class _NightBlock extends StatelessWidget {
               ],
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           child,
         ],
       ),

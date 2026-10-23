@@ -1,6 +1,6 @@
 # Android 长期签名
 
-夜深 release 构建统一使用项目专用的 RSA 4096 位签名。Beta 与正式版本共用此身份，不再使用 Android Debug 证书。应用包名仍为 `com.example.night_sleep`，本次只迁移签名；包名调整需要单独处理。
+夜深 release 构建统一使用项目专用的 RSA 4096 位签名。Beta 与正式版本共用此证书，不再使用 Android Debug 证书。当前 Android 包名为 `com.abner.night_sleep`，已替换旧占位包名 `com.example.night_sleep`；更换包名不需要重新生成签名密钥。
 
 ## 本地文件
 
@@ -26,10 +26,14 @@
 
 工作流通过 `tool/configure_android_signing.py` 恢复临时文件，并先用 keytool 导出公开证书核验指纹，构建结束后始终清理。签名配置缺失时 release 构建立即失败，不回退到 debug。日常 debug 构建仍使用开发调试证书，无需发布私钥。
 
-产物打包时，`tool/android_release.py` 再次调用 apksigner 校验 APK，并要求唯一签名者与仓库固定指纹一致。`release.json` 标注 `signing=release` 及 `certificate_sha256`，签名详情和 SHA-256 随产物保存。只有非私密构建产物会进入 Actions Artifact / Release。
+产物打包时，`tool/android_release.py` 再次调用 apksigner 校验 APK，并要求唯一签名者与仓库固定指纹一致。`release.json` 标注 `signing=release` 及 `certificate_sha256`；签名详情和 SHA-256 核验文件保存在 Actions Artifact（30 天）。Release 仅上传 APK 和 App 检查更新必需的 `release.json`，其余说明放在发布正文。只有非私密构建产物会进入 Actions Artifact / Release。
 
 ## 首次迁移
 
 首个长期签名版本为 `0.49.0-beta.2+3`。此前 preview / beta.1 使用 Android Debug 签名，无法通过普通覆盖安装迁移到新证书。先导出记录，再卸载旧包、安装新版；卸载会清除本地数据。此后同包名、同证书且递增 versionCode 的版本才具备常规升级条件；真机升级覆盖仍需实测。
 
 后续不要为每次构建生成新密钥，也不要随意替换本证书。若以后接入 Google Play App Signing，需另外规划商店应用签名密钥与上传密钥，并考虑与官网 APK 的签名一致性。
+
+## 包名迁移（2026-10-21）
+
+`0.49.0` 及之前的安装包使用 `com.example.night_sleep`。新包名 `com.abner.night_sleep` 在 Android 中属于另一个应用，无法覆盖升级旧包，旧应用的数据库、录音与设置不会自动迁移。两个包名可以分别安装；请在旧应用中导出需要保留的记录，确认备份后再决定是否卸载旧应用。当前导出功能用于保留数据，不代表新应用支持导入恢复。

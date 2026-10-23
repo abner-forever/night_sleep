@@ -14,6 +14,7 @@ import 'package:night_sleep/core/theme/app_theme.dart';
 import 'package:night_sleep/core/widgets/ios_controls.dart';
 import 'package:night_sleep/core/widgets/wheel_picker.dart';
 import 'package:night_sleep/features/settings/presentation/settings_page.dart';
+import 'package:night_sleep/features/settings/presentation/export_page.dart';
 import 'package:night_sleep/features/settings/presentation/sleep_settings_page.dart';
 import 'package:night_sleep/features/sleep/data/noise_player.dart';
 import 'package:night_sleep/features/sleep/data/noise_asset.dart';
@@ -141,8 +142,8 @@ void main() {
   /// 挂载一个设置页面。
   ///
   /// **提醒与声音检测在 v3.5 已搬进 `/settings/sleep`**，所以提醒相关的用例挂
-  /// [SleepSettingsPage]；「删除全部本地数据」那一行还留在设置根页，它单独挂
-  /// [SettingsPage]。两页都是推入式页面，各自带 `Subpage`（有 `Scaffold` 与
+  /// [SleepSettingsPage]；「删除全部本地数据」位于数据管理页，它单独挂
+  /// [ExportPage]。两页都是推入式页面，各自带 `Subpage`（有 `Scaffold` 与
   /// `Material` 祖先），这里再套一层只为贴近真机（标签页确实活在壳的 Scaffold 里）。
   Future<void> pumpPage(
     WidgetTester tester,
@@ -181,12 +182,12 @@ void main() {
   }) =>
       pumpPage(tester, const SleepSettingsPage(), scheduler, player: player);
 
-  Future<void> pumpRootSettings(
+  Future<void> pumpDataManagement(
     WidgetTester tester,
     ReminderScheduler scheduler, {
     NoisePlayer? player,
   }) =>
-      pumpPage(tester, const SettingsPage(), scheduler, player: player);
+      pumpPage(tester, const ExportPage(), scheduler, player: player);
 
   /// 把某一项的新值回投给界面，**模拟写库回流**。
   ///
@@ -397,8 +398,7 @@ void main() {
 
     final scheduler = _FakeScheduler(grants: true);
     final player = _FakeNoisePlayer();
-    // 「删除全部本地数据」留在设置**根页**，提醒控件才在睡眠设置页。
-    await pumpRootSettings(tester, scheduler, player: player);
+    await pumpDataManagement(tester, scheduler, player: player);
 
     await tester.scrollUntilVisible(find.text('删除全部本地数据'), 300);
     await tester.tap(find.text('删除全部本地数据'));

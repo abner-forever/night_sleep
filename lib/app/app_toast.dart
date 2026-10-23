@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme/app_tokens.dart';
 import '../core/widgets/liquid_glass.dart';
+import 'app_shell.dart';
 
 /// The most recent transient message, or null. Set it from anywhere with
 /// `ref.read(toastProvider.notifier).show('...')`.
@@ -50,20 +51,13 @@ class _ToastOverlayState extends ConsumerState<ToastOverlay> {
     });
 
     final tokens = AppTokens.of(context);
-    final isWide = MediaQuery.sizeOf(context).width >= 768;
+    final padding = MediaQuery.paddingOf(context);
     final visible = message != null;
 
     return Positioned(
-      // Sits clear of the floating tab bar on phones, and closer to the edge on
-      // wide layouts where there is no bar.
-      //
-      // 手机上的 100 是按**旧**胶囊顶边（99.5pt）算出来的，只留 0.5pt 间隙；
-      // v2.7 之后胶囊顶边是 85pt，间隙变成 15pt。这是第二个写死的镜像值（第一个
-      // 是标签条浮起量），**谁改浮起量就该顺手看这里**——否则它会跟着一起漂。
-      // 见 `docs/superpowers/specs/2026-09-29-bottom-fade-design.md`「待核实事项」第 3 条。
-      left: 16,
-      right: 16,
-      bottom: isWide ? 32 : 100,
+      left: padding.left + 16,
+      right: padding.right + 16,
+      bottom: pageBottomInset(context),
       child: IgnorePointer(
         child: AnimatedSlide(
           duration: const Duration(milliseconds: 180),
