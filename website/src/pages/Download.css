@@ -90,9 +90,8 @@
   width: 46px;
   height: 46px;
   border-radius: var(--radius-lg);
-  background: var(--gradient-brand);
-  color: #ffffff;
-  box-shadow: var(--shadow-brand);
+  background: var(--accent-soft);
+  color: var(--accent);
   flex-shrink: 0;
 }
 

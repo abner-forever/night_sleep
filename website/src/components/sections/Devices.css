@@ -1,7 +1,51 @@
+.devices__controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-12);
+}
+
+.devices__choices {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.devices__choices button {
+  min-height: 44px;
+  padding: 10px 18px;
+  border-radius: var(--radius);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-2);
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+
+.devices__choices button:hover {
+  background: var(--surface-hover);
+}
+
+.devices__choices button[aria-pressed='true'] {
+  background: #3478f6;
+  color: #ffffff;
+}
+
+.devices__theme-note {
+  color: var(--text-3);
+  font-size: 0.8125rem;
+  text-align: center;
+}
+
 .devices__stage {
   display: grid;
   gap: var(--space-16);
-  align-items: end;
+  align-items: start;
 }
 
 .devices__item {
@@ -20,6 +64,10 @@
 .devices__meta {
   max-width: 380px;
   text-align: center;
+}
+
+.devices__item--phone .device {
+  width: min(100%, 280px);
 }
 
 .devices__tag {
@@ -52,11 +100,21 @@
 
 @media (min-width: 900px) {
   .devices__stage {
-    grid-template-columns: minmax(0, 0.78fr) minmax(0, 1fr);
+    --preview-height: clamp(560px, 48vw, 680px);
+    grid-template-columns: minmax(0, 0.7fr) minmax(0, 1fr);
     gap: var(--space-12);
   }
 
-  .devices__item--tablet .devices__meta {
-    text-align: left;
+  .devices__frame {
+    height: var(--preview-height);
+    align-items: flex-start;
+  }
+
+  .devices__item--phone .device {
+    width: calc((var(--preview-height) - 20px) * 402 / 874 + 20px);
+  }
+
+  .devices__item--tablet .device {
+    width: calc((var(--preview-height) - 26px) * 834 / 1210 + 26px);
   }
 }

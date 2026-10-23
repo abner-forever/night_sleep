@@ -1,5 +1,6 @@
 import { useI18n } from '../../i18n/index.jsx'
 import Reveal from '../ui/Reveal.jsx'
+import PhoneScreen from '../visuals/PhoneScreen.jsx'
 import './Report.css'
 export default function Report() {
   const { t, tList } = useI18n()
@@ -28,25 +29,14 @@ export default function Report() {
               <span>长期记录导出</span>
             </div>
             <small>
-              当前 Android 真机截图 · 包含演示数据
+              当前 iPhone 模拟器截图 · 包含演示数据
               <br />
               没有睡眠阶段数据时，不会推算深睡、浅睡或 REM。
             </small>
           </div>
           <div className="actual-report__screens">
-            {['detail', 'all-data'].map((screen, index) => (
-              <img
-                key={screen}
-                src={`${import.meta.env.BASE_URL}screenshots/${screen}.webp`}
-                alt={
-                  index === 0
-                    ? '睡眠详情与声音记录'
-                    : '按周、月、年翻阅历史记录'
-                }
-                width="720"
-                height="1493"
-                loading="lazy"
-              />
+            {['detail', 'all-data'].map((screen) => (
+              <PhoneScreen key={screen} screen={screen} />
             ))}
           </div>
         </Reveal>

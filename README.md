@@ -11,8 +11,8 @@
 [![Dart](https://img.shields.io/badge/Dart-3.13.4-0175C2?logo=dart)](https://dart.dev)
 [![Local-first](https://img.shields.io/badge/data-local--first-3E8E7E)](#数据与隐私)
 
-界面为中文，按 Figma Make 原型的最终生效层实现：iOS 玻璃材质、悬浮胶囊标签条 / 侧边栏自适应
-导航、自绘描边图标集、浅色 / 深色主题。
+界面为中文：山湖夜色、清晰的实体卡片、自绘描边图标，支持浅色 / 深色主题。
+手机使用底部标签导航，iPad 使用侧栏；睡前会话保留独立的深色夜景，音效面板支持试听、音量与定时。
 
 </div>
 
@@ -72,41 +72,61 @@
 
 ## 截图
 
-> 取自 Android 真机（MI 9，1080×2340），已开启演示数据。
+> 2026-10-23 从当前分支重新采集，来自 iPhone 16 Pro 与 iPad Pro 11 英寸（M4）竖屏模拟器，包含演示数据。
+> 以下为应用渲染截图，不包含原生状态栏与手势条；展示界面和交互布局，不代表真实睡眠测量。
+
+### 手机
 
 <table>
   <tr>
-    <td align="center"><img src="docs/images/home.png" width="230"><br><sub><b>首页</b> · 昨夜睡眠与结论条</sub></td>
-    <td align="center"><img src="docs/images/session.png" width="230"><br><sub><b>睡前会话</b> · 夜景氛围与就寝设置</sub></td>
-    <td align="center"><img src="docs/images/stats.png" width="230"><br><sub><b>统计</b> · 7 / 14 / 30 天趋势</sub></td>
+    <td align="center"><img src="docs/images/home.png" width="230" alt="iPhone 浅色首页"><br><sub><b>首页</b> · 夜景与昨夜睡眠卡片</sub></td>
+    <td align="center"><img src="docs/images/session.png" width="230" alt="iPhone 睡前会话"><br><sub><b>睡前会话</b> · 夜景与就寝设置</sub></td>
+    <td align="center"><img src="docs/images/sounds.png" width="230" alt="iPhone 白噪音设置"><br><sub><b>声音面板</b> · 音量与定时</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/images/all-data.png" width="230"><br><sub><b>所有睡眠数据</b> · 按周 / 月 / 年翻阅</sub></td>
-    <td align="center"><img src="docs/images/detail.png" width="230"><br><sub><b>睡眠详情</b> · 声音记录与端侧判定</sub></td>
-    <td align="center"><img src="docs/images/settings.png" width="230"><br><sub><b>设置</b> · 三段导航</sub></td>
+    <td align="center"><img src="docs/images/stats.png" width="230" alt="iPhone 睡眠统计"><br><sub><b>统计</b> · 7 / 14 / 30 天趋势</sub></td>
+    <td align="center"><img src="docs/images/all-data.png" width="230" alt="iPhone 历史记录"><br><sub><b>历史记录</b> · 按周 / 月 / 年翻阅</sub></td>
+    <td align="center"><img src="docs/images/detail.png" width="230" alt="iPhone 睡眠详情"><br><sub><b>睡眠详情</b> · 声音与判定依据</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/images/settings.png" width="230" alt="iPhone 应用设置"><br><sub><b>设置</b> · 外观、睡眠与数据管理</sub></td>
+    <td align="center"><img src="docs/images/home-dark.png" width="230" alt="iPhone 深色首页"><br><sub><b>深色主题</b> · 安静的深蓝卡片</sub></td>
   </tr>
 </table>
 
-其中「睡眠详情」那张里的 **自动 · 疑似打鼾** 就是端侧模型给的判定，下面那条波形来自真实录音。
+### iPad
 
-想自己重抓：跑一遍界面巡检，宿主机边跑边截——巡检每屏停留约 5 秒，覆盖首页、回顾、统计、设置与
-五个二级页、睡眠详情、助眠音效面板、会话页两态。使用 Android 真机或 iOS 模拟器运行。
+<table>
+  <tr>
+    <td align="center"><img src="docs/images/ipad-home.png" width="350" alt="iPad 首页与侧栏导航"><br><sub><b>首页</b> · 侧栏与宽屏卡片</sub></td>
+    <td align="center"><img src="docs/images/ipad-stats.png" width="350" alt="iPad 浅色统计"><br><sub><b>统计</b> · 更舒展的图表与记录</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/images/ipad-stats-dark.png" width="350" alt="iPad 深色统计"><br><sub><b>深色统计</b> · 同一套阅读层级</sub></td>
+  </tr>
+</table>
+
+官网的「应用预览」可切换概览、会话、声音面板、统计和设置，同时查看手机与 iPad 界面；截图随官网深浅主题切换。
+
+### 重新采集
+
+运行当前视觉巡检，分别指定手机和平板设备 ID。开启 `VISUAL_HOLD_SECONDS` 后，脚本会保存截图并输出 `VISUAL_SAVED <路径>`：
 
 ```bash
-# 模拟器：一边跑巡检，一边在外面循环截屏
-DEV=$(xcrun simctl list devices available | grep -m1 -o '[0-9A-F-]\{36\}')
-( for i in $(seq -w 1 70); do
-    xcrun simctl io $DEV screenshot /tmp/tour/$i.png; sleep 1.3
-  done ) &
-
-export NO_PROXY=127.0.0.1,localhost
-flutter test integration_test/app_screens_test.dart -d $DEV
+NO_PROXY=127.0.0.1,localhost flutter test integration_test/visual_upgrade_test.dart \
+  -d <设备ID> --dart-define=VISUAL_HOLD_SECONDS=1 --reporter expanded
 ```
 
-Android 真机上把循环换成 `adb exec-out screencap -p > /tmp/tour/$i.png` 即可
-（**必须用 `exec-out`**，`adb shell cat` 会把二进制拉坏）。巡检自己**不截图**，图落在哪里由外面
-的循环决定；仓里的 `screenshots/` 是给这批核对观感的产物准备的、已 gitignore——README 这几张
-是挑过之后单独放进 `docs/images/` 的。
+测试运行期间将日志中的截图复制到 `screenshots/<本轮目录>/iphone/` 或 `ipad/`，避免测试卸载应用后丢失。
+巡检会核对导航和弹层，结束后恢复原主题并核对记录 ID；不保存补录、不删除记录、不开始录音。
+确认截图后，用安装了 Pillow 的 Python 更新 PNG 与 WebP：
+
+```bash
+python3 tool/update_website_screenshots.py screenshots/<本轮目录>
+```
+
+`screenshots/` 是忽略的巡检临时产物；精选 PNG 存入 `docs/images/`，官网 WebP 存入 `website/public/screenshots/`。
+手机和平板图片保留各自的原始比例，不通过裁切或拉伸模拟宽屏。更多验收范围见 [`docs/ui-upgrade-validation.md`](docs/ui-upgrade-validation.md)。
 
 ## 快速开始
 
@@ -163,7 +183,7 @@ export FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
 
 官网源码位于 [`website/`](website/README.md)，与 Flutter 共用本仓库；仅将该目录的静态构建产物发布到 [GitHub Pages](https://abner-forever.github.io/night_sleep/)，不构建 Flutter Web。
 
-- 修改 `website/` 并推送到 `main`，官网工作流会检查并部署。
+- 修改 `website/` 并推送到 `beta` 或 `main`，官网工作流会检查并部署，构建源码始终取自 `beta`。
 - Android 工作流使用 Flutter 3.47.5 / Java 17，生成 Drift 代码、执行检查与测试，再构建关闭演示数据的 release APK。
 - 在仓库 **Actions → Android · APK 版本构建 → 成功运行 → Artifacts** 下载构建包，同时附带包信息、签名检查和 SHA-256。下载 Actions artifact 需要登录 GitHub，保留 30 天。
 - `0.49.0-beta.2+3` 起配置项目专用长期签名，`beta` 分支的应用变更检查通过后自动发布 Beta；仅在明确要求发布正式版时合并到 `main`，自动发布正式包。旧测试签名版本需先导出记录，再卸载安装新版。签名保管与恢复见 [`docs/android-signing.md`](docs/android-signing.md)。

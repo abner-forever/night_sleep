@@ -7,7 +7,7 @@ import Reveal from '../ui/Reveal.jsx'
 import { DeviceLocal } from '../ui/Icons.jsx'
 import './Hero.css'
 
-const MAX_TILT = 6
+const MAX_TILT = 3
 
 export default function Hero() {
   const { t, tList } = useI18n()
@@ -57,6 +57,7 @@ export default function Hero() {
     <section className="hero" id="top">
       <div className="container hero__inner">
         <Reveal className="hero__content">
+          <span className="eyebrow">{t('hero.eyebrow')}</span>
           <h1 className="hero__title">
             {t('hero.titleLead')}
             <span className="gradient-text">{t('hero.titleAccent')}</span>
@@ -64,7 +65,7 @@ export default function Hero() {
 
           <p className="hero__subtitle">{t('hero.subtitle')}</p>
 
-          <StoreButtons size="lg" className="hero__stores" />
+          <StoreButtons size="lg" className="hero__stores" showBeta={false} />
 
           <p className="hero__note">{t('hero.note')}</p>
 

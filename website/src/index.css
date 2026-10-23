@@ -1,6 +1,6 @@
 /* ==========================================================================
    夜深 — Design Tokens & Base
-   视觉语言：APP 同源蓝紫渐变 · 柔光斑 · 大圆角 · 柔和投影
+   视觉语言：APP 同源蓝色与实体卡片 · SaaS 柔光与渐变重点
    令牌命名保持稳定，组件只引用语义令牌，改这里即可全局换肤。
    ========================================================================== */
 
@@ -11,51 +11,53 @@
 :root {
   color-scheme: light;
 
-  /* 表面 —— 沿用 APP 的冷灰底色与白色卡片 */
-  --bg: #f2f2f7;
-  --bg-subtle: #f6f8ff;
+  /* 表面 —— 沿用 APP 的浅蓝底色与白色卡片 */
+  --bg: #f1f7fb;
+  --bg-subtle: #f6faff;
   /* 半透明的区块底色，让固定光斑能透出来 */
-  --bg-tint: rgba(246, 248, 255, 0.72);
+  --bg-tint: rgba(246, 250, 255, 0.88);
   --surface: #ffffff;
-  --surface-hover: #f6f8ff;
-  --surface-inset: #e9e9ef;
+  --surface-hover: #f6faff;
+  --surface-inset: #eaf1f8;
 
   /* 文字 —— 与 APP 的中性黑灰保持一致 */
-  --text: #000000;
-  --text-2: #48484f;
-  --text-3: #64646b;
-  --text-4: #929299;
+  --text: #172033;
+  --text-2: #53657a;
+  --text-3: #61758b;
+  --text-4: #8290a1;
   /* 暗底上的文字（CTA 区块） */
   --on-dark: #ffffff;
   --on-dark-2: #c7d4ed;
   --on-dark-3: rgba(199, 212, 237, 0.7);
 
   /* 描边 */
-  --border: #e1e3ed;
-  --border-mid: #d6d9e5;
-  --border-strong: #b9bfd1;
+  --border: #e5edf4;
+  --border-mid: #cbd9e8;
+  --border-strong: #aabed4;
 
   /* 品牌色阶 —— 保留令牌名，颜色与 APP 的蓝、靛紫、天蓝对齐 */
-  --brand-rose: #007aff;
-  --brand-berry: #5856d6;
-  --brand-peach: #5ac8fa;
-  --gradient-brand: linear-gradient(135deg, #0a84ff, #5856d6);
+  --brand-rose: #3478f6;
+  --brand-berry: #8b6cfa;
+  --brand-peach: #43c7d9;
+  --gradient-brand: linear-gradient(135deg, #3478f6, #8b6cfa);
   --gradient-brand-soft: linear-gradient(135deg, #a3d8ff, #b8b6f5);
   --gradient-surface: linear-gradient(145deg, #f6f8ff, #edf0ff);
-  --gradient-night: linear-gradient(125deg, #080d1c 0%, #17233b 100%);
+  --gradient-night: linear-gradient(125deg, #091729 0%, #18314e 100%);
 
   /* 强调色（与 APP 浅色主题一致） */
-  --accent: #007aff;
-  --accent-hover: #0062cc;
-  --accent-soft: rgba(0, 122, 255, 0.12);
-  --accent-soft-border: rgba(0, 122, 255, 0.24);
+  --accent: #3478f6;
+  --accent-hover: #2864d6;
+  --accent-soft: #e4efff;
+  --accent-soft-border: #c5daff;
+  --action-fill: #3478f6;
+  --action-hover: #2864d6;
   --on-accent: #ffffff;
 
   /* 睡眠分期 —— 与 APP 的分期语义色一致 */
-  --stage-awake: #ff3b30;
-  --stage-rem: #af52de;
-  --stage-light: #5ac8fa;
-  --stage-deep: #5856d6;
+  --stage-awake: #42c99a;
+  --stage-rem: #8b6cfa;
+  --stage-light: #65c8f3;
+  --stage-deep: #3478f6;
 
   /* 状态 */
   --success: #059669;
@@ -63,27 +65,27 @@
 
   /* 阴影 —— 保留柔和投影层次，投影底色跟随蓝紫主题 */
   --shadow-xs: 0 2px 6px -2px rgba(32, 47, 86, 0.05);
-  --shadow-sm: 0 6px 16px -8px rgba(32, 47, 86, 0.1);
-  --shadow-md: 0 10px 30px -12px rgba(32, 47, 86, 0.12);
-  --shadow-lg: 0 30px 50px -18px rgba(32, 47, 86, 0.18);
-  --shadow-xl: 0 40px 70px -20px rgba(32, 47, 86, 0.28);
-  --shadow-brand: 0 12px 28px -8px rgba(10, 132, 255, 0.42);
-  --shadow-brand-hover: 0 18px 34px -8px rgba(10, 132, 255, 0.5);
+  --shadow-sm: 0 4px 12px -6px rgba(23, 32, 51, 0.06);
+  --shadow-md: 0 10px 24px -12px rgba(23, 32, 51, 0.1);
+  --shadow-lg: 0 20px 40px -20px rgba(23, 32, 51, 0.14);
+  --shadow-xl: 0 30px 60px -24px rgba(23, 32, 51, 0.24);
+  --shadow-brand: 0 8px 20px -12px rgba(52, 120, 246, 0.36);
+  --shadow-brand-hover: 0 12px 24px -12px rgba(52, 120, 246, 0.42);
 
   /* 光斑 */
-  --blob-rose: radial-gradient(circle, #64d2ff, #0a84ff);
-  --blob-peach: radial-gradient(circle, #a5a3ff, #5856d6);
-  --glow-blue: rgba(10, 132, 255, 0.45);
-  --glow-violet: rgba(88, 86, 214, 0.32);
-  --blob-opacity: 0.38;
-  --blob-opacity-2: 0.3;
+  --blob-rose: radial-gradient(circle, #43c7d9, #3478f6);
+  --blob-peach: radial-gradient(circle, #b8b6f5, #8b6cfa);
+  --glow-blue: rgba(52, 120, 246, 0.32);
+  --glow-violet: rgba(139, 108, 250, 0.2);
+  --blob-opacity: 0.22;
+  --blob-opacity-2: 0.14;
 
   /* 焦点环 */
-  --ring: #007aff;
+  --ring: #3478f6;
 
   /* 吸顶导航底色 */
-  --nav-bg: rgba(248, 248, 250, 0.72);
-  --nav-bg-scrolled: rgba(248, 248, 250, 0.86);
+  --nav-bg: rgba(241, 247, 251, 0.78);
+  --nav-bg-scrolled: rgba(241, 247, 251, 0.92);
 
   /* 间距 */
   --space-1: 4px;
@@ -100,14 +102,14 @@
   --space-24: 96px;
   --space-32: 128px;
 
-  /* 圆角 —— 这套语言的标志性特征，整体偏大 */
+  /* 圆角 —— 控件接近 APP，展示容器保留官网尺度 */
   --radius-sm: 10px;
   --radius: 14px;
-  --radius-lg: 20px;
-  --radius-xl: 28px;
-  --radius-2xl: 36px;
-  --radius-3xl: 60px;
-  --radius-pill: 40px;
+  --radius-lg: 19px;
+  --radius-xl: 24px;
+  --radius-2xl: 28px;
+  --radius-3xl: 36px;
+  --radius-pill: 16px;
   --radius-full: 999px;
 
   /* 字体 */
@@ -135,61 +137,61 @@
 [data-theme='dark'] {
   color-scheme: dark;
 
-  --bg: #000000;
-  --bg-subtle: #11141d;
-  --bg-tint: rgba(17, 20, 29, 0.68);
-  --surface: #1c1c1e;
-  --surface-hover: #2c2c2e;
-  --surface-inset: #2c2c2e;
+  --bg: #091729;
+  --bg-subtle: #11243d;
+  --bg-tint: rgba(17, 36, 61, 0.88);
+  --surface: #11243d;
+  --surface-hover: #18314e;
+  --surface-inset: #19334f;
 
-  --text: #ffffff;
-  --text-2: #c7c7d0;
-  --text-3: #a0a0ac;
-  --text-4: #737380;
+  --text: #f4f8ff;
+  --text-2: #c0d0e5;
+  --text-3: #8fa7c4;
+  --text-4: #8297b0;
 
   --on-dark: #ffffff;
   --on-dark-2: #c7d4ed;
 
-  --border: #2c2c36;
-  --border-mid: #383842;
-  --border-strong: #545458;
+  --border: #223d59;
+  --border-mid: #2a4867;
+  --border-strong: #3c5a7c;
 
   /* 暗底上提亮品牌色，保证可辨识度 */
-  --brand-rose: #0a84ff;
-  --brand-berry: #9694ff;
-  --brand-peach: #64d2ff;
+  --brand-rose: #77adff;
+  --brand-berry: #ab8cff;
+  --brand-peach: #72d9e6;
+  --gradient-brand: linear-gradient(135deg, #77adff, #ab8cff);
   --gradient-brand-soft: linear-gradient(135deg, #64d2ff, #9694ff);
   --gradient-surface: linear-gradient(145deg, #17233b, #1c1c1e);
 
-  --accent: #0a84ff;
-  --accent-hover: #64d2ff;
-  --accent-soft: rgba(10, 132, 255, 0.2);
-  --accent-soft-border: rgba(10, 132, 255, 0.3);
+  --accent: #77adff;
+  --accent-hover: #a4c9ff;
+  --accent-soft: #1c3b62;
+  --accent-soft-border: #315682;
   --on-accent: #ffffff;
 
-  --stage-awake: #ff453a;
-  --stage-rem: #bf5af2;
-  --stage-light: #64d2ff;
-  --stage-deep: #5e5ce6;
+  --stage-awake: #5bd6ae;
+  --stage-rem: #ab8cff;
+  --stage-light: #82d4f7;
+  --stage-deep: #77adff;
 
   --success: #34d399;
   --warning: #fbbf24;
 
-  --shadow-xs: 0 2px 6px -2px rgba(0, 0, 0, 0.5);
-  --shadow-sm: 0 6px 16px -8px rgba(0, 0, 0, 0.6);
-  --shadow-md: 0 10px 30px -12px rgba(0, 0, 0, 0.65);
-  --shadow-lg: 0 30px 50px -18px rgba(0, 0, 0, 0.7);
-  --shadow-xl: 0 40px 70px -20px rgba(0, 0, 0, 0.8);
-  --shadow-brand: 0 12px 28px -8px rgba(10, 132, 255, 0.45);
+  --shadow-xs: 0 2px 6px -2px rgba(0, 0, 0, 0.12);
+  --shadow-sm: 0 4px 12px -6px rgba(0, 0, 0, 0.16);
+  --shadow-md: 0 10px 24px -12px rgba(0, 0, 0, 0.22);
+  --shadow-lg: 0 20px 40px -20px rgba(0, 0, 0, 0.28);
+  --shadow-xl: 0 30px 60px -24px rgba(0, 0, 0, 0.48);
 
   /* 暗色下光斑更亮，是深色主题的主要氛围来源 */
-  --blob-opacity: 0.32;
-  --blob-opacity-2: 0.26;
+  --blob-opacity: 0.2;
+  --blob-opacity-2: 0.16;
 
   --ring: #0a84ff;
 
-  --nav-bg: rgba(28, 28, 30, 0.72);
-  --nav-bg-scrolled: rgba(28, 28, 30, 0.88);
+  --nav-bg: rgba(9, 23, 41, 0.78);
+  --nav-bg-scrolled: rgba(9, 23, 41, 0.94);
 }
 
 /* --------------------------------------------------------------------------
@@ -467,12 +469,13 @@ p {
 }
 
 .btn--primary {
-  background: var(--gradient-brand);
+  background: var(--action-fill);
   color: #ffffff;
   box-shadow: var(--shadow-brand);
 }
 
 .btn--primary:hover {
+  background: var(--action-hover);
   transform: translateY(-2px);
   box-shadow: var(--shadow-brand-hover);
 }

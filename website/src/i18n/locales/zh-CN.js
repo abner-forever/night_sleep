@@ -25,6 +25,7 @@ export default {
   theme: { label: '主题', light: '浅色', dark: '深色', system: '跟随系统' },
   lang: { label: '语言', switch: '切换语言' },
   hero: {
+    eyebrow: '一片夜色，一晚好眠',
     titleLead: '读懂每一夜的',
     titleAccent: '睡眠',
     subtitle:
@@ -32,7 +33,7 @@ export default {
     note: '无需账号 · 记录保存在本地 · 免费项目',
     ratingScore: '端侧分析',
     ratingSource: '声音片段留在你的设备上',
-    previewCaption: '当前 Android 真机截图 · 包含演示数据',
+    previewCaption: 'iPhone 模拟器截图 · 含演示数据',
   },
   stats: [
     { value: '8 种', label: '夜景氛围，自选今晚的风景' },
@@ -52,7 +53,7 @@ export default {
       },
       {
         title: '夜景与助眠声音',
-        desc: '八种夜景氛围，海浪、篝火、森林、溪流与风声。支持音量调节和定时，慢慢进入休息。',
+        desc: '八种夜景氛围，海浪、篝火、森林、溪流与风声。在声音面板里选择、试听、调节音量和定时。',
       },
       {
         title: '端侧声音分析',
@@ -77,7 +78,7 @@ export default {
     title: '让感受，有自己的依据',
     subtitle:
       '时间、声音片段、主观感受与多日趋势，组成你的睡眠档案。没有测到的数据，就不做推测。',
-    date: '来自当前 Android 应用',
+    date: '来自当前应用界面',
     chartTitle: '回看每一晚，了解自己的节奏',
     points: [
       {
@@ -116,18 +117,50 @@ export default {
   },
   devices: {
     eyebrow: '应用预览',
-    title: '睡前静下来，醒来再看看',
-    subtitle: '真实界面，真实功能。以下截图来自 Android 应用，包含演示数据。',
-    phone: {
-      tag: '睡前会话',
-      title: '把夜晚调成你喜欢的样子',
-      desc: '八种夜景氛围，配合声音、录音开关和起床设置，准备好再开始。',
-    },
-    tablet: {
-      tag: '睡眠趋势',
-      title: '在更长的时间里，找到规律',
-      desc: '按 7 / 14 / 30 天查看统计，支持按周、月、年翻阅所有记录。',
-    },
+    title: '手机随手记，iPad 慢慢看',
+    subtitle: '同一份安静，也适合更大的屏幕。以下为当前 iPhone 与 iPad 竖屏模拟器截图，包含演示数据。',
+    screens: [
+      {
+        id: 'home',
+        label: '睡眠概览',
+        phoneTitle: '昨夜的睡眠，一眼看清',
+        phoneDesc: '山湖夜色、昨夜卡片与开始入睡入口。向下浏览平均时长、助眠声音和最近记录。',
+        tabletTitle: '让记录在大屏上舒展开',
+        tabletDesc: '侧栏承接四个主要页面，卡片随可用空间排布，概览和历史有清晰的阅读顺序。',
+      },
+      {
+        id: 'session',
+        label: '睡前会话',
+        phoneTitle: '把今晚调成喜欢的样子',
+        phoneDesc: '在同一页选择夜景和助眠声音，按需开启录音与起床提醒，准备好再开始。',
+        tabletTitle: '留一整片夜色给休息',
+        tabletDesc: '独立的深色会话铺满屏幕，设置集中在下方，八种夜景让睡前更从容。',
+      },
+      {
+        id: 'sounds',
+        label: '声音面板',
+        phoneTitle: '声音、音量、定时，都在手边',
+        phoneDesc: '紧凑的白噪音面板，细滑轨与白色滑块。选一段声音，再决定让它陪伴多久。',
+        tabletTitle: '大屏也有合适的操作距离',
+        tabletDesc: '居中的声音面板保留适合操作的宽度。会话中的面板收起后，声音继续陪伴。',
+      },
+      {
+        id: 'stats',
+        label: '多日趋势',
+        phoneTitle: '把每晚放进更长的时间里',
+        phoneDesc: '切换 7、14、30 天趋势，查看时长、评分和自己的醒后感受。',
+        tabletTitle: '图表与记录，更好读',
+        tabletDesc: '宽屏保留侧栏和清晰的图表卡片；历史记录还可以按周、月、年翻阅。',
+      },
+      {
+        id: 'settings',
+        label: '应用设置',
+        phoneTitle: '按自己的习惯安排',
+        phoneDesc: '外观、睡眠目标、提醒、数据与隐私分区呈现，常用设置更容易找到。',
+        tabletTitle: '熟悉的层级，同样的轻松',
+        tabletDesc: '侧栏保留当前位置，设置内容在合适的宽度内呈现，浅色和深色都能舒适阅读。',
+      },
+    ],
   },
   how: {
     eyebrow: '使用方式',

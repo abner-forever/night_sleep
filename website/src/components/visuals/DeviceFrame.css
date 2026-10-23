@@ -28,29 +28,12 @@
 }
 
 .device--phone .device__screen {
-  /* 略高于真机比例，给屏内报告留出足够垂直空间 */
-  aspect-ratio: 9 / 19.6;
+  aspect-ratio: 402 / 874;
   border-radius: 34px;
 }
 
-/* 听筒 */
-.device--phone .device__bezel::before {
-  content: '';
-  position: absolute;
-  top: 16px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 58px;
-  height: 5px;
-  border-radius: var(--radius-full);
-  background: var(--border-strong);
-  z-index: 2;
-}
-
-/* --- 平板 --- */
-
 .device--tablet {
-  width: min(100%, 460px);
+  width: min(100%, 500px);
 }
 
 .device--tablet .device__bezel {
@@ -59,18 +42,6 @@
 }
 
 .device--tablet .device__screen {
-  aspect-ratio: 4 / 5.4;
+  aspect-ratio: 834 / 1210;
   border-radius: 16px;
-}
-
-.device--tablet .device__bezel::before {
-  content: '';
-  position: absolute;
-  top: 50%;
-  right: 5px;
-  transform: translateY(-50%);
-  width: 3px;
-  height: 42px;
-  border-radius: var(--radius-full);
-  background: var(--border-strong);
 }

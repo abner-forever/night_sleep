@@ -1,4 +1,4 @@
-/* 保留 sass-web 的渐变、柔光、卡片层次和交互，只适配真实应用截图与下载状态。 */
+/* 应用截图展示与下载状态。 */
 .yeshen-logo {
   border-radius: 13px;
   box-shadow: 0 5px 15px #397bea25;
@@ -14,20 +14,11 @@
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   object-position: top;
-}
-.device--phone .device__screen {
-  aspect-ratio: 720/1493;
-}
-.device--phone .device__bezel:before {
-  display: none;
 }
 .hero__caption {
   color: var(--text-3);
-}
-.devices__item--tablet .device--phone {
-  width: min(100%, 310px);
 }
 .actual-report {
   display: grid;
@@ -76,20 +67,19 @@
   gap: 18px;
   align-items: center;
   min-width: 0;
-  perspective: 1000px;
 }
 .actual-report__screens img {
   width: calc(50% - 9px);
   height: auto;
-  border: 5px solid var(--border-strong);
+  border: 5px solid var(--surface-inset);
   border-radius: 24px;
-  box-shadow: var(--shadow-xl);
+  box-shadow: var(--shadow-md);
 }
 .actual-report__screens img:first-child {
-  transform: translateY(18px) rotate(-5deg);
+  transform: translateY(12px) rotate(-2deg);
 }
 .actual-report__screens img:last-child {
-  transform: translateY(-18px) rotate(5deg);
+  transform: translateY(-12px) rotate(2deg);
 }
 .android-download {
   max-width: 950px;
@@ -154,22 +144,6 @@
   background: var(--accent-soft);
   color: var(--accent);
   padding: 7px 12px;
-}
-.download-reminder {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  max-width: 950px;
-  margin: 35px auto 0;
-  gap: 25px;
-}
-.download-reminder h3 {
-  font-size: 16px;
-}
-.download-reminder p {
-  font-size: 13px;
-  color: var(--text-3);
-  margin-top: 9px;
 }
 .checksum {
   max-width: 430px;
@@ -247,10 +221,6 @@ main:focus {
   }
   .android-download h3 {
     font-size: 21px;
-  }
-  .download-reminder {
-    flex-direction: column;
-    align-items: flex-start;
   }
   .android-download .dl-card__actions {
     align-items: stretch;
