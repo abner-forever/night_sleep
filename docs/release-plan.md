@@ -51,7 +51,7 @@
 - 首次沿用现有版本起点，例如 `0.49.0-beta.2+3` 后为 `0.49.0-beta.3+4`，晋升为正式版时去掉 Beta 后缀。已有正式版后，从上次正式版到当前提交的 `fix:` 对应补丁版本、`feat:` 对应次版本、`!` 或 `BREAKING CHANGE:` 对应主版本（1.0 前对应次版本）；其他应用变更默认按补丁版本。Beta 在目标版本内自动累加序号。
 - `versionCode` 在 Beta 和正式版间全局递增，不随版本名重置。两个分支共用串行发布队列，开始分配前跳过已经落后于所在分支的提交；发布流程不会被新提交中断。应用无变更、只有官网／文档变更时不发布 APK。
 - APK 按 `night-sleep-<versionName>-android.apk` 命名，Actions Artifact 名额外包含构建号。CI 核验 APK 实际版本与分配版本一致、非 debuggable、长期签名有效，生成 SHA256SUMS、package-info、signature、release.json 和说明；元数据记录确切源码提交与发布分支。
-- 检查通过后，先创建针对确切源码提交的草稿，仅上传 APK 和供 App 检查更新使用的 `release.json`，再公开 Release。GitHub 自动提供源码归档；README 内容放在发布说明中，SHA256SUMS、package-info、signature 等核验文件保留在 Actions Artifact（30 天），不作为公开下载附件。已公开版本禁止覆盖；重复运行同一提交会跳过已发布版本，未完成的同源草稿允许续传；已被更高构建号超越的草稿停止发布。失败后可在对应分支手动运行 Android 工作流，无需补打标签。
+- 检查通过后，先创建针对确切源码提交的草稿，仅上传 APK 和供 App 检查更新使用的 `release.json`，再公开 Release。GitHub 自动提供源码归档；README 内容与「本次改动」（上一版本以来的提交标题）放在发布说明中，SHA256SUMS、package-info、signature 等核验文件保留在 Actions Artifact（30 天），不作为公开下载附件。已公开版本禁止覆盖；重复运行同一提交会跳过已发布版本，未完成的同源草稿允许续传；已被更高构建号超越的草稿停止发布。失败后可在对应分支手动运行 Android 工作流，无需补打标签。
 - 官网独立于 App 发版：`beta` 或 `main` 的官网变更触发部署，始终构建 `beta` 的官网源码，避免较旧主分支覆盖官网；GitHub Pages 环境需允许这两个分支部署。主下载入口和二维码仅对应最新正式包，Beta 为旁边的独立入口。
 - 官网对两个渠道分别维护五分钟成功缓存；接口失败可回退一天内已验证缓存并提示，提供重试和官方 Release 页面入口。无缓存不伪造下载链接；不在前端配置 GitHub Token。
 - Android 包名为 `com.abner.night_sleep`，原生 namespace、Kotlin 包目录与发布校验统一使用该值，`release.json` 同时记录 `application_id`。`0.49.0` 及之前的包使用旧占位包名 `com.example.night_sleep`，无法覆盖升级到新包名，需单独安装且旧数据不会自动迁移；请先在旧应用导出记录保留。长期签名证书沿用，真机安装与同包名升级验证仍需单独完成。

@@ -11,6 +11,8 @@ from android_release import read_version, write_version
 
 VERSION = re.compile(r'^v?(\d+)\.(\d+)\.(\d+)(?:-(preview|beta|rc)\.([1-9]\d*))?$')
 MARKER = re.compile(r'<!-- night-sleep-release (\{[^\n]+\}) -->')
+CHANGE_NOISE = re.compile(r'^(?:chore|docs|test|ci|build)(?:\(|:|$)')
+CHANGE_LIMIT = 30
 
 
 def version_parts(value):
@@ -131,6 +133,46 @@ def plan_release(source, branch, source_sha, releases, tags=(), commits=''):
     }
 
 
+def change_summary(previous_sha, source_sha):
+    """List commit subjects added since the previous release on the same channel."""
+    # 提交信息是中文：Windows 上用 text=True 会按 GBK 解码而崩掉。
+    base = subprocess.check_output(
+        ['git', 'merge-base', previous_sha, source_sha], encoding='utf-8').strip()
+    log = subprocess.check_output(
+        ['git', 'log', '--no-merges', '--format=%s', f'{base}..{source_sha}'], encoding='utf-8')
+    subjects = (line.strip() for line in log.splitlines() if line.strip())
+    return list(dict.fromkeys(
+        subject for subject in subjects if not CHANGE_NOISE.match(subject)))[:CHANGE_LIMIT]
+
+
+def previous_release(releases, identity):
+    """Return the newest comparable release of the same channel before this build.
+
+    Legacy releases built before release markers carry no source commit, so they
+    cannot be diffed against; skip back to the newest one that can.
+    """
+    candidates = [release for release in releases
+                  if not release['draft']
+                  and (release.get('metadata') or {}).get('branch') == identity['branch']
+                  and re.fullmatch(r'[a-f0-9]{40}', (release.get('metadata') or {}).get('source_sha') or '')
+                  and (release.get('metadata') or {}).get('build_number', 0) < identity['build_number']]
+    return max(candidates, key=lambda item: item['metadata']['build_number'], default=None)
+
+
+def release_notes(folder, identity, releases):
+    sections = [(folder / 'README.txt').read_text().strip()]
+    previous = previous_release(releases, identity)
+    if previous is not None:
+        changes = change_summary(previous['metadata']['source_sha'], identity['source_sha'])
+        if changes:
+            lines = [f"## 本次改动（对比 {previous['tag_name']}）", '']
+            lines.extend(f'- {change}' for change in changes)
+            sections.append('\n'.join(lines))
+    sections.append(f"Source: {identity['source_sha']}")
+    return ('\n\n'.join(sections) + '\n\n<!-- night-sleep-release '
+            + json.dumps(identity, separators=(',', ':')) + ' -->\n')
+
+
 def publish(repository, directory):
     folder = Path(directory)
     metadata = json.loads((folder / 'release.json').read_text())
@@ -143,7 +185,8 @@ def publish(repository, directory):
             or not 0 < identity['build_number'] <= 2100000000
             or not re.fullmatch(r'[a-f0-9]{40}', identity['source_sha'])):
         raise ValueError('Artifact release identity is invalid')
-    release = next((item for item in load_releases(repository) if item['tag_name'] == metadata['tag']), None)
+    releases = load_releases(repository)
+    release = next((item for item in releases if item['tag_name'] == metadata['tag']), None)
     if release is not None:
         marker = release_marker(release)
         if marker != identity:
@@ -152,9 +195,7 @@ def publish(repository, directory):
             print(f"Already published {metadata['tag']}")
             return
     notes = folder / 'release-notes.md'
-    notes.write_text((folder / 'README.txt').read_text() +
-                     f"\nSource: {identity['source_sha']}\n\n<!-- night-sleep-release " +
-                     json.dumps(identity, separators=(',', ':')) + ' -->\n')
+    notes.write_text(release_notes(folder, identity, releases))
     if release is None:
         gh('release', 'create', metadata['tag'], '--repo', repository,
            '--target', identity['source_sha'], '--draft', '--title',
@@ -192,7 +233,8 @@ def main():
         if stable:
             latest = max(stable, key=lambda item: version_parts(item['tag_name']))
             subprocess.run(['git', 'merge-base', '--is-ancestor', latest['tag_name'], args.source_sha], check=True)
-            commits = subprocess.check_output(['git', 'log', '--format=%B', f"{latest['tag_name']}..{args.source_sha}"], text=True)
+            commits = subprocess.check_output(
+                ['git', 'log', '--format=%B', f"{latest['tag_name']}..{args.source_sha}"], encoding='utf-8')
         if args.branch == 'main':
             for item in releases:
                 identity = item.get('metadata') or {}

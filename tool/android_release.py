@@ -97,10 +97,10 @@ def package(args, metadata):
         f"夜深 Android {metadata['version']}（构建 {metadata['build_number']}）\n"
         '使用夜深专用长期签名；演示数据关闭。\n'
         f'Android 包名为 {APPLICATION_ID}。\n'
-        '与旧 com.example.night_sleep 包名不同，需单独安装，旧包数据不会自动迁移；请先在旧应用导出记录保留。\n'
+        '从旧包名 com.example.night_sleep 或旧测试签名版本升级，需先导出记录、卸载后重装，'
+        '之后用同一长期签名覆盖更新。\n'
         '助眠录音与模型授权说明请阅读仓库 README。\n'
-        '尚未验证本次 APK 的真机安装、锁屏录音及升级覆盖。\n'
-        '从旧测试签名版本迁移需先导出记录、卸载后再安装；后续使用同一长期签名更新。\n'
+        'CI 只核验版本号、包名与签名；真机安装、锁屏录音与升级覆盖不在自动核验范围内。\n'
     )
     print(json.dumps({**metadata, 'sha256': digest, 'size': len(payload)}))
 

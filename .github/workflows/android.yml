@@ -132,8 +132,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      # 发布说明要列出上一版本以来的提交，必须是完整历史（默认只取 1 层）。
       - uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/download-artifact@v4
         with:

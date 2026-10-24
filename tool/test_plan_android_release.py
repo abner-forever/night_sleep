@@ -5,7 +5,8 @@ import unittest
 from unittest.mock import patch
 
 from android_release import read_version, write_version
-from plan_android_release import load_releases, next_core, plan_release, publish, release_marker
+from plan_android_release import (change_summary, load_releases, next_core, plan_release,
+                                  previous_release, publish, release_marker, release_notes)
 
 
 SOURCE_SHA = 'a' * 40
@@ -145,6 +146,57 @@ class PlanAndroidReleaseTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'historical'):
             load_releases('owner/repo')
 
+    @patch('plan_android_release.subprocess.check_output')
+    def test_change_summary_diffs_from_merge_base_and_skips_noise(self, run):
+        run.side_effect = [
+            'c' * 40 + '\n',
+            'feat: 新增睡眠日历\nfix: 修复冷启动白屏\nchore(release): 发布\n'
+            'fix: 修复冷启动白屏\ndocs: 更新说明\ntest: 补用例\n',
+        ]
+        self.assertEqual(change_summary(OLDER_SHA, SOURCE_SHA),
+                         ['feat: 新增睡眠日历', 'fix: 修复冷启动白屏'])
+        self.assertEqual(run.call_args_list[0].args[0][:2], ['git', 'merge-base'])
+        self.assertEqual(run.call_args_list[1].args[0][-1], f"{'c' * 40}..{SOURCE_SHA}")
+
+    def test_previous_release_is_newest_published_of_the_same_channel(self):
+        releases = [history('0.49.0', 4, 'main'), history('0.49.0-beta.4', 6, draft=True),
+                    history('0.49.0-beta.2', 2), history('0.49.0-beta.3', 3)]
+        identity = {'branch': 'beta', 'build_number': 5}
+        self.assertEqual(previous_release(releases, identity)['tag_name'], 'v0.49.0-beta.3')
+        self.assertIsNone(previous_release(releases, {'branch': 'beta', 'build_number': 2}))
+
+    def test_legacy_release_without_source_commit_is_not_a_diff_base(self):
+        legacy = history('0.49.0-beta.4', 4)
+        legacy['metadata'] = {'build_number': 4, 'branch': 'beta'}
+        releases = [history('0.49.0-beta.2', 2), legacy]
+        self.assertEqual(previous_release(releases, {'branch': 'beta', 'build_number': 5})['tag_name'],
+                         'v0.49.0-beta.2')
+
+    @patch('plan_android_release.change_summary', return_value=['feat: 新增睡眠日历'])
+    def test_release_notes_list_changes_since_the_previous_release(self, changes):
+        folder = Path(self.directory.name)
+        (folder / 'README.txt').write_text('安装与迁移说明\n')
+        identity = {'version': '0.49.0-beta.3', 'build_number': 4,
+                    'branch': 'beta', 'source_sha': SOURCE_SHA}
+        notes = release_notes(folder, identity, [history('0.49.0', 1, 'main'),
+                                                 history('0.49.0-beta.2', 2)])
+        self.assertIn('安装与迁移说明', notes)
+        self.assertIn('## 本次改动（对比 v0.49.0-beta.2）', notes)
+        self.assertIn('- feat: 新增睡眠日历', notes)
+        self.assertIn(f'Source: {SOURCE_SHA}', notes)
+        self.assertIn('<!-- night-sleep-release ', notes)
+        changes.assert_called_once_with(OLDER_SHA, SOURCE_SHA)
+
+    @patch('plan_android_release.change_summary')
+    def test_first_release_has_no_change_section(self, changes):
+        folder = Path(self.directory.name)
+        (folder / 'README.txt').write_text('安装与迁移说明\n')
+        identity = {'version': '0.49.0', 'build_number': 1,
+                    'branch': 'main', 'source_sha': SOURCE_SHA}
+        notes = release_notes(folder, identity, [])
+        self.assertNotIn('本次改动', notes)
+        changes.assert_not_called()
+
     def artifacts(self, branch='beta'):
         metadata = self.plan(branch)
         folder = Path(self.directory.name) / 'artifacts'
@@ -172,6 +224,18 @@ class PlanAndroidReleaseTest(unittest.TestCase):
         self.assertIn('--prerelease=true', calls[2])
         self.assertIn('--latest=false', calls[2])
         self.assertNotIn(str(folder / 'release-notes.md'), calls[1])
+
+    @patch('plan_android_release.change_summary', return_value=['fix: 修复冷启动白屏'])
+    @patch('plan_android_release.gh')
+    @patch('plan_android_release.load_releases')
+    def test_publish_puts_changes_since_last_build_into_notes(self, releases, command, changes):
+        folder, metadata = self.artifacts()
+        releases.return_value = [history('0.49.0-beta.2', metadata['build_number'] - 1)]
+        publish('owner/repo', folder)
+        notes = (folder / 'release-notes.md').read_text()
+        self.assertIn('## 本次改动（对比 v0.49.0-beta.2）', notes)
+        self.assertIn('- fix: 修复冷启动白屏', notes)
+        self.assertEqual(changes.call_args.args[0], OLDER_SHA)
 
     @patch('plan_android_release.gh')
     @patch('plan_android_release.load_releases', return_value=[])
