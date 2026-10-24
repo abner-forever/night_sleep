@@ -81,16 +81,67 @@ void main() {
     expect(container.read(insightApiKeyProvider), 'sk-still-usable');
     await pumpEventQueue();
   });
+
+  // 冷启动优化（2026-10-24）后密钥不再在 `main()` 里同步读：`flutter_secure_storage`
+  // 第一次读在 MIUI 上要几百毫秒，改由 `load()` 在首帧之后补。下面这组钉住补读的
+  // 三条边界——尤其是「机器不能覆盖人」那一条。
+  group('load 补读钥匙串', () {
+    test('读到就补进内存，且不再写回一遍', () async {
+      store.value = 'sk-late';
+      final container = containerWith();
+      expect(container.read(insightApiKeyProvider), isEmpty);
+
+      await container.read(insightApiKeyProvider.notifier).load();
+
+      expect(container.read(insightApiKeyProvider), 'sk-late');
+      expect(store.writes, 0, reason: '从钥匙串读出来的值不该再写回去');
+    });
+
+    test('用户已经输入过就不覆盖', () async {
+      store.value = 'sk-from-keychain';
+      final container = containerWith();
+      final notifier = container.read(insightApiKeyProvider.notifier);
+
+      notifier.update('sk-user-typed');
+      await notifier.load();
+
+      expect(container.read(insightApiKeyProvider), 'sk-user-typed');
+    });
+
+    test('读到空值保持为空，也不碰钥匙串', () async {
+      final container = containerWith();
+
+      await container.read(insightApiKeyProvider.notifier).load();
+
+      expect(container.read(insightApiKeyProvider), isEmpty);
+      expect(store.writes, 0);
+      expect(store.clears, 0);
+    });
+
+    test('只读一次', () async {
+      final container = containerWith();
+      final notifier = container.read(insightApiKeyProvider.notifier);
+
+      await notifier.load();
+      await notifier.load();
+
+      expect(store.reads, 1);
+    });
+  });
 }
 
 class _FakeStore implements InsightKeyStore {
   String? value;
+  int reads = 0;
   int writes = 0;
   int clears = 0;
   bool failWrites = false;
 
   @override
-  Future<String?> read() async => value;
+  Future<String?> read() async {
+    reads++;
+    return value;
+  }
 
   @override
   Future<void> write(String value) async {

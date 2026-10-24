@@ -127,9 +127,11 @@ lib/
 - **平台**（`core/platform/`）：`reminderSchedulerProvider`、`nightAudioServiceProvider`、
   `appSettingsLauncherProvider`。
 
-`main.dart` 里 override 了三个：`databaseProvider`、`insightApiKeySeedProvider`（密钥必须在这里
-`await` 读到，否则输入框会先空一下）、`reminderSchedulerProvider`（使用启动时已初始化的
-本地通知调度器）。
+`main.dart` 里 override 了两个：`databaseProvider`、`reminderSchedulerProvider`（使用启动时
+创建的本地通知调度器）。**密钥不在这里读**：`flutter_secure_storage` 第一次读在 MIUI 上要
+几百毫秒，改由 `InsightApiKeyNotifier.load()` 在首帧之后补读（开屏页盖住那段时间，且不会
+覆盖用户已经输入的值）。启动路径只留 `AppDatabase.open()`——冷启动优化过一轮，别把 await
+链加回来。
 
 **`NotifierProvider`（`toastProvider`、`insightApiKeyProvider`）与 `ChangeNotifierProvider`
 （录音、白噪音、片段回放）并存，是有意的分工**——前者是纯值，后者本来就是要 dispose 的控制器。

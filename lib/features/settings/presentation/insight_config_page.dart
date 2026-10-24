@@ -241,6 +241,14 @@ class _InsightConfigPageState extends ConsumerState<InsightConfigPage> {
     // rebuild，「清除密钥」才会在填上之后出现、清掉之后消失。
     final keySet = ref.watch(insightApiKeyProvider).trim().isNotEmpty;
 
+    // 钥匙串补读可能晚于本页打开（见 `InsightApiKeyNotifier.load`）：读到了就把
+    // 输入框补上。**只填空的**——用户已经开始输入时一个字都不碰。
+    ref.listen<String>(insightApiKeyProvider, (previous, next) {
+      if (_keyController.text.isEmpty && next.isNotEmpty) {
+        _keyController.text = next;
+      }
+    });
+
     return Subpage(
       title: '洞察服务配置',
       children: [

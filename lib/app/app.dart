@@ -24,6 +24,7 @@ import '../features/settings/presentation/demo_data_page.dart';
 import '../features/settings/presentation/export_page.dart';
 import '../features/settings/presentation/backup_restore_page.dart';
 import '../features/settings/presentation/export_preview_page.dart';
+import '../features/settings/data/insight_credentials.dart';
 import '../features/settings/presentation/insight_config_page.dart';
 import '../features/settings/presentation/settings_page.dart';
 import '../features/settings/presentation/sleep_import_page.dart';
@@ -213,25 +214,28 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
   /// `settingsProvider`，但那是随时可能被加上的调用。
   bool _settingsSeen = false;
 
-  @override
-  void initState() {
-    super.initState();
+  /// 开屏播完之后才做的启动收尾。
+  ///
+  /// **不能提前到首帧之后立刻做。** 这些事在 debug 构建里首次执行要 JIT 编译，
+  /// 会把 UI 线程整段占住（实测开屏动画因此只走了两帧：`v=0.00` → `v=1.00`，
+  /// 中间 1.7 秒没有任何一帧，用户看到的是「黑屏一会儿，然后直接是首页加载圈」）。
+  /// 开屏的 1.6 秒留给动画和首页的数据流——数据库的第一批结果正好在这段时间回来。
+  void _afterSplash() {
+    // 钥匙串补读：`flutter_secure_storage` 第一次读在小米 9 上要 ~860ms
+    // （Keystore 初始化 + 平台线程被系统占用）。此刻界面已经可交互，用户走到
+    // 设置页需要好几步操作，来得及；就算来不及，`load()` 也不会覆盖已输入的值。
+    unawaited(ref.read(insightApiKeyProvider.notifier).load());
+
     // 冷启动对账：会话可能是**重启之前**开的（`active_sessions` 那一行跨重启存活），
     // 而进程一被杀，录音早就跟着停了。这里按开关与白噪音重新对齐一次——不这么做的话，
     // 用户重启一次 App，剩下的半夜就再也不会被录。
     //
     // **它不是「假装还在录」**：`syncWithSession` 只负责去真的把录音起起来，起不来
     // 界面就如实显示停止原因；界面读的始终是录音服务的实际状态，不是偏好值。
-    //
-    // 放在 `addPostFrameCallback` 里而不是直接调：这一步会去读库、甚至申请麦克风，
-    // 不该挡着第一帧。
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      unawaited(
-        ref.read(nightRecordingControllerProvider.notifier).syncWithSession(),
-      );
-      unawaited(_pruneRecordings().then((_) => _analysePendingClips()));
-    });
+    unawaited(
+      ref.read(nightRecordingControllerProvider.notifier).syncWithSession(),
+    );
+    unawaited(_pruneRecordings().then((_) => _analysePendingClips()));
   }
 
   /// 启动时清一次录音：超期的那几晚删文件、置空 `localUri`（行保留），
@@ -312,6 +316,12 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
       body: Atmosphere(
         child: Stack(
           children: [
+            // 外壳**和开屏一起建在第一帧里**。
+            //
+            // 试过「首帧只画开屏、外壳排到下一帧」：开屏能早 ~1 秒出现，但外壳那棵
+            // 树在 debug 构建里要建 1 秒以上，它一开建就把 UI 线程占住——开屏的入场
+            // 动画正好在那时卡住不动。宁可晚一秒看到开屏，也不要看到一屏冻住的动画。
+            // 启动期真正的开销在 `runApp` 之前，已经挪走了（见 `main.dart`）。
             SafeArea(
               top: false,
               bottom: false,
@@ -344,7 +354,10 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
             // 这里按显然的意图做：先开屏、后引导（见规格偏差表）。
             if (splashVisible)
               SplashScreen(
-                onFinished: () => setState(() => _splashFinished = true),
+                onFinished: () {
+                  setState(() => _splashFinished = true);
+                  _afterSplash();
+                },
               ),
           ],
         ),
