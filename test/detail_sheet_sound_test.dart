@@ -105,9 +105,11 @@ void main() {
     SleepEntry entry, {
     required ClipAnalyzer analyzer,
     Size size = const Size(430, 2600),
+    double topInset = 0,
   }) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
+    tester.view.padding = FakeViewPadding(top: topInset);
     addTearDown(tester.view.reset);
 
     const settings = AppSetting(
@@ -251,18 +253,23 @@ void main() {
     expect(find.text('编辑记录'), findsOneWidget);
   });
 
-  testWidgets('详情页上滑后标题与统一返回按钮保持吸顶', (tester) async {
+  testWidgets('详情页上滑后标题与统一返回按钮保持吸顶，底板渐隐融入夜色', (tester) async {
     final entry = await seedNight(clips: 12);
     await pumpSheet(
       tester,
       entry,
       analyzer: _StubAnalyzer(database, 12),
       size: const Size(430, 900),
+      topInset: 59,
     );
 
     final title = find.text('睡眠详情');
     final back = find.byKey(const ValueKey('sleep-detail-back'));
+    final band = find.byKey(const ValueKey('sleep-detail-header-band'));
     expect(tester.widget(back), isA<SubpageBackButton>());
+    expect(tester.widget<Opacity>(band).opacity, 0);
+    expect(tester.getRect(band), const Rect.fromLTWH(0, 0, 430, 103));
+    expect(tester.getTopLeft(back).dy, 59);
     final titleTop = tester.getTopLeft(title).dy;
     final backTop = tester.getTopLeft(back).dy;
 
@@ -272,6 +279,14 @@ void main() {
     expect(tester.getTopLeft(title).dy, closeTo(titleTop, 0.1));
     expect(tester.getTopLeft(back).dy, closeTo(backTop, 0.1));
     expect(find.byType(SubpageBackButton), findsOneWidget);
+    expect(tester.widget<Opacity>(band).opacity, 1);
+
+    final backdrop = tester.widget<DecoratedBox>(
+      find.descendant(of: band, matching: find.byType(DecoratedBox)),
+    );
+    final gradient =
+        (backdrop.decoration as BoxDecoration).gradient! as LinearGradient;
+    expect(gradient.colors.last, const Color(0x00061426));
   });
 
   testWidgets('分析抛错时给出「分析失败」，不静默', (tester) async {
