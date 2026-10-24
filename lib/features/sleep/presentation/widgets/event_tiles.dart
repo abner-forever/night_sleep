@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/platform/haptics.dart';
 import '../../../../core/theme/app_tokens.dart';
+import '../../../../core/widgets/app_basics.dart';
 import '../../../../core/widgets/app_icons.dart';
 import '../../../../core/widgets/quiet_surface.dart';
 import '../../domain/sleep_score.dart';
@@ -156,6 +157,194 @@ class EventTileGrid extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// 回顾页与手动补录共用的睡眠事件胶囊组。
+class SleepEventPicker extends StatelessWidget {
+  const SleepEventPicker({
+    super.key,
+    required this.events,
+    required this.onChanged,
+    this.keyPrefix = 'sleep-event',
+  });
+
+  final LoggedEvents events;
+  final ValueChanged<LoggedEvents> onChanged;
+  final String keyPrefix;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppTokens.of(context);
+    final hasEvents =
+        events.snore || events.talk || events.restless || events.nightmare;
+
+    return Wrap(
+      spacing: 9,
+      runSpacing: 9,
+      children: [
+        _SleepEventChip(
+          key: ValueKey('$keyPrefix-calm'),
+          calm: true,
+          label: '一切安稳',
+          selected: !hasEvents,
+          color: tokens.good,
+          icon: (color) => AppIcons.moon(
+            size: 18,
+            color: color,
+            strokeWidth: 1.6,
+          ),
+          onTap: () {
+            AppHaptics.select();
+            onChanged(LoggedEvents.none);
+          },
+        ),
+        _SleepEventChip(
+          key: ValueKey('$keyPrefix-打鼾'),
+          label: '打鼾',
+          selected: events.snore,
+          color: tokens.warn,
+          icon: (color) => AppIcons.snore(
+            size: 18,
+            color: color,
+            strokeWidth: 1.6,
+          ),
+          onTap: () {
+            AppHaptics.select();
+            onChanged(events.copyWith(snore: !events.snore));
+          },
+        ),
+        _SleepEventChip(
+          key: ValueKey('$keyPrefix-说梦话'),
+          label: '说梦话',
+          selected: events.talk,
+          color: tokens.accentBlue,
+          icon: (color) => AppIcons.bubble(
+            size: 18,
+            color: color,
+            strokeWidth: 1.6,
+          ),
+          onTap: () {
+            AppHaptics.select();
+            onChanged(events.copyWith(talk: !events.talk));
+          },
+        ),
+        _SleepEventChip(
+          key: ValueKey('$keyPrefix-辗转难眠'),
+          label: '辗转难眠',
+          selected: events.restless,
+          color: tokens.accentViolet,
+          icon: (color) => AppIcons.sparkle(
+            size: 18,
+            color: color,
+            strokeWidth: 1.6,
+          ),
+          onTap: () {
+            AppHaptics.select();
+            onChanged(events.copyWith(restless: !events.restless));
+          },
+        ),
+        _SleepEventChip(
+          key: ValueKey('$keyPrefix-噩梦'),
+          label: '噩梦',
+          selected: events.nightmare,
+          color: tokens.danger,
+          icon: (color) => AppIcons.moon(
+            size: 18,
+            color: color,
+            strokeWidth: 1.6,
+          ),
+          onTap: () {
+            AppHaptics.select();
+            onChanged(events.copyWith(nightmare: !events.nightmare));
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _SleepEventChip extends StatelessWidget {
+  const _SleepEventChip({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.color,
+    required this.icon,
+    required this.onTap,
+    this.calm = false,
+  });
+
+  final String label;
+  final bool selected;
+  final Color color;
+  final Widget Function(Color) icon;
+  final VoidCallback onTap;
+  final bool calm;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppTokens.of(context);
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      excludeSemantics: true,
+      child: Pressable(
+        haptic: false,
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: AppDurations.control,
+          curve: AppMotion.standardCurve,
+          constraints: const BoxConstraints(minHeight: 42),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          decoration: BoxDecoration(
+            color: selected
+                ? colorMix(
+                    color,
+                    calm ? 0.18 : 0.14,
+                    tokens.bgCard,
+                  )
+                : tokens.bgCard,
+            borderRadius: BorderRadius.circular(AppRadii.pill),
+            border: Border.all(
+              color: selected
+                  ? colorMix(
+                      color,
+                      calm ? 0.28 : 0.38,
+                      tokens.border,
+                    )
+                  : tokens.border,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              icon(selected ? color : tokens.textMuted),
+              const SizedBox(width: 7),
+              AnimatedDefaultTextStyle(
+                duration: AppDurations.control,
+                curve: AppMotion.standardCurve,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  color: selected ? color : tokens.textSecondary,
+                ),
+                child: Text(label),
+              ),
+              if (selected && !calm) ...[
+                const SizedBox(width: 5),
+                AppIcons.check(
+                  size: 13,
+                  color: color,
+                  strokeWidth: 2.4,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

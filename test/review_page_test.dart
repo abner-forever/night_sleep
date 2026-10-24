@@ -1,11 +1,14 @@
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sleep/core/config/app_config.dart';
 import 'package:night_sleep/core/database/app_database.dart'
     hide SleepStageSegment;
 import 'package:night_sleep/core/theme/app_theme.dart';
+import 'package:night_sleep/core/theme/app_tokens.dart';
+import 'package:night_sleep/core/widgets/wheel_picker.dart';
 import 'package:night_sleep/features/log/presentation/review_page.dart';
 import 'package:night_sleep/features/sleep/data/sleep_repository.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_entry.dart';
@@ -187,6 +190,75 @@ void main() {
     }
   });
 
+  testWidgets('质量选中态不给整项或星标圆铺底色', (tester) async {
+    final semantics = tester.ensureSemantics();
+    try {
+      await pumpReview(tester, entries: [realEntry(date: '2026-08-30')]);
+
+      final item = find.bySemanticsLabel('睡眠质量 良好');
+      final containers = find.descendant(
+        of: item,
+        matching: find.byType(AnimatedContainer),
+      );
+      final outer = tester
+          .widget<AnimatedContainer>(containers.first)
+          .decoration! as BoxDecoration;
+      final orb = tester.widget<AnimatedContainer>(containers.at(1)).decoration!
+          as BoxDecoration;
+      expect(outer.color, Colors.transparent);
+      expect(
+        orb.color,
+        Colors.transparent,
+        reason: '选中态不能再用色块填充背景',
+      );
+    } finally {
+      semantics.dispose();
+    }
+  });
+
+  testWidgets('睡眠事件按设计稿使用胶囊选中色，安稳项不显示勾选', (tester) async {
+    await pumpReview(tester, entries: [realEntry(date: '2026-08-30')]);
+
+    final calmChip = find.byKey(const ValueKey('review-event-calm'));
+    final calm = find
+        .descendant(of: calmChip, matching: find.byType(AnimatedContainer))
+        .first;
+    final tokens = AppTokens.of(tester.element(calmChip));
+    var calmDecoration =
+        tester.widget<AnimatedContainer>(calm).decoration! as BoxDecoration;
+    expect(
+      calmDecoration.color,
+      colorMix(tokens.good, 0.18, tokens.bgCard),
+    );
+    expect(
+      find.descendant(of: calmChip, matching: find.byType(SvgPicture)),
+      findsOneWidget,
+      reason: '「一切安稳」的设计稿只有月亮图标，没有额外勾选',
+    );
+
+    await tester.tap(find.text('打鼾'));
+    await tester.pumpAndSettle();
+
+    final snoreChip = find.byKey(const ValueKey('review-event-打鼾'));
+    final snore = find
+        .descendant(of: snoreChip, matching: find.byType(AnimatedContainer))
+        .first;
+    calmDecoration =
+        tester.widget<AnimatedContainer>(calm).decoration! as BoxDecoration;
+    final snoreDecoration =
+        tester.widget<AnimatedContainer>(snore).decoration! as BoxDecoration;
+    expect(calmDecoration.color, tokens.bgCard);
+    expect(
+      snoreDecoration.color,
+      colorMix(tokens.warn, 0.14, tokens.bgCard),
+    );
+    expect(
+      find.descendant(of: snoreChip, matching: find.byType(SvgPicture)),
+      findsNWidgets(2),
+      reason: '普通事件选中后应保留事件图标并追加勾选',
+    );
+  });
+
   testWidgets('保存写回同一条 id，不新增副本', (tester) async {
     await pumpReview(tester,
         entries: [realEntry(date: '2026-08-30', id: 'night-a')]);
@@ -209,6 +281,27 @@ void main() {
     final row = (await database.allRecords()).single;
     // drift 读回来的是本地时区表示，域对象存的是 UTC——比同一个瞬间，不比表示。
     expect(row.startAtUtc.toUtc(), before.startAtUtc);
+    expect(row.endAtUtc.toUtc(), before.endAtUtc);
+  });
+
+  testWidgets('在回顾页改入睡时间后保存会写回新的起止时刻', (tester) async {
+    final before = realEntry(date: '2026-08-30', id: 'night-time');
+    await pumpReview(tester, entries: [before]);
+
+    await tester.tap(find.text('入睡时间'));
+    await tester.pumpAndSettle();
+    await tester.drag(
+      find.byType(WheelColumn).first,
+      const Offset(0, -WheelColumn.itemExtent),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('完成'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存补充'));
+    await tester.pumpAndSettle();
+
+    final row = (await database.allRecords()).single;
+    expect(row.startAtUtc.toUtc(), isNot(before.startAtUtc));
     expect(row.endAtUtc.toUtc(), before.endAtUtc);
   });
 
@@ -256,7 +349,7 @@ void main() {
         ],
       );
 
-      await tester.tap(find.bySemanticsLabel('睡眠质量 精力充沛'));
+      await tester.tap(find.bySemanticsLabel('睡眠质量 极好'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('保存补充'));
       await tester.pumpAndSettle();
@@ -268,6 +361,43 @@ void main() {
       );
     } finally {
       semantics.dispose();
+    }
+  });
+
+  testWidgets('保存补充是大圆角居中按钮', (tester) async {
+    await pumpReview(tester, entries: [realEntry(date: '2026-08-30')]);
+
+    final button = find.byKey(const ValueKey('review-save'));
+    final buttonRect = tester.getRect(button);
+    final labelRect = tester.getRect(find.text('保存补充'));
+    final container = tester.widget<Container>(
+      find.descendant(of: button, matching: find.byType(Container)).first,
+    );
+    final decoration = container.decoration! as BoxDecoration;
+
+    expect(buttonRect.height, greaterThanOrEqualTo(54));
+    expect(
+      labelRect.center.dx,
+      moreOrLessEquals(buttonRect.center.dx, epsilon: 1),
+    );
+    expect(decoration.borderRadius, BorderRadius.circular(27));
+  });
+
+  testWidgets('睡眠时间三行的标签列与值列等宽', (tester) async {
+    await pumpReview(tester, entries: [realEntry(date: '2026-08-30')]);
+
+    for (final label in ['日期', '入睡时间', '起床时间']) {
+      final labelCell = tester.getSize(
+        find.byKey(ValueKey('review-time-label-cell-$label')),
+      );
+      final valueCell = tester.getSize(
+        find.byKey(ValueKey('review-time-value-cell-$label')),
+      );
+      expect(
+        labelCell.width,
+        moreOrLessEquals(valueCell.width, epsilon: 0.01),
+        reason: '$label 行的标签和值没有按两端等宽布局',
+      );
     }
   });
 }

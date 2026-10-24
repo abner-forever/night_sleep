@@ -79,7 +79,7 @@ class SettingsPage extends ConsumerWidget {
         pageBottomInset(context),
       ),
       children: [
-        const PageHeading(eyebrow: '偏好设置', title: '设置'),
+        const PageHeading(title: '设置'),
         const SizedBox(height: 25),
 
         // ── 常用 ────────────────────────────────────────────────────────────

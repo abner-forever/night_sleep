@@ -12,6 +12,45 @@ import 'app_basics.dart';
 const double _chevronWidth = 9;
 const double _chevronHeight = 15;
 
+/// 二级页统一的返回按钮：44×44 点击区，箭头只有图标没有文字。
+class SubpageBackButton extends StatelessWidget {
+  const SubpageBackButton({
+    super.key,
+    required this.onTap,
+    this.semanticLabel = '返回',
+  });
+
+  final VoidCallback onTap;
+  final String semanticLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppTokens.of(context);
+    return Pressable(
+      semanticLabel: semanticLabel,
+      onTap: onTap,
+      child: SizedBox(
+        width: kSubpageNavigationHeight,
+        height: kSubpageNavigationHeight,
+        child: Center(
+          child: SizedBox(
+            key: const ValueKey('subpage-back-icon'),
+            width: _chevronWidth,
+            height: _chevronHeight,
+            child: CustomPaint(
+              painter: _ChevronPainter(
+                Theme.of(context).brightness == Brightness.dark
+                    ? tokens.textPrimary
+                    : Colors.black,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Shared chrome for a page pushed **over** the tab shell: a back pill, the page
 /// title, and a scrolling content column.
 ///
@@ -231,9 +270,8 @@ class _SubpageHeaderDelegate extends SliverPersistentHeaderDelegate {
             alignment: Alignment.centerLeft,
             // **只有图标，没有文字标签。** 读屏靠 `semanticLabel` 说明它是返回；
             // 删掉文字之后不能让无障碍跟着一起消失。
-            child: Pressable(
+            child: SubpageBackButton(
               key: const ValueKey('subpage-back'),
-              semanticLabel: '返回',
               onTap: () {
                 if (context.canPop()) {
                   context.pop();
@@ -241,26 +279,6 @@ class _SubpageHeaderDelegate extends SliverPersistentHeaderDelegate {
                   context.go('/');
                 }
               },
-              // The chevron is drawn inline as the prototype does, so it
-              // keeps its 2.2 stroke and tight 9×15 proportion.
-              child: SizedBox(
-                width: kSubpageNavigationHeight,
-                height: kSubpageNavigationHeight,
-                child: Center(
-                  child: SizedBox(
-                    key: const ValueKey('subpage-back-icon'),
-                    width: _chevronWidth,
-                    height: _chevronHeight,
-                    child: CustomPaint(
-                      painter: _ChevronPainter(
-                        Theme.of(context).brightness == Brightness.dark
-                            ? tokens.textPrimary
-                            : Colors.black,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
             ),
           ),
         ),

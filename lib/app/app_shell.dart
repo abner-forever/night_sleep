@@ -32,17 +32,48 @@ enum AppTab {
 final activeTabProvider = StateProvider<AppTab>((ref) => AppTab.home);
 
 double _tabBarHeight(BuildContext context) => math.max(
-      kBottomNavigationHeight,
-      30 + MediaQuery.textScalerOf(context).scale(10) * 1.4,
+      50,
+      32 + MediaQuery.textScalerOf(context).scale(10) * 1.2,
     );
 
 double tabBarFloat(BuildContext context) {
   final safeBottom = MediaQuery.paddingOf(context).bottom;
-  return math.max(safeBottom, 8);
+  return math.max(safeBottom, 10);
 }
 
 double tabBarReserve(BuildContext context) =>
-    _tabBarHeight(context) + tabBarFloat(context) + 16;
+    4 + _tabBarHeight(context) + tabBarFloat(context) + 16;
+
+List<double> _tabBarSaturationMatrix(double saturation) {
+  const lumR = 0.2126;
+  const lumG = 0.7152;
+  const lumB = 0.0722;
+  final ir = (1 - saturation) * lumR;
+  final ig = (1 - saturation) * lumG;
+  final ib = (1 - saturation) * lumB;
+  return <double>[
+    ir + saturation,
+    ig,
+    ib,
+    0,
+    0,
+    ir,
+    ig + saturation,
+    ib,
+    0,
+    0,
+    ir,
+    ig,
+    ib + saturation,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+  ];
+}
 
 double pageBottomInset(BuildContext context) {
   if (MediaQuery.sizeOf(context).width >= kWideLayoutBreakpoint) {
@@ -144,9 +175,18 @@ class _AppShellState extends State<AppShell> {
                       left: 0,
                       right: 0,
                       bottom: 0,
-                      child: _TabBar(
-                        current: widget.current,
-                        onSelect: widget.onSelect,
+                      child: ValueListenableBuilder<int>(
+                        valueListenable: openSheetCount,
+                        builder: (context, open, child) => Visibility(
+                          visible: open == 0,
+                          maintainState: true,
+                          maintainAnimation: true,
+                          child: child!,
+                        ),
+                        child: _TabBar(
+                          current: widget.current,
+                          onSelect: widget.onSelect,
+                        ),
                       ),
                     ),
                 ],
@@ -172,18 +212,33 @@ class _TabBar extends StatelessWidget {
     return ClipRect(
       key: const ValueKey('app-bottom-navigation'),
       child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        filter: ui.ImageFilter.compose(
+          outer: ui.ColorFilter.matrix(_tabBarSaturationMatrix(1.8)),
+          inner: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+        ),
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: tokens.bgNavbar,
-            border: Border(top: BorderSide(color: tokens.border)),
+            border: Border(
+              top: BorderSide(color: tokens.border, width: 0.5),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: colorMix(
+                  tokens.border,
+                  0.42,
+                  Colors.transparent,
+                ),
+                offset: const Offset(0, -1),
+              ),
+            ],
           ),
           child: Padding(
             padding: EdgeInsets.fromLTRB(
               padding.left,
               4,
               padding.right,
-              tabBarFloat(context) - 4,
+              tabBarFloat(context),
             ),
             child: Row(
               children: [
@@ -226,9 +281,8 @@ class _TabItemState extends State<_TabItem> {
     final active = widget.active;
     final color = active ? tokens.accent : tokens.textMuted;
 
-    // Home, Log and Statistics swap in a filled glyph when active; Settings has
-    // no filled counterpart in the design and thickens its stroke instead.
-    final glyph = _strokedGlyph(tab, color, active);
+    // 四个标签都按设计稿在选中时切换实心图标。
+    final glyph = _tabGlyph(context, tab, color, active);
 
     return Semantics(
       selected: active,
@@ -243,9 +297,9 @@ class _TabItemState extends State<_TabItem> {
           AppHaptics.select();
           widget.onTap();
         },
-        child: AnimatedScale(
-          scale: _pressed ? 0.94 : 1,
-          duration: const Duration(milliseconds: 160),
+        child: AnimatedOpacity(
+          opacity: _pressed ? 0.58 : 1,
+          duration: const Duration(milliseconds: 150),
           curve: AppMotion.standardCurve,
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: _tabBarHeight(context)),
@@ -253,14 +307,16 @@ class _TabItemState extends State<_TabItem> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 SizedBox(
-                  width: 25,
-                  height: 28,
+                  width: 28,
+                  height: 27,
                   child: Center(
                     // 实心 / 线框字形之间淡入淡出，而不是「啪」地换一个符号。
                     // 位移胶囊已经在滑，图标跟着换颜色与形状，整条标签才像一次动作。
                     child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 180),
-                      switchInCurve: Curves.easeOut,
+                      duration: MediaQuery.disableAnimationsOf(context)
+                          ? Duration.zero
+                          : const Duration(milliseconds: 220),
+                      switchInCurve: const Cubic(0.2, 0.8, 0.3, 1.15),
                       switchOutCurve: Curves.easeIn,
                       transitionBuilder: (child, animation) => FadeTransition(
                         opacity: animation,
@@ -283,9 +339,9 @@ class _TabItemState extends State<_TabItem> {
                   curve: AppMotion.standardCurve,
                   style: TextStyle(
                     fontSize: 10,
-                    height: 1.4,
-                    fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                    letterSpacing: -0.2,
+                    height: 1.2,
+                    fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+                    letterSpacing: -0.1,
                     color: color,
                   ),
                   child: Text(tab.label),
@@ -297,6 +353,21 @@ class _TabItemState extends State<_TabItem> {
       ),
     );
   }
+}
+
+Widget _tabGlyph(
+  BuildContext context,
+  AppTab tab,
+  Color color,
+  bool active,
+) {
+  return AppIcons.tabGlyph(
+    tab.id,
+    active: active,
+    size: 24,
+    color: color,
+    cutoutColor: AppTokens.of(context).bgNavbar,
+  );
 }
 
 Widget _strokedGlyph(AppTab tab, Color color, bool active) {

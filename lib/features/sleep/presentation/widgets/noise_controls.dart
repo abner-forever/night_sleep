@@ -81,6 +81,7 @@ class NoiseTile extends StatelessWidget {
     required this.onTap,
     required this.width,
     this.photo = false,
+    this.photoAspectRatio = 1.06,
   });
 
   final NoiseOption option;
@@ -88,6 +89,7 @@ class NoiseTile extends StatelessWidget {
   final VoidCallback onTap;
   final double width;
   final bool photo;
+  final double photoAspectRatio;
 
   @override
   Widget build(BuildContext context) {
@@ -95,6 +97,7 @@ class NoiseTile extends StatelessWidget {
     final color = active ? option.color : tokens.textMuted;
 
     if (photo) {
+      final compact = width < 140;
       final cover = switch (option.id) {
         'ocean' => 'ocean',
         'fire' => 'fire',
@@ -117,9 +120,9 @@ class NoiseTile extends StatelessWidget {
                   color: active ? tokens.accent : Colors.transparent, width: 2),
             ),
             child: AspectRatio(
-              aspectRatio: 1.06,
+              aspectRatio: compact ? 1.12 : photoAspectRatio,
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(15),
+                borderRadius: BorderRadius.circular(compact ? 12 : 15),
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
@@ -134,33 +137,40 @@ class NoiseTile extends StatelessWidget {
                       ),
                     )),
                     Positioned(
-                        top: 10,
-                        left: 11,
-                        child: option.icon(20, const Color(0xFFD2E4F7))),
+                        top: compact ? 8 : 10,
+                        left: compact ? 9 : 11,
+                        child: option.icon(
+                          compact ? 17 : 20,
+                          const Color(0xFFD2E4F7),
+                        )),
                     Positioned(
-                      left: 12,
-                      right: 42,
-                      bottom: 12,
+                      left: compact ? 9 : 12,
+                      right: compact ? 36 : 42,
+                      bottom: compact ? 8 : 12,
                       child: Text(option.label,
-                          style: const TextStyle(
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
                               color: Colors.white,
-                              fontSize: 14,
+                              fontSize: compact ? 11 : 14,
                               fontWeight: FontWeight.w600)),
                     ),
                     Positioned(
-                      right: 11,
-                      bottom: 12,
+                      right: compact ? 8 : 11,
+                      bottom: compact ? 8 : 12,
                       child: Container(
-                        width: 25,
-                        height: 25,
+                        width: compact ? 22 : 25,
+                        height: compact ? 22 : 25,
                         alignment: Alignment.center,
                         decoration: const BoxDecoration(
                             color: Colors.white, shape: BoxShape.circle),
                         child: active
                             ? AppIcons.stop(
-                                size: 12, color: const Color(0xFF24476C))
+                                size: compact ? 10 : 12,
+                                color: const Color(0xFF24476C))
                             : AppIcons.play(
-                                size: 12, color: const Color(0xFF24476C)),
+                                size: compact ? 10 : 12,
+                                color: const Color(0xFF24476C)),
                       ),
                     ),
                   ],
@@ -218,11 +228,13 @@ class VolumeSlider extends StatelessWidget {
     required this.value,
     required this.color,
     required this.onChanged,
+    this.showPercentage = false,
   });
 
   final double value;
   final Color color;
   final ValueChanged<double> onChanged;
+  final bool showPercentage;
 
   @override
   Widget build(BuildContext context) {
@@ -246,7 +258,22 @@ class VolumeSlider extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 12),
-        AppIcons.volume(size: 22, color: tokens.textMuted, strokeWidth: 1.5),
+        if (showPercentage)
+          SizedBox(
+            width: 32,
+            child: Text(
+              '${(value * 100).round()}%',
+              textAlign: TextAlign.right,
+              style: AppTheme.num(
+                context,
+                size: 10,
+                weight: FontWeight.w400,
+                color: tokens.textMuted,
+              ),
+            ),
+          )
+        else
+          AppIcons.volume(size: 22, color: tokens.textMuted, strokeWidth: 1.5),
       ],
     );
   }

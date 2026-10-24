@@ -194,7 +194,7 @@ void main() {
     expect(find.byKey(const ValueKey('app-bottom-navigation')), findsNothing);
   });
 
-  testWidgets('弹层打开时顶部渐隐收起，底栏仍保留', (tester) async {
+  testWidgets('弹层打开时顶部渐隐与底栏都按设计收起', (tester) async {
     await pumpShell(tester);
 
     // 先把页面滚起来，让顶部带处于「该显示」的状态。否则拿 `TopFade` 当对照组时
@@ -203,8 +203,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.widget<TopFade>(find.byType(TopFade)).visible, isTrue);
 
-    // 设计规格「边界情况」表：与 `TopFade` 不同，底部带在弹层打开时**有意**
-    // 不收起——弹层的蒙层本来就盖住整屏，专门收起反而会在开弹层那一瞬闪一下。
+    // 设计稿的 `.ios-app:has(.sheet-overlay…) .ios-tab-bar` 会在弹层
+    // 打开时隐藏底栏；这里同时钉住顶部渐隐和底栏两块。
     addTearDown(() => openSheetCount.value = 0);
     openSheetCount.value = 1;
     await tester.pumpAndSettle();
@@ -216,7 +216,7 @@ void main() {
     );
     expect(
       find.byKey(const ValueKey('app-bottom-navigation')),
-      findsOneWidget,
+      findsNothing,
     );
   });
 

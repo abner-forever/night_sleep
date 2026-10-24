@@ -23,6 +23,7 @@ import 'package:night_sleep/core/database/app_database.dart'
         databaseProvider;
 import 'package:night_sleep/core/theme/app_theme.dart';
 import 'package:night_sleep/core/widgets/app_sheet.dart';
+import 'package:night_sleep/core/widgets/subpage.dart';
 import 'package:night_sleep/features/settings/data/insight_credentials.dart';
 import 'package:night_sleep/features/sleep/data/clip_analyzer.dart';
 import 'package:night_sleep/features/sleep/data/sleep_repository.dart';
@@ -248,6 +249,29 @@ void main() {
       maxScrolls: 80,
     );
     expect(find.text('编辑记录'), findsOneWidget);
+  });
+
+  testWidgets('详情页上滑后标题与统一返回按钮保持吸顶', (tester) async {
+    final entry = await seedNight(clips: 12);
+    await pumpSheet(
+      tester,
+      entry,
+      analyzer: _StubAnalyzer(database, 12),
+      size: const Size(430, 900),
+    );
+
+    final title = find.text('睡眠详情');
+    final back = find.byKey(const ValueKey('sleep-detail-back'));
+    expect(tester.widget(back), isA<SubpageBackButton>());
+    final titleTop = tester.getTopLeft(title).dy;
+    final backTop = tester.getTopLeft(back).dy;
+
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -500));
+    await tester.pumpAndSettle();
+
+    expect(tester.getTopLeft(title).dy, closeTo(titleTop, 0.1));
+    expect(tester.getTopLeft(back).dy, closeTo(backTop, 0.1));
+    expect(find.byType(SubpageBackButton), findsOneWidget);
   });
 
   testWidgets('分析抛错时给出「分析失败」，不静默', (tester) async {

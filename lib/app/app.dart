@@ -13,6 +13,7 @@ import '../core/widgets/atmosphere.dart';
 import '../features/compass/presentation/compass_manual_page.dart';
 import '../features/compass/presentation/compass_page.dart';
 import '../features/home/presentation/home_page.dart';
+import '../features/home/presentation/sleep_calendar_page.dart';
 import '../features/log/presentation/log_edit_page.dart';
 import '../features/log/presentation/log_new_page.dart';
 import '../features/log/presentation/review_page.dart';
@@ -126,6 +127,11 @@ final _router = GoRouter(
         GoRoute(
           path: 'stats/all',
           builder: (context, state) => const AllSleepDataPage(),
+        ),
+        // 首页右上角的日历入口。它是推入页，日历盖住标签外壳。
+        GoRoute(
+          path: 'calendar',
+          builder: (context, state) => const SleepCalendarPage(),
         ),
         // 手动补录：回顾页底部的入口与会话时长越界的说明层都推到这里。
         GoRoute(

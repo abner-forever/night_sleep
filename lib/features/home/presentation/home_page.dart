@@ -410,9 +410,34 @@ class _HomeContent extends StatelessWidget {
         const SizedBox(width: 12),
         Padding(
           padding: const EdgeInsets.only(top: 9),
-          child: Text('${now.month}月${now.day}日',
-              style: AppTheme.num(context,
-                  size: 11, weight: FontWeight.w400, color: foreground)),
+          child: Semantics(
+            button: true,
+            label: '打开睡眠日历',
+            child: Pressable(
+              onTap: () => context.push('/calendar'),
+              child: Container(
+                width: 40,
+                height: 40,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: wide
+                      ? tokens.accentSoft
+                      : Colors.white.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: wide
+                        ? tokens.border
+                        : Colors.white.withValues(alpha: 0.18),
+                  ),
+                ),
+                child: AppIcons.calendar(
+                  size: 20,
+                  color: wide ? tokens.accent : Colors.white,
+                  strokeWidth: 1.7,
+                ),
+              ),
+            ),
+          ),
         ),
       ]),
     );
@@ -429,6 +454,7 @@ class _HomeContent extends StatelessWidget {
       child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Expanded(
           child: QuietSurface(
+            key: const ValueKey('home-noise-card'),
             padding: const EdgeInsets.all(14),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -462,26 +488,45 @@ class _HomeContent extends StatelessWidget {
             padding: const EdgeInsets.all(14),
             onTap: onOpenNoise,
             semanticLabel: '助眠音效',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
+            child: Row(
               children: [
-                Row(children: [
-                  AppIcons.music(size: 19, color: tokens.accent),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text('助眠音效',
+                AppIcons.music(size: 19, color: tokens.accent),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        '助眠音效',
                         style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: tokens.textPrimary)),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: tokens.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '海浪 · 篝火 · 自然之声',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          height: 1.4,
+                          color: tokens.textMuted,
+                        ),
+                      ),
+                    ],
                   ),
-                  AppIcons.chevronRight(size: 15, color: tokens.textMuted),
-                ]),
-                const SizedBox(height: 10),
-                Text('海浪 · 篝火 · 自然之声',
-                    style: TextStyle(
-                        fontSize: 11, height: 1.5, color: tokens.textMuted)),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  key: const ValueKey('home-noise-chevron'),
+                  child: AppIcons.chevronRight(
+                    size: 15,
+                    color: tokens.textMuted,
+                  ),
+                ),
               ],
             ),
           ),

@@ -6,7 +6,7 @@ import '../../../../core/widgets/app_basics.dart';
 import '../../../../core/widgets/app_icons.dart';
 import '../../domain/sleep_quality.dart';
 
-/// 五档感受选择：保留原有档位、文案和即时反馈；未评分时不预选。
+/// 五档睡眠质量：彩色圆形星标、未评分时不预选。
 class QualityChoice extends StatelessWidget {
   const QualityChoice({
     super.key,
@@ -20,78 +20,112 @@ class QualityChoice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (final quality in SleepQuality.values)
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 2),
-                  child: Semantics(
-                    container: true,
-                    excludeSemantics: true,
-                    button: true,
-                    selected: quality == value,
-                    label: '睡眠质量 ${quality.label}',
-                    child: Pressable(
-                      onTap: () {
-                        AppHaptics.select();
-                        onChanged(quality);
-                      },
-                      child: AnimatedContainer(
-                        duration: AppDurations.control,
-                        curve: AppMotion.standardCurve,
-                        constraints: const BoxConstraints(minHeight: 76),
-                        padding: const EdgeInsets.symmetric(
-                            vertical: 12, horizontal: 2),
-                        decoration: BoxDecoration(
-                          color: quality == value
-                              ? tokens.accentSoft
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Column(
-                          children: [
-                            AppIcons.star(
-                              size: 23,
-                              color:
-                                  value != null && quality.value <= value!.value
-                                      ? tokens.accent
-                                      : tokens.textMuted,
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              quality.label,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: quality == value
-                                    ? FontWeight.w600
-                                    : FontWeight.w400,
-                                color: quality == value
-                                    ? tokens.accent
-                                    : tokens.textMuted,
+        for (final quality in SleepQuality.values)
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: Semantics(
+                container: true,
+                excludeSemantics: true,
+                button: true,
+                selected: quality == value,
+                label: '睡眠质量 ${quality.label}',
+                child: Pressable(
+                  haptic: false,
+                  onTap: () {
+                    AppHaptics.select();
+                    onChanged(quality);
+                  },
+                  child: AnimatedContainer(
+                    duration: AppDurations.control,
+                    curve: AppMotion.standardCurve,
+                    constraints: const BoxConstraints(minHeight: 76),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 10,
+                      horizontal: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.transparent,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Column(
+                      children: [
+                        AnimatedContainer(
+                          duration: AppDurations.control,
+                          width: 38,
+                          height: 38,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: quality == value
+                                ? Colors.transparent
+                                : _qualityColor(tokens, quality)
+                                    .withValues(alpha: 0.10),
+                            border: Border.all(
+                              color: _qualityColor(tokens, quality).withValues(
+                                alpha: quality == value ? 1 : 0.22,
                               ),
                             ),
-                          ],
+                          ),
+                          child: quality == value
+                              ? AppIcons.filledStar(
+                                  size: 20,
+                                  color: _qualityColor(tokens, quality),
+                                )
+                              : AppIcons.star(
+                                  size: 20,
+                                  color: _qualityColor(tokens, quality),
+                                  strokeWidth: value != null &&
+                                          quality.value <= value!.value
+                                      ? 2
+                                      : 1.5,
+                                ),
                         ),
-                      ),
+                        const SizedBox(height: 8),
+                        AnimatedDefaultTextStyle(
+                          duration: AppDurations.control,
+                          curve: AppMotion.standardCurve,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: quality == value
+                                ? FontWeight.w600
+                                : FontWeight.w500,
+                            color: quality == value
+                                ? _qualityColor(tokens, quality)
+                                : colorMix(
+                                    _qualityColor(tokens, quality),
+                                    0.72,
+                                    tokens.textSecondary,
+                                  ),
+                          ),
+                          child: Text(
+                            quality.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
               ),
-          ],
-        ),
-        if (value != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 8, right: 4),
-            child: Text(value!.feedback,
-                style: TextStyle(fontSize: 12, color: tokens.accent)),
+            ),
           ),
       ],
     );
+  }
+
+  static Color _qualityColor(AppTokens tokens, SleepQuality quality) {
+    return switch (quality) {
+      SleepQuality.veryPoor => tokens.danger,
+      SleepQuality.poor => tokens.warn,
+      SleepQuality.fair => tokens.caution,
+      SleepQuality.good => tokens.good,
+      SleepQuality.excellent => tokens.accentViolet,
+    };
   }
 }

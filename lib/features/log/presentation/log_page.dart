@@ -231,8 +231,13 @@ class _LogPageState extends ConsumerState<LogPage> {
       // ── Quality ────────────────────────────────────────────────────────
       const SectionHeader('睡眠质量'),
       QuietSurface(
-        borderRadius: BorderRadius.circular(AppRadii.panel),
-        padding: const EdgeInsets.all(8),
+        borderRadius: BorderRadius.circular(AppRadii.card),
+        borderColor: colorMix(
+          tokens.border,
+          0.6,
+          Colors.transparent,
+        ),
+        padding: const EdgeInsets.all(10),
         // 未选时 `_quality` 是 `null`：五个药丸一个都不亮，行尾的反馈句也不出现。
         child: QualityChoice(
           value: _quality,
@@ -242,10 +247,32 @@ class _LogPageState extends ConsumerState<LogPage> {
       const SizedBox(height: 18),
 
       // ── Events ─────────────────────────────────────────────────────────
-      const SectionHeader('睡眠事件'),
-      EventTileGrid(
+      Padding(
+        padding: const EdgeInsets.only(left: 4, right: 4, bottom: 10),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                '睡眠事件',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.2,
+                  color: tokens.textPrimary,
+                ),
+              ),
+            ),
+            Text(
+              '可多选',
+              style: TextStyle(fontSize: 10, color: tokens.textMuted),
+            ),
+          ],
+        ),
+      ),
+      SleepEventPicker(
         events: _events,
         onChanged: (events) => setState(() => _events = events),
+        keyPrefix: 'log-event',
       ),
       const SizedBox(height: 18),
 

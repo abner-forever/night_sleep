@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -17,6 +19,7 @@ import '../../../../core/widgets/app_icons.dart';
 import '../../../../core/widgets/app_sheet.dart';
 import '../../../../core/widgets/confirm_dialog.dart';
 import '../../../../core/widgets/quiet_surface.dart';
+import '../../../../core/widgets/subpage.dart';
 import '../../../settings/data/insight_credentials.dart';
 import '../../../settings/data/insight_service.dart';
 import '../../../settings/data/model_catalog.dart';
@@ -305,38 +308,6 @@ class _DetailSheetState extends ConsumerState<DetailSheet> {
     );
 
     final blocks = <Widget>[
-      Padding(
-        padding: EdgeInsets.only(
-          top: MediaQuery.sizeOf(context).width >= 768 ? 24 : 12,
-          bottom: 20,
-        ),
-        child: Row(children: [
-          Pressable(
-            key: const ValueKey('sleep-detail-back'),
-            onTap: () => Navigator.of(context).pop(),
-            semanticLabel: '返回上一页',
-            child: SizedBox(
-                width: 44,
-                height: 44,
-                child: Center(
-                    child: Transform.flip(
-                        flipX: true,
-                        child: AppIcons.chevronRight(
-                            size: 20, color: tokens.textPrimary)))),
-          ),
-          Expanded(
-              child: Text('睡眠详情',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w600,
-                      color: tokens.textPrimary))),
-          SizedBox(
-              width: 44,
-              child: Center(
-                  child: AppIcons.moon(size: 18, color: tokens.textSecondary))),
-        ]),
-      ),
       Padding(
         padding: const EdgeInsets.fromLTRB(7, 0, 7, 24),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -679,8 +650,15 @@ class _DetailSheetState extends ConsumerState<DetailSheet> {
       showHandle: false,
       background: const _DetailBackground(),
       slivers: [
+        SliverPersistentHeader(
+          pinned: true,
+          delegate: _DetailHeaderDelegate(
+            topInset: MediaQuery.paddingOf(context).top,
+            onBack: () => Navigator.of(context).pop(),
+          ),
+        ),
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
           sliver: SliverList(
             delegate: SliverChildBuilderDelegate(
               (context, index) => blocks[index],
@@ -691,6 +669,80 @@ class _DetailSheetState extends ConsumerState<DetailSheet> {
       ],
     );
   }
+}
+
+class _DetailHeaderDelegate extends SliverPersistentHeaderDelegate {
+  const _DetailHeaderDelegate({
+    required this.topInset,
+    required this.onBack,
+  });
+
+  final double topInset;
+  final VoidCallback onBack;
+
+  static const double _rowHeight = kSubpageNavigationHeight;
+
+  @override
+  double get minExtent => topInset + _rowHeight;
+
+  @override
+  double get maxExtent => topInset + _rowHeight;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    final tokens = AppTokens.of(context);
+    final collapse = (shrinkOffset / _rowHeight).clamp(0.0, 1.0);
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Opacity(
+          opacity: collapse,
+          child: ClipRect(
+            child: BackdropFilter(
+              filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+              child: const ColoredBox(color: Color(0xEC061426)),
+            ),
+          ),
+        ),
+        Positioned(
+          left: 16,
+          right: 16,
+          top: topInset,
+          bottom: 0,
+          child: Row(
+            children: [
+              SubpageBackButton(
+                key: const ValueKey('sleep-detail-back'),
+                semanticLabel: '返回上一页',
+                onTap: onBack,
+              ),
+              Expanded(
+                child: Text(
+                  '睡眠详情',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                    color: tokens.textPrimary,
+                  ),
+                ),
+              ),
+              const SizedBox(width: kSubpageNavigationHeight),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _DetailHeaderDelegate oldDelegate) =>
+      oldDelegate.topInset != topInset || oldDelegate.onBack != onBack;
 }
 
 /// A full-width action button in the detail sheet's footer.

@@ -13,7 +13,9 @@ import '../../../core/widgets/quiet_surface.dart';
 import '../../sleep/data/sleep_repository.dart';
 import '../../sleep/domain/sleep_entry.dart';
 import '../../sleep/domain/sleep_statistics.dart';
+import '../../sleep/domain/sound_event.dart';
 import '../../sleep/presentation/sheets/detail_sheet.dart';
+import '../../sleep/presentation/widgets/sleep_summary.dart';
 import '../../sleep/presentation/widgets/stage_style.dart';
 
 /// 统计页——所选周期内的时长趋势、评分与声音汇总。
@@ -76,7 +78,7 @@ class _StatsPageState extends ConsumerState<StatsPage> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 const Expanded(
-                  child: PageHeading(eyebrow: '睡眠统计', title: '统计'),
+                  child: PageHeading(title: '统计'),
                 ),
                 if (records.isNotEmpty)
                   Padding(
@@ -138,21 +140,35 @@ class _StatsPageState extends ConsumerState<StatsPage> {
                 onSelect: (entry) => setState(() => _selected = entry),
                 onOpenDetail: (entry) => showSleepDetailSheet(context, entry),
               ),
-              if (stats.averageScore != null) ...[
-                const SizedBox(height: 18),
-                _ScoreCard(stats: stats),
-              ],
               const SizedBox(height: 18),
-              _SummaryGrid(stats: stats),
-              if (stats.transcripts.isNotEmpty) ...[
+              SleepSummary(
+                records: stats.entries,
+                periodLabel:
+                    _period == StatsPeriod.week ? '本周' : '近 ${_period.days} 天',
+              ),
+              const SizedBox(height: 18),
+              _SoundSummary(stats: stats),
+              if (_transcripts(stats).isNotEmpty) ...[
                 const SizedBox(height: 18),
-                _TranscriptCard(stats: stats),
+                _TranscriptCard(items: _transcripts(stats)),
               ],
             ],
           ],
         );
       },
     );
+  }
+
+  static List<({SleepEntry entry, SoundClip clip})> _transcripts(
+    SleepStatistics stats,
+  ) {
+    return [
+      for (final entry in stats.entries.reversed)
+        for (final clip in entry.soundClips)
+          if (clip.kind == SoundEventKind.talk &&
+              (clip.transcript?.trim().isNotEmpty ?? false))
+            (entry: entry, clip: clip),
+    ];
   }
 }
 
@@ -502,71 +518,46 @@ class _Bar extends StatelessWidget {
   }
 }
 
-/// 该周期的平均评分与原型那句免责声明——评分 hero 卡（规格 §2.4）。
-class _ScoreCard extends StatelessWidget {
-  const _ScoreCard({required this.stats});
+class _SoundSummary extends StatelessWidget {
+  const _SoundSummary({required this.stats});
 
   final SleepStatistics stats;
 
   @override
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
-    final average = stats.averageScore!;
-
     return QuietSurface(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      borderRadius: BorderRadius.circular(AppRadii.panel),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
+      child: Row(
         children: [
-          Row(
-            children: [
-              AppIcons.ai(size: 15, color: tokens.accent, strokeWidth: 1.8),
-              const SizedBox(width: 8),
-              Text(
-                '睡眠评分',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: tokens.textPrimary,
-                ),
+          Expanded(
+            child: _SoundSummaryItem(
+              icon: AppIcons.snore(
+                size: 19,
+                color: tokens.accent,
+                strokeWidth: 1.5,
               ),
-            ],
+              label: '打鼾夜数',
+              value: '${stats.snoreNights}',
+            ),
           ),
-          const SizedBox(height: 12),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                '$average',
-                style: AppTheme.num(
-                  context,
-                  size: 43,
-                  weight: FontWeight.w600,
-                  letterSpacing: -2.08,
-                ),
+          Container(
+            width: 1,
+            height: 38,
+            margin: const EdgeInsets.symmetric(horizontal: 20),
+            color: tokens.border,
+          ),
+          Expanded(
+            child: _SoundSummaryItem(
+              icon: AppIcons.bubble(
+                size: 19,
+                color: tokens.accent,
+                strokeWidth: 1.5,
               ),
-              const SizedBox(width: 8),
-              Text(
-                '/ 100 · ${stats.period.days}天平均',
-                style: TextStyle(fontSize: 14, color: tokens.textMuted),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            average >= 85
-                ? '整体睡眠质量优秀'
-                : average >= 70
-                    ? '整体睡眠质量良好'
-                    : '睡眠质量有待改善',
-            style: TextStyle(fontSize: 14, color: tokens.textSecondary),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            '评分根据时长、规律性与记录事件生成，仅供睡眠习惯参考，不构成医疗建议。',
-            style:
-                TextStyle(fontSize: 12, height: 1.45, color: tokens.textMuted),
+              label: '梦话夜数',
+              value: '${stats.talkNights}',
+            ),
           ),
         ],
       ),
@@ -574,194 +565,140 @@ class _ScoreCard extends StatelessWidget {
   }
 }
 
-class _SummaryGrid extends StatelessWidget {
-  const _SummaryGrid({required this.stats});
+class _SoundSummaryItem extends StatelessWidget {
+  const _SoundSummaryItem({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
 
-  final SleepStatistics stats;
+  final Widget icon;
+  final String label;
+  final String value;
 
   @override
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
-    final cards = [
-      (
-        '平均时长',
-        '${stats.averageHours!.toStringAsFixed(1)}h',
-        AppIcons.moon(size: 20, color: tokens.textMuted, strokeWidth: 1.5),
-        null,
-      ),
-      (
-        '充足天数',
-        '${stats.goodNights}/${stats.count}天',
-        AppIcons.check(size: 20, color: tokens.textMuted, strokeWidth: 1.5),
-        // 「达标」是本轮新加的那个语义色唯一的用途（规格 §3.2）。四张卡里
-        // 只有这一张是判断，另外三张是描述——平均时长与两个夜数没有好坏可言。
-        tokens.good,
-      ),
-      (
-        '打鼾夜数',
-        '${stats.snoreNights}次',
-        AppIcons.snore(size: 20, color: tokens.textMuted, strokeWidth: 1.5),
-        null,
-      ),
-      (
-        '梦话夜数',
-        '${stats.talkNights}次',
-        AppIcons.bubble(size: 20, color: tokens.textMuted, strokeWidth: 1.5),
-        null,
-      ),
-    ];
-
-    return Column(
+    return Row(
       children: [
-        Row(
-          children: [
-            Expanded(child: _SummaryCard(data: cards[0])),
-            const SizedBox(width: 12),
-            Expanded(child: _SummaryCard(data: cards[1])),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(child: _SummaryCard(data: cards[2])),
-            const SizedBox(width: 12),
-            Expanded(child: _SummaryCard(data: cards[3])),
-          ],
+        icon,
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(fontSize: 10, color: tokens.textMuted),
+              ),
+              const SizedBox(height: 4),
+              Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: value,
+                      style: AppTheme.num(
+                        context,
+                        size: 20,
+                        weight: FontWeight.w600,
+                        color: tokens.textPrimary,
+                      ),
+                    ),
+                    TextSpan(
+                      text: ' 晚',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: tokens.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );
   }
 }
 
-class _SummaryCard extends StatelessWidget {
-  const _SummaryCard({required this.data});
+/// 已保存的梦话转录。只展示录音分析实际产出的文本。
+class _TranscriptCard extends StatelessWidget {
+  const _TranscriptCard({required this.items});
 
-  /// 标签 / 数值 / 图标 / 数值的颜色（`null` 表示用 `textPrimary`）。
-  final (String, String, Widget, Color?) data;
+  final List<({SleepEntry entry, SoundClip clip})> items;
 
   @override
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
-    // 原型把这一族划给「安静实体」（`.stats-metric-card`）：功能卡不参与氛围。
     return QuietSurface(
       borderRadius: BorderRadius.circular(AppRadii.panel),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          data.$3,
-          const SizedBox(height: 8),
           Text(
-            data.$2,
-            style: AppTheme.num(
-              context,
-              size: 24,
-              weight: FontWeight.w700,
-              letterSpacing: -0.48,
-              color: data.$4 ?? tokens.textPrimary,
+            '梦话记录',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: tokens.textPrimary,
             ),
           ),
-          const SizedBox(height: 2),
-          Text(data.$1,
-              style: TextStyle(fontSize: 12, color: tokens.textMuted)),
+          const SizedBox(height: 8),
+          for (var index = 0; index < items.length; index++) ...[
+            if (index > 0) Divider(height: 1, color: tokens.border),
+            _TranscriptRow(item: items[index]),
+          ],
+          const SizedBox(height: 8),
+          Text(
+            '转录内容来自夜间录音，仅供参考，不构成医疗建议。',
+            style: TextStyle(
+              fontSize: 10,
+              height: 1.5,
+              color: tokens.textMuted,
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-/// 该周期内收拢到的梦话转录。
-class _TranscriptCard extends StatelessWidget {
-  const _TranscriptCard({required this.stats});
+class _TranscriptRow extends StatelessWidget {
+  const _TranscriptRow({required this.item});
 
-  final SleepStatistics stats;
+  final ({SleepEntry entry, SoundClip clip}) item;
 
   @override
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
-    final count = stats.transcripts.length;
-
-    // 与四项汇总卡同一条：功能卡用安静实体面。
-    return QuietSurface(
-      borderRadius: BorderRadius.circular(AppRadii.panel),
-      padding: const EdgeInsets.all(16),
+    final local = item.clip.startedAtUtc.toLocal();
+    final date = '${local.year}-${local.month.toString().padLeft(2, '0')}-'
+        '${local.day.toString().padLeft(2, '0')}';
+    final raw = item.clip.transcript!.trim();
+    final transcript = raw.startsWith('「') ? raw : '「$raw」';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              AppIcons.bubble(
-                  size: 15, color: tokens.accentViolet, strokeWidth: 1.8),
-              const SizedBox(width: 8),
-              Text(
-                '梦话记录',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: tokens.accentViolet,
-                ),
-              ),
-            ],
+          Text(
+            '$date · ${item.clip.timeLabel}',
+            style: AppTheme.num(
+              context,
+              size: 10,
+              weight: FontWeight.w400,
+              color: tokens.textMuted,
+            ),
           ),
-          const SizedBox(height: 12),
-          for (final transcript in stats.transcripts) ...[
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: tokens.bgMuted,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                transcript,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontStyle: FontStyle.italic,
-                  color: tokens.textPrimary,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-          ],
-          const SizedBox(height: 4),
-          // Deliberately factual: it counts what was transcribed and describes
-          // it, rather than diagnosing anything.
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: tokens.accentSoft,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    AppIcons.ai(
-                        size: 12, color: tokens.accent, strokeWidth: 1.8),
-                    const SizedBox(width: 6),
-                    Text(
-                      '综合分析',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: tokens.accent,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '${stats.period.days}天内共检测到$count段梦话。转录内容来自夜间录音，'
-                  '仅供参考，不构成医疗建议。',
-                  style: TextStyle(
-                    fontSize: 14,
-                    height: 1.5,
-                    color: tokens.textSecondary,
-                  ),
-                ),
-              ],
+          const SizedBox(height: 6),
+          Text(
+            transcript,
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.65,
+              color: tokens.textPrimary,
             ),
           ),
         ],
