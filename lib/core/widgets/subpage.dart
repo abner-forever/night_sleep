@@ -33,11 +33,15 @@ class Subpage extends StatelessWidget {
     required this.title,
     required this.children,
     this.maxContentWidth = 720,
+    this.action,
   });
 
   final String title;
   final List<Widget> children;
   final double maxContentWidth;
+
+  /// 右上角的动作（可空）。约定是一个 44×44 的点击区，图标 20 左右。
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -88,6 +92,7 @@ class Subpage extends StatelessWidget {
             sideInset: sideInset,
             statusBarInset: MediaQuery.paddingOf(context).top,
             rowHeight: rowHeight,
+            action: action,
           ),
         ),
         SliverPadding(
@@ -116,10 +121,12 @@ class _SubpageHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.sideInset,
     required this.statusBarInset,
     required this.rowHeight,
+    required this.action,
   });
 
   final AppTokens tokens;
   final String title;
+  final Widget? action;
 
   /// 标题行离屏幕左右边缘的距离（已含内容限宽的居中留白）。
   final double sideInset;
@@ -257,6 +264,17 @@ class _SubpageHeaderDelegate extends SliverPersistentHeaderDelegate {
             ),
           ),
         ),
+        // 右上角动作与返回键对称：44 宽的点击区向留白里探出，图标仍与正文右边缘齐平。
+        if (action != null)
+          Positioned(
+            right: sideInset - 12,
+            top: 0,
+            bottom: 0,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: action,
+            ),
+          ),
       ],
     );
   }
@@ -267,7 +285,8 @@ class _SubpageHeaderDelegate extends SliverPersistentHeaderDelegate {
       oldDelegate.title != title ||
       oldDelegate.sideInset != sideInset ||
       oldDelegate.statusBarInset != statusBarInset ||
-      oldDelegate.rowHeight != rowHeight;
+      oldDelegate.rowHeight != rowHeight ||
+      oldDelegate.action != action;
 }
 
 class _ChevronPainter extends CustomPainter {

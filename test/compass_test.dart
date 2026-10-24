@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sleep/core/platform/compass.dart';
 import 'package:night_sleep/core/theme/app_theme.dart';
 import 'package:night_sleep/features/compass/domain/compass_heading.dart';
+import 'package:night_sleep/features/compass/presentation/compass_manual_page.dart';
 import 'package:night_sleep/features/compass/presentation/compass_page.dart';
 
 class FakeCompassSource extends CompassSource {
@@ -25,6 +26,8 @@ CompassReading reading(double? heading,
         {double timestamp = 1,
         double rotationRate = 0,
         double tilt = 0,
+        double tiltX = 0,
+        double tiltY = 0,
         int accuracy = 3,
         double fieldStrength = 45}) =>
     CompassReading(
@@ -32,6 +35,8 @@ CompassReading reading(double? heading,
       timestamp: timestamp,
       rotationRate: rotationRate,
       tilt: tilt,
+      tiltX: tiltX,
+      tiltY: tiltY,
       accuracy: accuracy,
       fieldStrength: fieldStrength,
     );
@@ -70,6 +75,25 @@ void main() {
     expect(filter.update(reading(270, timestamp: 4)), 270);
   });
 
+  test('静止时磁力计噪声被压住，输出摆幅远小于输入', () {
+    final filter = CompassHeadingFilter();
+    expect(filter.update(reading(90)), 90);
+    var minIn = double.infinity, maxIn = -double.infinity;
+    var minOut = double.infinity, maxOut = -double.infinity;
+    for (var index = 0; index < 300; index++) {
+      // 输入在 ±4° 之间来回跳，模拟静止时磁力计的噪声。
+      final input = 90 + (index.isEven ? 4.0 : -4.0);
+      final output =
+          filter.update(reading(input, timestamp: 1 + index * 0.03))!;
+      if (index < 30) continue; // 前 30 个样本还在收敛，不参与统计。
+      minIn = math.min(minIn, input);
+      maxIn = math.max(maxIn, input);
+      minOut = math.min(minOut, output);
+      maxOut = math.max(maxOut, output);
+    }
+    expect(maxOut - minOut, lessThan((maxIn - minIn) / 2));
+  });
+
   Future<void> pumpPage(WidgetTester tester, CompassSource source,
       {bool dark = false,
       Size size = const Size(390, 844),
@@ -90,7 +114,7 @@ void main() {
     await tester.pump();
   }
 
-  testWidgets('锁定保留读数，解锁恢复实时方位，离开页面停止采样', (tester) async {
+  testWidgets('读数跟随传感器，离开页面停止采样', (tester) async {
     final source = FakeCompassSource();
     addTearDown(source.controller.close);
     await pumpPage(tester, source);
@@ -98,14 +122,10 @@ void main() {
     source.controller.add(reading(90));
     await tester.pump();
     expect(find.text('90°'), findsOneWidget);
-    await tester.tap(find.text('锁定'));
     source.controller.add(reading(180, timestamp: 2));
     await tester.pump();
-    expect(find.text('90°'), findsOneWidget);
-    expect(find.text('已锁定'), findsOneWidget);
-    await tester.tap(find.text('已锁定'));
-    await tester.pump();
     expect(find.text('180°'), findsOneWidget);
+    expect(find.text('锁定'), findsNothing, reason: '锁定没有实际用途，已移除');
     await tester.pumpWidget(const SizedBox());
     expect(source.controller.hasListener, isFalse);
   });
@@ -159,8 +179,55 @@ void main() {
     expect(find.text('—°'), findsOneWidget);
     source.controller.add(reading(30, accuracy: 0));
     await tester.pump();
-    expect(find.textContaining('缓慢画「8」字校准'), findsOneWidget);
+    // 页面底部常驻提示里也有这句，所以只认状态行那条完整的。
+    expect(find.text('请远离磁性物体，缓慢画「8」字校准'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('水平仪的说法随倾角切换：平了报水平，歪了报度数', (tester) async {
+    final semantics = tester.ensureSemantics();
+    final source = FakeCompassSource();
+    addTearDown(source.controller.close);
+    await pumpPage(tester, source);
+    source.controller.add(reading(90, tilt: 0.8, tiltX: 0.6, tiltY: -0.4));
+    await tester.pump();
+    expect(find.bySemanticsLabel(RegExp('面向东，90度，水平')), findsOneWidget);
+    expect(find.bySemanticsLabel('水平仪：水平'), findsOneWidget);
+    source.controller
+        .add(reading(90, timestamp: 2, tilt: 12, tiltX: 10, tiltY: -6));
+    await tester.pump();
+    expect(find.bySemanticsLabel(RegExp('面向东，90度，倾斜12度')), findsOneWidget);
+    expect(find.bySemanticsLabel('水平仪：倾斜12度'), findsOneWidget);
+    semantics.dispose();
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('右上角有使用说明入口', (tester) async {
+    final source = FakeCompassSource();
+    addTearDown(source.controller.close);
+    await pumpPage(tester, source);
+    source.controller.add(reading(90));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('compass-help')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('使用说明页讲清楚怎么读针与刻度', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light(),
+      home: const CompassManualPage(),
+    ));
+    await tester.pump();
+    expect(find.text('罗盘使用说明'), findsOneWidget);
+    expect(find.text('一、怎么拿盘'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('三、怎么看针的指向（读盘）'), 200);
+    expect(find.textContaining('每 3° 一格'), findsOneWidget);
+    expect(find.textContaining('红头指磁北'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('五、古人怎么记方位'), 200);
+    expect(find.textContaining('三山一卦'), findsWidgets);
+    await tester.scrollUntilVisible(find.textContaining('子 0°'), 200);
+    expect(find.textContaining('子 0°'), findsWidgets);
+    expect(tester.takeException(), isNull);
   });
 
   for (final dark in [false, true]) {
@@ -179,7 +246,8 @@ void main() {
     final source = FakeCompassSource();
     addTearDown(source.controller.close);
     await pumpPage(tester, source, size: const Size(320, 640), textScale: 1.6);
-    source.controller.add(reading(359.8));
+    // 倾斜角与方位别取同一个数：两者都可能显示「0°」，取同值就分不清是哪一个。
+    source.controller.add(reading(359.8, tilt: 12));
     await tester.pumpAndSettle();
     expect(find.text('0°'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -187,6 +255,29 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('常见手机尺寸一屏放下，不需要滚动', (tester) async {
+    for (final size in const [
+      Size(390, 844),
+      Size(360, 780),
+      Size(375, 667),
+      Size(412, 915),
+    ]) {
+      final source = FakeCompassSource();
+      addTearDown(source.controller.close);
+      await pumpPage(tester, source, size: size);
+      source.controller.add(reading(45));
+      await tester.pumpAndSettle();
+      final scrollable =
+          tester.state<ScrollableState>(find.byType(Scrollable).first);
+      expect(
+        scrollable.position.maxScrollExtent,
+        0,
+        reason: '$size 下罗盘页应当一屏放得下',
+      );
+      await tester.pumpWidget(const SizedBox());
+    }
   });
 
   // ------------------------------------------------------------------
@@ -224,6 +315,8 @@ void main() {
           'timestamp': 1.5,
           'rotationRate': 0.25,
           'tilt': 0.0,
+          'tiltX': 3.5,
+          'tiltY': -2.0,
           'fieldStrength': 45.0,
           'accuracy': 2,
         }));
@@ -234,6 +327,8 @@ void main() {
     expect(reading.timestamp, 1.5);
     expect(reading.rotationRate, 0.25);
     expect(reading.tilt, 0.0);
+    expect(reading.tiltX, 3.5);
+    expect(reading.tiltY, -2.0);
     expect(reading.fieldStrength, 45.0);
     expect(reading.accuracy, 2);
     expect(reading.needsCalibration, isFalse);
@@ -260,6 +355,8 @@ void main() {
           'timestamp': 2.0,
           'rotationRate': 0.0,
           'tilt': 12.0,
+          'tiltX': -1.0,
+          'tiltY': 12.0,
           'fieldStrength': 48.0,
           'accuracy': 2,
           'heading': 137.5,
@@ -268,6 +365,8 @@ void main() {
     final reading = await const CompassSource().readings().first;
 
     expect(reading.heading, 137.5);
+    expect(reading.tiltX, -1.0);
+    expect(reading.tiltY, 12.0);
   });
 
   testWidgets(

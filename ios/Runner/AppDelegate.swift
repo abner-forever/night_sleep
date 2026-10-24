@@ -41,7 +41,8 @@ private final class CompassStreamHandler: NSObject, FlutterStreamHandler {
       events(FlutterError(code: "unavailable", message: "此设备没有可用的罗盘传感器", details: nil))
       return nil
     }
-    motionManager.deviceMotionUpdateInterval = 1.0 / 30.0
+    // 60 Hz：30 Hz 在 60 Hz 屏幕上转动会一卡一卡。与 Android 侧对齐。
+    motionManager.deviceMotionUpdateInterval = 1.0 / 60.0
     motionManager.showsDeviceMovementDisplay = true
     motionManager.startDeviceMotionUpdates(using: .xMagneticNorthZVertical, to: .main) { motion, error in
       if let error = error {
@@ -66,6 +67,9 @@ private final class CompassStreamHandler: NSObject, FlutterStreamHandler {
       var reading: [String: Any] = [
         "timestamp": motion.timestamp,
         "tilt": tilt,
+        // 水平仪气泡：设备 +X / +Y 轴抬起的角度，正 = 右 / 上抬。
+        "tiltX": asin(min(1.0, max(-1.0, upX))) * 180.0 / .pi,
+        "tiltY": asin(min(1.0, max(-1.0, upY))) * 180.0 / .pi,
         "fieldStrength": strength,
         "accuracy": motion.magneticField.accuracy.rawValue,
         "rotationRate": -(motion.rotationRate.x * upX + motion.rotationRate.y * upY + motion.rotationRate.z * upZ)

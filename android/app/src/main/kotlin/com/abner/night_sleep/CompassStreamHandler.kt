@@ -12,19 +12,25 @@ import android.util.Log
 import android.view.Surface
 import io.flutter.plugin.common.EventChannel
 import kotlin.math.acos
+import kotlin.math.asin
 import kotlin.math.atan2
 import kotlin.math.sqrt
 
 /**
  * `night_sleep/compass` 的 Android 实现。
  *
- * **它是 iOS 那套算法的逐项复刻**（`ios/Runner/AppDelegate.swift` 的
- * `CompassStreamHandler`），不是「用 Android 的现成办法做一个罗盘」。理由：
- * Dart 侧的契约把问题拆成了三样**互相独立**的物理量——一个绝对的方位角 +
- * 一个相对的角速度，再由 `CompassHeadingFilter` 做互补滤波。若改用
- * `TYPE_ROTATION_VECTOR` 的融合方位角配一个融合角速度，等于把滤波做了两遍，
- * 平白多出滞后，而滤波器还得反过来跟它斗。而且 `needsCalibration` 要的是
- * **磁力计自己**的校准状态，`TYPE_MAGNETIC_FIELD.accuracy` 正好就是它。
+ * 对外契约与 iOS（`ios/Runner/AppDelegate.swift`）一致：一条绝对方位角 + 一个
+ * 相对角速度，再由 Dart 侧的 `CompassHeadingFilter` 做互补滤波。
+ *
+ * **方位角优先取 `TYPE_ROTATION_VECTOR`，不是直接拿磁力计 + 重力投影。**
+ * 2026-10-24 在 MI 9 上实测：手机静止、陀螺仪读数约 0 时，磁力计那一路的方位
+ * 峰峰值 **14.6°**、标准差 **2.75°**（地磁水平分量只有 12.5 µT，硬铁干扰很重），
+ * 页面上的指针会一直自己晃；换成旋转矢量后峰峰值 **0.068°**、标准差 **0.019°**。
+ * 系统自带指南针用的也是旋转矢量。
+ *
+ * 旋转矢量缺席（少见）时退回磁力计 + 重力，功能不受影响，只是会和以前一样抖。
+ * `needsCalibration` 仍取 **磁力计自己**的校准状态（`TYPE_MAGNETIC_FIELD.accuracy`），
+ * 旋转矢量给不了这个。
  *
  * 通道契约见 `lib/core/platform/compass.dart` 与
  * `lib/features/compass/domain/compass_heading.dart` 的 `CompassReading.fromMap`。
@@ -37,6 +43,7 @@ import kotlin.math.sqrt
  * | --- | --- |
  * | `timestamp` | 秒。`SensorEvent.timestamp` 是**纳秒**，`SystemClock.elapsedRealtimeNanos()` 与它同一时基 |
  * | `tilt` | 度，0 = 平放屏幕朝上 |
+ * | `tiltX` / `tiltY` | 度，设备 +X / +Y 轴抬起的角度（水平仪气泡用），正 = 右 / 上抬 |
  * | `fieldStrength` | 微特斯拉（Android 原生就是 µT，无需换算） |
  * | `accuracy` | **iOS 标度**：uncalibrated -1 / low 0 / medium 1 / high 2 |
  * | `rotationRate` | rad/s，绕竖直轴 |
@@ -49,14 +56,17 @@ class CompassStreamHandler(private val activity: Activity) :
     private var magSensor: Sensor? = null
     private var gravSensor: Sensor? = null
     private var gyroSensor: Sensor? = null
+    private var rvSensor: Sensor? = null
 
     private var eventSink: EventChannel.EventSink? = null
 
-    // 三个传感器**各自回调、时间不同**，所以要各存各自的最新值，发射时再合成。
+    // 几个传感器**各自回调、时间不同**，所以要各存各自的最新值，发射时再合成。
     // 存的是拷贝出来的 float，**不是 `SensorEvent.values` 本身**——框架会复用那个数组。
     private var magValues: FloatArray? = null
     private var gravValues: FloatArray? = null
     private var gyroValues: FloatArray? = null
+    private var rvValues: FloatArray? = null
+    private var rvTimestamp: Long = 0
     private var magAccuracy: Int = SensorManager.SENSOR_STATUS_UNRELIABLE
     private var lastEmitNanos: Long = 0
 
@@ -77,6 +87,7 @@ class CompassStreamHandler(private val activity: Activity) :
         magSensor = mag
         gravSensor = grav
         gyroSensor = manager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
+        rvSensor = manager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
 
         // 重入前先清干净：页面在后台会 cancel、回前台再 listen，不清的话
         // 恢复后的**第一条**读数可能是几分钟前的磁力计样本，而滤波器第一次
@@ -84,6 +95,8 @@ class CompassStreamHandler(private val activity: Activity) :
         magValues = null
         gravValues = null
         gyroValues = null
+        rvValues = null
+        rvTimestamp = 0
         lastEmitNanos = 0
 
         // 三行分开写、不用 `&&` 串联：串联会短路，后面两个就注册不上了。
@@ -92,8 +105,11 @@ class CompassStreamHandler(private val activity: Activity) :
         // 陀螺仪缺席不是致命的：没有它只是少了「转动时更跟手」的预测，把
         // rotationRate 报 0 即可，滤波器退化成对磁力计做低通。**不要**因此不发数据。
         val gyroOk = gyroSensor?.let { manager.registerListener(this, it, SENSOR_US) } ?: true
+        // 旋转矢量同样缺席不致命：没有它退回「磁力计 + 重力」直接算方位（会抖，
+        // 但能用）。见 [buildReading] 里两条来源的选择。
+        val rvOk = rvSensor?.let { manager.registerListener(this, it, SENSOR_US) } ?: true
 
-        if (!(magOk && gravOk && gyroOk)) {
+        if (!(magOk && gravOk && gyroOk && rvOk)) {
             manager.unregisterListener(this)
             // 这条用另一个 code：它不是「设备不行」，而是「这次没注册上」，
             // 页面显示「暂时无法读取传感器…稍后重试」并给出「重新连接」才是准确的。
@@ -117,6 +133,8 @@ class CompassStreamHandler(private val activity: Activity) :
         magValues = null
         gravValues = null
         gyroValues = null
+        rvValues = null
+        rvTimestamp = 0
         lastEmitNanos = 0
     }
 
@@ -130,10 +148,19 @@ class CompassStreamHandler(private val activity: Activity) :
             }
             Sensor.TYPE_GRAVITY -> {
                 gravValues = floatArrayOf(e.values[0], e.values[1], e.values[2])
+                // 重力也是发射节拍之一：水平仪看的是它，别让气泡只等陀螺仪。
+                maybeEmit()
                 return
             }
             Sensor.TYPE_GYROSCOPE -> {
                 gyroValues = floatArrayOf(e.values[0], e.values[1], e.values[2])
+                maybeEmit()
+            }
+            Sensor.TYPE_ROTATION_VECTOR -> {
+                // 3 / 4 / 5 元都得原样留着：`getRotationMatrixFromVector` 两种长度都收，
+                // 第四元是「方位角精度」，不能在这里截断。
+                rvValues = e.values.clone()
+                rvTimestamp = e.timestamp
                 maybeEmit()
             }
         }
@@ -142,23 +169,23 @@ class CompassStreamHandler(private val activity: Activity) :
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
 
     /**
-     * 由**陀螺仪**驱动发射。
+     * 由传感器回调驱动发射（陀螺仪 / 旋转矢量 / 重力都会进来），统一约 60 Hz 限流。
      *
-     * 选它当节拍是因为它最快、且注册期间必定持续上报——这样 30 Hz 的节奏是稳的，
-     * 页面那条 5 秒「未收到传感器数据」看门狗就不可能误触。磁力计在有的设备上
-     * 会长时间不出新值，用它驱动会让页面无端报「未收到传感器数据」。
+     * 只要有陀螺仪，节奏就是稳的，页面那条 5 秒「未收到传感器数据」看门狗就不可能
+     * 误触。旋转矢量与重力再顶上来，是为了**没有陀螺仪的设备**也照样能发数据。
      */
     private fun maybeEmit() {
         val sink = eventSink ?: return
         val mag = magValues ?: return
-        val grav = gravValues ?: return
 
         val now = SystemClock.elapsedRealtimeNanos()
+        // 没有可用的旋转矢量时才需要重力来定水平面。
+        if (!hasFreshRotationVector(now) && gravValues == null) return
         if (now - lastEmitNanos < EMIT_INTERVAL_NANOS) return
         lastEmitNanos = now
 
         try {
-            sink.success(buildReading(mag, grav, gyroValues, now))
+            sink.success(buildReading(mag, gravValues, gyroValues, now))
         } catch (t: Throwable) {
             // 回调跑在主 looper 上，逸出的异常会**直接杀掉进程**。
             // 这里一律丢掉这个样本，**绝不发 error**：Dart 侧是
@@ -168,38 +195,93 @@ class CompassStreamHandler(private val activity: Activity) :
         }
     }
 
+    /** 旋转矢量的时间戳与 `elapsedRealtimeNanos()` 同一时基，可直接相减。 */
+    private fun hasFreshRotationVector(nowNanos: Long): Boolean {
+        val rv = rvValues ?: return false
+        if (rv.size < 3) return false
+        return nowNanos >= rvTimestamp && nowNanos - rvTimestamp <= RV_STALE_NANOS
+    }
+
+    /**
+     * 重力向量归一化成「上」方向；自由落体或无效样本返回 null。
+     *
+     * **这一处是与 iOS 唯一的符号差异。** Android 的 TYPE_GRAVITY 在平放屏幕朝上时
+     * 报 Z = **+9.81**，而 CoreMotion 报 -1.0，两者反号。所以 iOS 写
+     * `up = -normalize(gravity)`，这里写 `up = +normalize(gravity)`。
+     *
+     * 照抄 iOS 那个负号的后果很具体：平放时 upZ = -1 → tilt = acos(-1) = 180°，
+     * 于是 `tilt < 60` 永不成立 → **heading 永远是 null**，页面永远停在
+     * 「请将手机屏幕朝上，保持水平」，而手机明明就平放着。
+     */
+    private fun gravityUp(g: FloatArray?): FloatArray? {
+        if (g == null) return null
+        val length = sqrt(g[0] * g[0] + g[1] * g[1] + g[2] * g[2])
+        if (length < 0.1f * SensorManager.GRAVITY_EARTH) return null
+        return floatArrayOf(g[0] / length, g[1] / length, g[2] / length)
+    }
+
     private fun buildReading(
         m: FloatArray,
-        g: FloatArray,
+        g: FloatArray?,
         omega: FloatArray?,
         nowNanos: Long,
     ): Map<String, Any> {
-        val gLen = sqrt(g[0] * g[0] + g[1] * g[1] + g[2] * g[2])
-        // 自由落体或无效样本：分母趋零会让 tilt 变 NaN，页面会印出「NaN°」。
-        if (gLen < 0.1f * SensorManager.GRAVITY_EARTH) {
-            throw IllegalStateException("gravity 样本无效（$gLen）")
+        val strength = sqrt(m[0] * m[0] + m[1] * m[1] + m[2] * m[2])
+        val accuracy = iosAccuracy(magAccuracy)
+        // 取一份局部引用：`rvValues` 是可变字段，直接读没法智能转换。
+        val rotationVector = if (hasFreshRotationVector(nowNanos)) rvValues else null
+        val rotation = rotationVector?.let {
+            FloatArray(9).also { r -> SensorManager.getRotationMatrixFromVector(r, it) }
         }
 
-        // **这一行是与 iOS 唯一的符号差异。** Android 的 TYPE_GRAVITY 在平放屏幕
-        // 朝上时报 Z = **+9.81**，而 CoreMotion 报 -1.0，两者反号。所以 iOS 写
-        // `up = -normalize(gravity)`，这里写 `up = +normalize(gravity)`。
+        // ---- up：竖直向上（设备坐标系） ----
         //
-        // 照抄 iOS 那个负号的后果很具体：平放时 upZ = -1 → tilt = acos(-1) = 180°，
-        // 于是 `tilt < 60` 永不成立 → **heading 永远是 null**，页面永远停在
-        // 「请将手机屏幕朝上，保持水平」，而手机明明就平放着。
-        val ux = g[0] / gLen
-        val uy = g[1] / gLen
-        val uz = g[2] / gLen
+        // **优先用重力，不用旋转矢量的 up。** 两者都是融合结果，重力这一路
+        // 更平滑，水平仪气泡逐帧看不会带出姿态融合的细小台阶。
+        // 重力缺席（少见）才退回旋转矢量的第三行。
+        //
+        // `getRotationMatrixFromVector` 得到的 R 把设备坐标映射到世界坐标
+        // （X 东 / Y 北 / Z 上），第 3 行（R[6..8]）是世界「上」在设备坐标里的表示。
+        val up = gravityUp(g)
+            ?: rotation?.let { floatArrayOf(it[6], it[7], it[8]) }
+            ?: throw IllegalStateException("没有可用的姿态样本")
+        val ux = up[0]
+        val uy = up[1]
+        val uz = up[2]
 
-        // 磁力计读数去掉竖直分量，剩下的就是指向磁北的水平分量。
+        // ---- north：指向磁北的水平方向（设备坐标系） ----
+        //
+        // **手机静止时方位抖不抖，全靠旋转矢量。** 直接用磁力计 + 重力投影会把
+        // 硬铁/软铁干扰原样算进方位：本机实测静止时峰峰值 14.6°、标准差 2.75°
+        // （地磁水平分量只有 12.5 µT）。旋转矢量是系统融合后的姿态，第二行
+        // （R[3..5]）就是世界「北」。旋转矢量缺席时才退回磁力计投影。
+        val rawNorth = rotation?.let { floatArrayOf(it[3], it[4], it[5]) }
+            ?: floatArrayOf(
+                m[0], m[1], m[2]
+            )
+        // 统一去掉竖直分量：即便用了重力 up、拿的是旋转矢量的 north，也让它严格
+        // 落在水平面里（两者来自同一世界坐标系，差异本就很小的）。
+        val northProjection = rawNorth[0] * ux + rawNorth[1] * uy + rawNorth[2] * uz
+        val nx = rawNorth[0] - northProjection * ux
+        val ny = rawNorth[1] - northProjection * uy
+        val nz = rawNorth[2] - northProjection * uz
+        val northLength = sqrt(nx * nx + ny * ny + nz * nz)
+
+        // 「磁场够不够强」这道门槛必须用**磁力计自己的水平分量（µT）**：
+        // 旋转矢量的 north 是单位向量，拿它判断磁场强弱没有意义。
         val projection = m[0] * ux + m[1] * uy + m[2] * uz
-        val nx = m[0] - projection * ux
-        val ny = m[1] - projection * uy
-        val nz = m[2] - projection * uz
-        val horizontal = sqrt(nx * nx + ny * ny + nz * nz)
+        val magNorthX = m[0] - projection * ux
+        val magNorthY = m[1] - projection * uy
+        val magNorthZ = m[2] - projection * uz
+        val magneticHorizontal =
+            sqrt(magNorthX * magNorthX + magNorthY * magNorthY + magNorthZ * magNorthZ)
 
-        val strength = sqrt(m[0] * m[0] + m[1] * m[1] + m[2] * m[2])
         val tilt = acos(uz.coerceIn(-1f, 1f).toDouble()) * 180.0 / Math.PI
+
+        // 水平仪要的是「往哪边斜」：分别取 up 在设备 +X / +Y 上的分量。
+        // 正值 = 右侧 / 顶部抬起，页面据此把气泡推向翘起的一侧。
+        val tiltX = asin(ux.coerceIn(-1f, 1f).toDouble()) * 180.0 / Math.PI
+        val tiltY = asin(uy.coerceIn(-1f, 1f).toDouble()) * 180.0 / Math.PI
 
         // 绕竖直轴的角速度。**形式与 iOS 一致，不要「顺手」再翻一次符号。**
         // 方位角是罗盘方位（俯视顺时针增大）。平放朝北时 up = +Z(设备)，设备 +X = 东，
@@ -212,22 +294,26 @@ class CompassStreamHandler(private val activity: Activity) :
             0.0
         }
 
-        val accuracy = iosAccuracy(magAccuracy)
-
         val reading = HashMap<String, Any>()
         reading["timestamp"] = nowNanos / 1e9
         reading["rotationRate"] = rotationRate
         reading["tilt"] = tilt
+        reading["tiltX"] = tiltX
+        reading["tiltY"] = tiltY
         reading["fieldStrength"] = strength.toDouble()
         reading["accuracy"] = accuracy
 
         // 三个门槛与 iOS 逐字一致：磁场太弱 / 手机太陡 / 未校准，都不发布方位。
-        if (horizontal > 1.0f && tilt < 60.0 && accuracy != ACCURACY_UNCALIBRATED) {
+        if (magneticHorizontal > 1.0f &&
+            tilt < 60.0 &&
+            accuracy != ACCURACY_UNCALIBRATED &&
+            northLength > 1e-3f
+        ) {
             // east = north × up，与 iOS 同式（也等于 Android SDK 自己对 east 的定义）。
-            val eastX = (ny * uz - nz * uy) / horizontal
-            val eastY = (nz * ux - nx * uz) / horizontal
-            val northX = nx / horizontal
-            val northY = ny / horizontal
+            val eastX = (ny * uz - nz * uy) / northLength
+            val eastY = (nz * ux - nx * uz) / northLength
+            val northX = nx / northLength
+            val northY = ny / northLength
             val forward = forwardFor(displayRotation())
             val angle = atan2(
                 (eastX * forward[0] + eastY * forward[1]).toDouble(),
@@ -243,12 +329,13 @@ class CompassStreamHandler(private val activity: Activity) :
             // 总场约 45 µT ⇒ 水平 ≈39、竖直 ≈23）。只打 heading 是分辨不出来的。
             Log.d(
                 TAG,
-                "tilt=${"%.1f".format(tilt)} horiz=${"%.1f".format(horizontal)} " +
-                    "vert=${"%.1f".format(sqrt((strength * strength - horizontal * horizontal).coerceAtLeast(0f)))} " +
+                "src=${if (rotationVector != null) "rv" else "mag"} " +
+                    "tilt=${"%.1f".format(tilt)} horiz=${"%.1f".format(magneticHorizontal)} " +
+                    "vert=${"%.1f".format(sqrt((strength * strength - magneticHorizontal * magneticHorizontal).coerceAtLeast(0f)))} " +
                     "strength=${"%.1f".format(strength)} acc=$magAccuracy→$accuracy " +
                     "rate=${"%.3f".format(rotationRate)} heading=${reading["heading"]}\n" +
                     "    m=[${"%.1f".format(m[0])}, ${"%.1f".format(m[1])}, ${"%.1f".format(m[2])}] " +
-                    "g=[${"%.2f".format(g[0])}, ${"%.2f".format(g[1])}, ${"%.2f".format(g[2])}]",
+                    "g=${g?.let { "[${"%.2f".format(it[0])}, ${"%.2f".format(it[1])}, ${"%.2f".format(it[2])}]" } ?: "无"}",
             )
         }
         return reading
@@ -312,13 +399,28 @@ class CompassStreamHandler(private val activity: Activity) :
 
     private companion object {
         const val TAG = "Compass"
-        const val DEBUG_LOG = true
+
+        /**
+         * 每秒 60 条带格式化的日志，本身就会拖慢帧率；诊断时在本地临时改成
+         * true，**不要把 true 提交上来**。
+         */
+        const val DEBUG_LOG = false
         const val ACCURACY_UNCALIBRATED = -1
 
-        /** 与 iOS 的 `deviceMotionUpdateInterval = 1/30` 对齐。 */
-        const val EMIT_INTERVAL_NANOS = 30_000_000L
+        /**
+         * 约 60 Hz。30 Hz 在 60 Hz 屏幕上转动时会一卡一卡；陀螺仪预测按 60 Hz
+         * 推进，盘面就顺了。与 iOS 的 `deviceMotionUpdateInterval = 1/60` 对齐。
+         */
+        const val EMIT_INTERVAL_NANOS = 16_666_667L
 
-        /** `SENSOR_DELAY_GAME` = 20000 µs。 */
-        const val SENSOR_US = SensorManager.SENSOR_DELAY_GAME
+        /** 旋转矢量超过这么久没更新就退回磁力计那一路（正常应在 20–50 ms 一帧）。 */
+        const val RV_STALE_NANOS = 250_000_000L
+
+        /**
+         * `SENSOR_DELAY_FASTEST`。GAME 只有 50 Hz，页面就跟着 ~45 FPS；
+         * 发射由 [EMIT_INTERVAL_NANOS] 限到 60 Hz，所以这里只是让数据够用。
+         * 只在罗盘页在前台时注册，离开页面就反注册。
+         */
+        const val SENSOR_US = SensorManager.SENSOR_DELAY_FASTEST
     }
 }
