@@ -197,7 +197,6 @@ void main() {
       // 中间帧根本采不到。
       await pumpRealApp(
         tester,
-        session: sessionAt(DateTime(2026, 8, 30, 23, 14)),
         animations: true,
       );
 
@@ -211,10 +210,18 @@ void main() {
 
       final atStart = tester.getTopLeft(panelBody()).dy;
       expect(atStart, greaterThan(0), reason: '升起的转场，起点应在屏幕下方而不是顶边');
+      expect(find.byType(NightBackdrop), findsOneWidget);
+      expect(
+        find.text('准备好休息了吗？'),
+        findsOneWidget,
+        reason: '入场时必须直接看到真正的睡前设置页，而不是空面板',
+      );
 
       // 显式推进到转场结束（夜景那 60 秒循环永不收敛，这里不能用 `pumpAndSettle`）。
       await tester
           .pump(AppDurations.standard + const Duration(milliseconds: 20));
+      await tester.pump();
+      expect(find.byType(NightBackdrop), findsOneWidget);
       expect(
         tester.getTopLeft(panelBody()).dy,
         0,

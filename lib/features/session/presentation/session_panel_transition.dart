@@ -55,7 +55,8 @@ class SessionPanelTransition extends StatefulWidget {
   State<SessionPanelTransition> createState() => _SessionPanelTransitionState();
 }
 
-class _SessionPanelTransitionState extends State<SessionPanelTransition> {
+class _SessionPanelTransitionState extends State<SessionPanelTransition>
+    with SingleTickerProviderStateMixin {
   /// 手指拉下来的位移（逻辑像素，正数向下）。页面往里写，遮罩从这里读。
   ///
   /// **由转场持有**：它比页面活得久一点——路由被重建时这一层的 State 复用、notifier
@@ -63,14 +64,71 @@ class _SessionPanelTransitionState extends State<SessionPanelTransition> {
   /// 的那种写法，重建时会换一个新对象，面板会当场闪回顶边一帧）。
   final ValueNotifier<double> _drag = ValueNotifier<double>(0);
 
+  /// 独立入场是否走完。走完后把位移交还给路由动画，供返回与下拉关闭使用。
+  bool _entryCompleted = false;
+
+  /// 入场位移由这一页自己驱动。
+  ///
+  /// 用 GoRouter 的 `animation` 不够：实测它进入 `transitionsBuilder` 时可能已经是
+  /// `completed / 1.0`，于是整段升起被跳过。这里等完整页面画出第一帧后再启动，
+  /// 首帧不会再被正文构建时间抢走。
+  late final AnimationController _entry = AnimationController(
+    vsync: this,
+    duration: AppDurations.standard,
+  );
+
+  late final Animation<Offset> _entryPosition = Tween<Offset>(
+    begin: const Offset(0, 1),
+    end: Offset.zero,
+  ).animate(
+    CurvedAnimation(
+      parent: _entry,
+      curve: AppMotion.standardCurve,
+    ),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _entry.addStatusListener(_handleEntryStatus);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _startEntry());
+  }
+
+  void _startEntry() {
+    if (!mounted) return;
+    if (NightStyle.reduceMotion(context)) {
+      _entry.value = 1;
+      return;
+    }
+    _entry.forward();
+  }
+
+  void _handleEntryStatus(AnimationStatus status) {
+    if (_entryCompleted || status != AnimationStatus.completed) return;
+    setState(() => _entryCompleted = true);
+  }
+
   @override
   void dispose() {
+    _entry
+      ..removeStatusListener(_handleEntryStatus)
+      ..dispose();
     _drag.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final routePosition = Tween<Offset>(
+      begin: const Offset(0, 1),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: widget.animation,
+        curve: AppMotion.standardCurve,
+      ),
+    );
+
     return SessionPanelDrag(
       value: _drag,
       child: Stack(
@@ -86,15 +144,9 @@ class _SessionPanelTransitionState extends State<SessionPanelTransition> {
             ),
           ),
           SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0, 1),
-              end: Offset.zero,
-            ).animate(
-              CurvedAnimation(
-                parent: widget.animation,
-                curve: AppMotion.standardCurve,
-              ),
-            ),
+            // 页面从一开始就完整挂载：入场时看到的必须是真正的夜景与设置内容，
+            // 不能先给一块空白面板。独立控制器只负责补回被 GoRouter 跳过的位移。
+            position: _entryCompleted ? routePosition : _entryPosition,
             child: widget.child,
           ),
         ],
