@@ -35,10 +35,17 @@ class AppIcons {
   static const _chevronDown = '<polyline points="6 9 12 15 18 9"/>';
   static const _chevronRight = '<polyline points="9 18 15 12 9 6"/>';
   static const _chevronUp = '<polyline points="18 15 12 9 6 15"/>';
+  static const _calendar = '<rect x="3" y="5" width="18" height="16" rx="3"/>'
+      '<path d="M8 3v4"/><path d="M16 3v4"/><path d="M3 10h18"/>'
+      '<path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/>'
+      '<path d="M8 18h.01"/><path d="M12 18h.01"/>';
   static const _play = '<polygon points="5 3 19 12 5 21 5 3"/>';
   static const _stop = '<rect x="3" y="3" width="18" height="18" rx="2"/>';
   static const _star =
       '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>';
+  static const _starFilled =
+      '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" '
+      'fill="currentColor" stroke="none"/>';
   static const _wave =
       '<path d="M2 12c1.5-3 3-4.5 4.5-4.5S9 9 10.5 12s3 4.5 4.5 4.5S18 15 19.5 12 21 7.5 22 6"/>';
   static const _bed =
@@ -107,14 +114,30 @@ class AppIcons {
       '<path d="m21 10-6 6"/>'
       '<path d="m3 3 18 18"/>';
 
-  // Filled glyphs the prototype swaps in for the active tab. Only three tabs
-  // have a filled counterpart; Settings falls back to the stroked icon.
-  static const _moonFilled =
-      '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" fill="currentColor" stroke="none"/>';
-  static const _penFilled =
-      '<path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25ZM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83Z" fill="currentColor" stroke="none"/>';
-  static const _chartFilled =
-      '<rect x="3" y="12" width="3.8" height="8" rx="1.9" fill="currentColor" stroke="none"/><rect x="10.1" y="7" width="3.8" height="13" rx="1.9" fill="currentColor" stroke="none"/><rect x="17.2" y="3" width="3.8" height="17" rx="1.9" fill="currentColor" stroke="none"/>';
+  // Bottom-tab glyphs copied from the design's `TabGlyph`. The filled forms
+  // differ from the general-purpose icons, so they stay isolated here.
+  static const _tabHome =
+      '<path d="M3.5 10.3 12 3.2l8.5 7.1v8.1a2.4 2.4 0 0 1-2.4 2.4H5.9a2.4 2.4 0 0 1-2.4-2.4Z"/>'
+      '<path d="M9.2 20.5v-5.4a1.7 1.7 0 0 1 1.7-1.7h2.2a1.7 1.7 0 0 1 1.7 1.7v5.4"/>';
+  static const _tabHomeFilled =
+      '<path d="M3.2 10.4 12 3l8.8 7.4v8.1a2.5 2.5 0 0 1-2.5 2.5H15v-6.1a1.6 1.6 0 0 0-1.6-1.6h-2.8A1.6 1.6 0 0 0 9 14.9V21H5.7a2.5 2.5 0 0 1-2.5-2.5Z" fill="currentColor" stroke="none"/>';
+  static const _tabLog =
+      '<path d="M6 3h9.2l5.3 5.3V18a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Z"/>'
+      '<path d="M15 3v5.5h5.3M7 12h10M7 16h7"/>';
+  static const _tabLogFilled =
+      '<path d="M6 2.5h9.4L21 8.1V18a3.5 3.5 0 0 1-3.5 3.5H6A3.5 3.5 0 0 1 2.5 18V6A3.5 3.5 0 0 1 6 2.5Z" fill="currentColor" stroke="none"/>';
+  static const _tabStats =
+      '<rect x="3.5" y="12.5" width="4" height="8" rx="2"/>'
+      '<rect x="10" y="7.5" width="4" height="13" rx="2"/>'
+      '<rect x="16.5" y="3.5" width="4" height="17" rx="2"/>';
+  static const _tabStatsFilled =
+      '<rect fill="currentColor" stroke="none" x="3" y="12" width="4.5" height="9" rx="2.25"/>'
+      '<rect fill="currentColor" stroke="none" x="9.75" y="7" width="4.5" height="14" rx="2.25"/>'
+      '<rect fill="currentColor" stroke="none" x="16.5" y="3" width="4.5" height="18" rx="2.25"/>';
+  static const _tabSettings = '<circle cx="12" cy="12" r="3.2"/>'
+      '<path d="M9.7 2.8h4.6l.6 2.3c.6.2 1.1.6 1.6.9l2.3-.6 2.3 4-1.7 1.7a8 8 0 0 1 0 1.8l1.7 1.7-2.3 4-2.3-.6c-.5.3-1 .7-1.6.9l-.6 2.3H9.7l-.6-2.3c-.6-.2-1.1-.6-1.6-.9l-2.3.6-2.3-4 1.7-1.7a8 8 0 0 1 0-1.8L2.9 9.4l2.3-4 2.3.6c.5-.3 1-.7 1.6-.9Z"/>';
+  static const _tabSettingsFilled =
+      '<path fill="currentColor" fill-rule="evenodd" d="M9.8 2.2h4.4l.6 2.3c.7.2 1.3.6 1.8 1l2.3-.7 2.2 3.8-1.7 1.7c.1.7.1 1.4 0 2.1l1.7 1.8-2.2 3.8-2.3-.7c-.5.4-1.1.8-1.8 1l-.6 2.3H9.8l-.6-2.3c-.7-.2-1.3-.6-1.8-1l-2.3.7-2.2-3.8 1.7-1.8a7.4 7.4 0 0 1 0-2.1L2.9 8.6l2.2-3.8 2.3.7c.5-.4 1.1-.8 1.8-1l.6-2.3Zm2.2 6a3.8 3.8 0 1 0 0 7.6 3.8 3.8 0 0 0 0-7.6Z" clip-rule="evenodd" stroke="none"/>';
 
   static String _hex(Color color) {
     final value = color.toARGB32();
@@ -204,6 +227,10 @@ class AppIcons {
           {double size = 24, Color? color, double strokeWidth = 1.6}) =>
       glyph(_chevronUp, size: size, color: color, strokeWidth: strokeWidth);
 
+  static Widget calendar(
+          {double size = 24, Color? color, double strokeWidth = 1.6}) =>
+      glyph(_calendar, size: size, color: color, strokeWidth: strokeWidth);
+
   static Widget play(
           {double size = 24, Color? color, double strokeWidth = 1.6}) =>
       glyph(_play, size: size, color: color, strokeWidth: strokeWidth);
@@ -215,6 +242,15 @@ class AppIcons {
   static Widget star(
           {double size = 24, Color? color, double strokeWidth = 1.6}) =>
       glyph(_star, size: size, color: color, strokeWidth: strokeWidth);
+
+  static Widget filledStar(
+          {double size = 24, Color? color, double strokeWidth = 1.6}) =>
+      glyph(
+        _starFilled,
+        size: size,
+        color: color,
+        strokeWidth: strokeWidth,
+      );
 
   static Widget wave(
           {double size = 24, Color? color, double strokeWidth = 1.6}) =>
@@ -308,20 +344,31 @@ class AppIcons {
           {double size = 24, Color? color, double strokeWidth = 1.6}) =>
       glyph(_soundOff, size: size, color: color, strokeWidth: strokeWidth);
 
-  /// Filled tab glyph for [id]; returns null when the design has no filled
-  /// variant, and the caller falls back to the stroked icon.
-  static Widget? filledTabGlyph(
+  /// 底部标签栏专用的实心 / 线框图标。
+  static Widget tabGlyph(
     String id, {
+    required bool active,
     double size = 21,
     Color? color,
+    required Color cutoutColor,
   }) {
-    final body = switch (id) {
-      'home' => _moonFilled,
-      'log' => _penFilled,
-      'stats' => _chartFilled,
-      _ => null,
+    final body = switch ((id, active)) {
+      ('home', false) => _tabHome,
+      ('home', true) => _tabHomeFilled,
+      ('log', false) => _tabLog,
+      ('log', true) => '$_tabLogFilled<path d="M15 3v5.5h5.4M7 12h10M7 16h7" '
+          'fill="none" stroke="${_hex(cutoutColor)}" stroke-width="1.65"/>',
+      ('stats', false) => _tabStats,
+      ('stats', true) => _tabStatsFilled,
+      ('settings', false) => _tabSettings,
+      ('settings', true) => _tabSettingsFilled,
+      _ => _tabHome,
     };
-    if (body == null) return null;
-    return glyph(body, size: size, color: color, strokeWidth: 0);
+    return glyph(
+      body,
+      size: size,
+      color: color,
+      strokeWidth: active ? 0 : 1.7,
+    );
   }
 }

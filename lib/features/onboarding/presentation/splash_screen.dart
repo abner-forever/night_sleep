@@ -1,7 +1,10 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+
+import '../../../core/platform/system_bars.dart';
 
 /// 开屏页（原型 `SplashScreen`）。
 ///
@@ -95,7 +98,20 @@ class _SplashScreenState extends State<SplashScreen>
     _controller.addStatusListener((status) {
       if (status == AnimationStatus.completed) widget.onFinished();
     });
-    _controller.forward();
+    // **首帧画出来之后再开始计时，不能在 `initState` 里 `forward()`。**
+    //
+    // `AnimationController` 的时间轴取自**帧时间戳**。在 `initState` 里启动时，
+    // 第一个 tick 拿到的就是「首帧开始构建」的那个时间戳；而首帧要建整棵界面树
+    // （debug 构建里 2 秒以上），下一帧的时间戳已经跨过了整整一个 1.6 秒的动画。
+    // 结果就是动画在还没上屏时就被快进到结尾——用户看到的是「黑屏一会儿，然后
+    // 直接是首页加载圈」，开屏等于没播。
+    //
+    // 放到首帧的 post-frame 回调里启动，tick 从下一帧重新计时，动画才真的从
+    // 第一帧开始走。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _controller.forward();
+    });
   }
 
   @override
@@ -123,49 +139,56 @@ class _SplashScreenState extends State<SplashScreen>
 
         // 与 `OnboardingOverlay` 同一做法：外层是 `Stack`，这一页铺满整屏。
         return Positioned.fill(
-          child: Opacity(
-            // 原型 `splashScreen` 的 `0% opacity 0; 8%,88% opacity 1; 100% opacity 0`。
-            //
-            // **只有后半段照抄**：原型开头那 8% 是从透明淡入的，因为它是往一个已经
-            // 渲染好的网页上叠一层。原生冷启动时应用外壳还没出来，开头再淡入就变成
-            // 「先闪一下浅色界面再变深」，所以这里从第一帧就是不透明的。
-            opacity: _screenOpacity(v),
-            child: ColoredBox(
-              color: _SplashPalette.night0,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  const _Backdrop(),
-                  Center(
-                    child: Transform.translate(
-                      // 原型 `.splash-brand { transform: translateY(-2vh) }`。
-                      offset:
-                          Offset(0, -MediaQuery.sizeOf(context).height * 0.02),
-                      child: _Brand(
-                        controller: _controller,
-                        reduceMotion: reduceMotion,
-                      ),
-                    ),
-                  ),
-                  Align(
-                    alignment: Alignment.bottomCenter,
-                    child: Padding(
-                      // `bottom: max(42px, env(safe-area-inset-bottom) + 24px)`。
-                      padding: EdgeInsets.only(
-                        bottom: math.max(42, padding.bottom + 24),
-                      ),
-                      child: Opacity(
-                        opacity: _interval(1.7, 0.4).transform(v),
-                        child: _Progress(
-                          progress: reduceMotion
-                              ? 1
-                              : _interval(1.75, 1.2, Curves.easeInOut)
-                                  .transform(v),
+          // 开屏期间两条系统栏也按「深色页面」处理：透明底 + 浅色图标。
+          // 少了这一层，第一帧会套用下面的首页 / 应用级样式（浅色主题下是深色
+          // 图标），深蓝开屏上顶着一排几乎看不见的图标，收起时再翻成浅色——
+          // 用户看到的就是顶部 / 底部「闪一下」。
+          child: AnnotatedRegion<SystemUiOverlayStyle>(
+            value: appSystemUiOverlayStyle(Brightness.dark),
+            child: Opacity(
+              // 原型 `splashScreen` 的 `0% opacity 0; 8%,88% opacity 1; 100% opacity 0`。
+              //
+              // **只有后半段照抄**：原型开头那 8% 是从透明淡入的，因为它是往一个
+              // 已经渲染好的网页上叠一层。原生冷启动时应用外壳还没出来，开头再淡入
+              // 就变成「先闪一下浅色界面再变深」，所以这里从第一帧就是不透明的。
+              opacity: _screenOpacity(v),
+              child: ColoredBox(
+                color: _SplashPalette.night0,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    const _Backdrop(),
+                    Center(
+                      child: Transform.translate(
+                        // 原型 `.splash-brand { transform: translateY(-2vh) }`。
+                        offset: Offset(
+                            0, -MediaQuery.sizeOf(context).height * 0.02),
+                        child: _Brand(
+                          controller: _controller,
+                          reduceMotion: reduceMotion,
                         ),
                       ),
                     ),
-                  ),
-                ],
+                    Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Padding(
+                        // `bottom: max(42px, env(safe-area-inset-bottom) + 24px)`。
+                        padding: EdgeInsets.only(
+                          bottom: math.max(42, padding.bottom + 24),
+                        ),
+                        child: Opacity(
+                          opacity: _interval(1.7, 0.4).transform(v),
+                          child: _Progress(
+                            progress: reduceMotion
+                                ? 1
+                                : _interval(1.75, 1.2, Curves.easeInOut)
+                                    .transform(v),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

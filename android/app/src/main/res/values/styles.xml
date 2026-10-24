@@ -1,18 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Theme applied to the Android Window while the process is starting when the OS's Dark Mode setting is off -->
+    <!-- Activity 还没创建时，系统用这个主题画启动窗口。 -->
     <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
-        <!-- Show a splash screen on the activity. Automatically removed when
-             the Flutter engine draws its first frame -->
         <item name="android:windowBackground">@drawable/launch_background</item>
-    </style>
-    <!-- Theme applied to the Android Window as soon as the process has started.
-         This theme determines the color of the Android Window while your
-         Flutter UI initializes, as well as behind your Flutter UI while its
-         running.
+        <!-- 启动窗口是深蓝，两条系统栏跟着深蓝、图标用浅色，否则 MIUI 上是一排
+             几乎看不见的黑图标压在深蓝上。Flutter 首帧之后由
+             `appSystemUiOverlayRegion` 按应用主题接管。
 
-         This Theme is only used starting with V2 of Flutter's Android embedding. -->
+             **`windowDrawsSystemBarBackgrounds` 不能省**：启动窗口不是边到边的，
+             不画系统栏底色时，状态栏那块会露出系统默认的黑，深蓝页面上顶着一
+             条黑带。 -->
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:statusBarColor">@color/launch_background</item>
+        <item name="android:navigationBarColor">@color/launch_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <!-- Activity 一创建（`FlutterActivity.onCreate` 里 `setTheme`）就换成这个主题，
+         而 Flutter 的首帧还要等引擎与 `main()` 才能画出来。**这段窗口期画的正是
+         `windowBackground`**：模板默认是 `?android:colorBackground`（浅色主题下为白），
+         于是整段引擎初始化都是一屏白——这就是「冷启动白屏几秒」的直接来源。
+         改成开屏同色，启动过程从第一毫秒起就是夜深。 -->
     <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
-        <item name="android:windowBackground">?android:colorBackground</item>
+        <item name="android:windowBackground">@color/launch_background</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:statusBarColor">@color/launch_background</item>
+        <item name="android:navigationBarColor">@color/launch_background</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
 </resources>

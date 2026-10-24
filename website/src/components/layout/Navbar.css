@@ -2,17 +2,28 @@
   position: fixed;
   inset: 0 0 auto 0;
   z-index: 100;
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--duration) var(--ease-out);
+}
+
+/* 毛玻璃画在独立的伪元素上，导航文字不落在 backdrop-filter 的图层里，
+   否则在 Windows 的 125% / 150% 缩放下文字会被整层重采样而发虚。 */
+.navbar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
   background: var(--nav-bg);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid transparent;
-  transition:
-    border-color var(--duration) var(--ease-out),
-    background-color var(--duration) var(--ease-out);
+  transition: background-color var(--duration) var(--ease-out);
 }
 
 .navbar.is-scrolled {
   border-bottom-color: var(--border);
+}
+
+.navbar.is-scrolled::before {
   background: var(--nav-bg-scrolled);
 }
 
@@ -39,7 +50,8 @@
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   font-size: 0.9375rem;
-  font-weight: 500;
+  /* 500 在 Windows 的中文字体里容易显得发虚，600 对齐到实际可用的字重 */
+  font-weight: 600;
   color: var(--text-2);
   transition:
     color var(--duration) var(--ease-out),
@@ -91,7 +103,7 @@
   place-items: center;
   width: 40px;
   height: 40px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-full);
   color: var(--text);
   transition: background-color var(--duration) var(--ease-out);
 }

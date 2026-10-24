@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sleep/app/app_shell.dart';
 import 'package:night_sleep/core/theme/app_theme.dart';
@@ -54,12 +55,12 @@ void main() {
         expect(bar.left, 0);
         expect(bar.right, screen.width);
         expect(bar.bottom, screen.height);
-        final bottomInset = safeBottom < 8 ? 8 : safeBottom;
-        expect(bar.height, 49 + bottomInset);
+        final bottomInset = safeBottom < 10 ? 10 : safeBottom;
+        expect(bar.height, 54 + bottomInset);
         final label = tester.getRect(find.text('首页'));
         expect(screen.height - label.bottom,
             greaterThanOrEqualTo(bottomInset - 4));
-        expect(screen.height - label.bottom, closeTo(bottomInset - 1.5, 0.01));
+        expect(screen.height - label.bottom, closeTo(bottomInset + 4.5, 0.01));
         final reserve = tester
             .widget<ListView>(find.byType(ListView))
             .padding!
@@ -76,6 +77,19 @@ void main() {
     await pump(tester, safeBottom: 34, onSelect: (tab) => selected = tab);
     await tester.tap(find.text('回顾'));
     expect(selected, AppTab.log);
+  });
+
+  testWidgets('选中标签切换为设计稿的 24px 实心图标', (tester) async {
+    await pump(tester, safeBottom: 34);
+
+    expect(find.byKey(const ValueKey('home-true')), findsOneWidget);
+    expect(find.byKey(const ValueKey('log-false')), findsOneWidget);
+    expect(find.byKey(const ValueKey('settings-false')), findsOneWidget);
+    for (final tab in AppTab.values) {
+      final glyph = find.byKey(ValueKey('${tab.id}-${tab == AppTab.home}'));
+      expect(glyph, findsOneWidget);
+    }
+    expect(tester.getSize(find.byType(SvgPicture).first), const Size(24, 24));
   });
 
   testWidgets('大字体下底栏文字不溢出', (tester) async {

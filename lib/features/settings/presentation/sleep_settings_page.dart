@@ -367,42 +367,20 @@ class SleepSettingsPage extends ConsumerWidget {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          '就寝提醒',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: tokens.textPrimary,
-                          ),
-                        ),
-                        if (bedtimeEnabled)
-                          Pressable(
-                            haptic: false,
-                            isButton: false,
-                            onTap: () => _pickReminderTime(
-                              context,
-                              ref,
-                              bedtime: true,
-                              currentMinutes: bedtimeMinutes,
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.only(top: 2),
-                              child: Text(
-                                minutesToClock(bedtimeMinutes),
-                                style: AppTheme.num(
-                                  context,
-                                  size: 12,
-                                  weight: FontWeight.w600,
-                                  color: tokens.accent,
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
+                    child: _ReminderLabel(
+                      key: const ValueKey('bedtime-reminder-time'),
+                      title: '就寝提醒',
+                      enabled: bedtimeEnabled,
+                      time: minutesToClock(bedtimeMinutes),
+                      color: tokens.accent,
+                      semanticLabel:
+                          '修改就寝提醒时间 ${minutesToClock(bedtimeMinutes)}',
+                      onTap: () => _pickReminderTime(
+                        context,
+                        ref,
+                        bedtime: true,
+                        currentMinutes: bedtimeMinutes,
+                      ),
                     ),
                   ),
                   IosToggle(
@@ -429,42 +407,19 @@ class SleepSettingsPage extends ConsumerWidget {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          '起床提醒',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: tokens.textPrimary,
-                          ),
-                        ),
-                        if (wakeEnabled)
-                          Pressable(
-                            haptic: false,
-                            isButton: false,
-                            onTap: () => _pickReminderTime(
-                              context,
-                              ref,
-                              bedtime: false,
-                              currentMinutes: wakeMinutes,
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.only(top: 2),
-                              child: Text(
-                                minutesToClock(wakeMinutes),
-                                style: AppTheme.num(
-                                  context,
-                                  size: 12,
-                                  weight: FontWeight.w600,
-                                  color: tokens.accentViolet,
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
+                    child: _ReminderLabel(
+                      key: const ValueKey('wake-reminder-time'),
+                      title: '起床提醒',
+                      enabled: wakeEnabled,
+                      time: minutesToClock(wakeMinutes),
+                      color: tokens.accentViolet,
+                      semanticLabel: '修改起床提醒时间 ${minutesToClock(wakeMinutes)}',
+                      onTap: () => _pickReminderTime(
+                        context,
+                        ref,
+                        bedtime: false,
+                        currentMinutes: wakeMinutes,
+                      ),
                     ),
                   ),
                   IosToggle(
@@ -693,6 +648,88 @@ class SleepSettingsPage extends ConsumerWidget {
       error: (_, __) => '暂时读不到占用',
       data: (bytes) =>
           bytes == 0 ? '还没有录到片段' : '已录片段占用的空间 · ${formatCacheSize(bytes)}',
+    );
+  }
+}
+
+class _ReminderLabel extends StatelessWidget {
+  const _ReminderLabel({
+    super.key,
+    required this.title,
+    required this.enabled,
+    required this.time,
+    required this.color,
+    required this.semanticLabel,
+    required this.onTap,
+  });
+
+  final String title;
+  final bool enabled;
+  final String time;
+  final Color color;
+  final String semanticLabel;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppTokens.of(context);
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: tokens.textPrimary,
+            ),
+          ),
+          if (enabled) ...[
+            const SizedBox(height: 3),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AppIcons.clock(
+                  size: 13,
+                  color: color,
+                  strokeWidth: 1.8,
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  time,
+                  style: AppTheme.num(
+                    context,
+                    size: 12,
+                    weight: FontWeight.w600,
+                    color: color,
+                  ),
+                ),
+                const SizedBox(width: 2),
+                AppIcons.chevronRight(
+                  size: 12,
+                  color: color,
+                  strokeWidth: 2,
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 44),
+      child: enabled
+          ? Pressable(
+              haptic: false,
+              semanticLabel: semanticLabel,
+              onTap: onTap,
+              child: content,
+            )
+          : content,
     );
   }
 }

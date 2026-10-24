@@ -16,6 +16,7 @@ import 'package:night_sleep/core/widgets/subpage.dart';
 import 'package:night_sleep/features/onboarding/presentation/onboarding_overlay.dart';
 import 'package:night_sleep/features/onboarding/presentation/splash_screen.dart';
 import 'package:night_sleep/features/home/presentation/home_page.dart';
+import 'package:night_sleep/features/home/presentation/sleep_calendar_page.dart';
 import 'package:night_sleep/main.dart' as app;
 import 'package:night_sleep/features/sleep/presentation/sheets/detail_sheet.dart';
 import 'package:night_sleep/features/sleep/data/sleep_repository.dart';
@@ -25,6 +26,7 @@ void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   const holdSeconds = int.fromEnvironment('VISUAL_HOLD_SECONDS');
   const homePullOnly = bool.fromEnvironment('HOME_PULL_ONLY');
+  const skipHomePull = bool.fromEnvironment('SKIP_HOME_PULL');
 
   Future<void> settle(WidgetTester tester) async {
     for (var frame = 0; frame < 5; frame++) {
@@ -150,8 +152,9 @@ void main() {
             tester.state<ScrollableState>(find.byType(Scrollable).last);
         homeScroll.position.jumpTo(0);
         await checkEdges(tester, 'home-$mode');
-        if (MediaQuery.sizeOf(tester.element(find.byType(HomePage))).width <
-            kWideLayoutBreakpoint) {
+        if (!skipHomePull &&
+            MediaQuery.sizeOf(tester.element(find.byType(HomePage))).width <
+                kWideLayoutBreakpoint) {
           final gesture = await tester
               .startGesture(tester.getCenter(find.byType(Scrollable).last));
           try {
@@ -177,6 +180,13 @@ void main() {
         );
         await checkpoint(tester, 'home-utilities-$mode');
         homeScroll.position.jumpTo(0);
+        await settle(tester);
+
+        await tester.tap(find.bySemanticsLabel('打开睡眠日历'));
+        await tester.pump(const Duration(milliseconds: 800));
+        expect(find.byType(SleepCalendarPage), findsOneWidget);
+        await checkEdges(tester, 'calendar-$mode');
+        router.pop();
         await settle(tester);
 
         final entries = container.read(sleepEntriesProvider).valueOrNull ?? [];
@@ -278,7 +288,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 600));
         expect(find.byType(AppSheet), findsOneWidget);
         await checkEdges(tester, 'sound-sheet-$mode');
-        await tester.tap(find.text('关闭').first);
+        await tester.tap(find.bySemanticsLabel('关闭助眠音效'));
         await tester.pump(const Duration(milliseconds: 600));
         expect(find.byType(AppSheet), findsNothing);
         expect(openSheetCount.value, 0);

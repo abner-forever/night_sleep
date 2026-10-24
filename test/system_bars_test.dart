@@ -1,5 +1,4 @@
 import 'package:drift/native.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -200,59 +199,9 @@ void main() {
     });
   });
 
-  group('enableEdgeToEdge', () {
-    late List<MethodCall> calls;
-
-    setUp(() {
-      calls = [];
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(SystemChannels.platform, (call) async {
-        calls.add(call);
-        return null;
-      });
-    });
-    tearDown(() {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(SystemChannels.platform, null);
-    });
-
-    /// 平台判定要跑在真实分支上；`debugDefaultTargetPlatformOverride`
-    /// 必须**在用例体内**还原——`testWidgets` 的收尾会断言 foundation 的调试变量
-    /// 已被清干净，`addTearDown` 赶不上那一步（实测：会以「The value of a foundation
-    /// debug variable was changed by the test」失败）。
-    Future<void> asPlatform(
-      TargetPlatform platform,
-      Future<void> Function() body,
-    ) async {
-      debugDefaultTargetPlatformOverride = platform;
-      try {
-        await body();
-      } finally {
-        debugDefaultTargetPlatformOverride = null;
-      }
-    }
-
-    test('Android：要求引擎进 edge-to-edge', () async {
-      await asPlatform(TargetPlatform.android, () async {
-        await enableEdgeToEdge();
-      });
-
-      // 载荷就是一整个模式名的字符串（`SystemChrome.setEnabledSystemUIMode`
-      // 在 mode != manual 时只发这一个参数，已读 SDK 源核对）。
-      final modes = calls
-          .where((c) => c.method == 'SystemChrome.setEnabledSystemUIMode')
-          .map((c) => c.arguments);
-      expect(modes, [SystemUiMode.edgeToEdge.toString()]);
-    });
-
-    test('iOS / macOS：一次都不调（那边本来就边到边，不需要也不该动）', () async {
-      for (final platform in [TargetPlatform.iOS, TargetPlatform.macOS]) {
-        await asPlatform(platform, () async {
-          await enableEdgeToEdge();
-        });
-      }
-
-      expect(calls, isEmpty);
-    });
-  });
+  // 「铺满整屏」那一条（原 `enableEdgeToEdge`）已挪到
+  // `android/app/src/main/kotlin/com/abner/night_sleep/MainActivity.kt` 的
+  // `WindowCompat.setDecorFitsSystemWindows(window, false)`：
+  // 它在这里只是一个平台通道调用，而那次调用正是冷启动的瓶颈。原生侧无法在
+  // `flutter test` 里断言，改由真机冷启动验收（见 CHANGELOG）。
 }

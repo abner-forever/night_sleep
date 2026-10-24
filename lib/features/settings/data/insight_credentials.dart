@@ -47,12 +47,17 @@ class SecureInsightKeyStore implements InsightKeyStore {
 final insightKeyStoreProvider =
     Provider<InsightKeyStore>((ref) => const SecureInsightKeyStore());
 
-/// 启动时从钥匙串读出来的值，由 `main()` 覆盖。
+/// 可选的首启值：测试注入，或调用方已经同步拿到了密钥。生产路径上它是空的。
 ///
-/// 单独一个 provider、而不是让 notifier 自己在 [Notifier.build] 里异步读：
-/// `build()` 必须**同步**返回，异步补值会留下一个窗口——用户正好在这几十毫秒里
-/// 打开设置页，输入框是空的，而钥匙串里其实有密钥。放在 `main()` 里 await 一次，
-/// 窗口就不存在了。
+/// **密钥不再在 `main()` 里同步读。** `flutter_secure_storage` 第一次 `read()` 在
+/// 小米 9 + Android 11 上要 **~860ms**（Keystore 初始化），而它原先卡在 `runApp`
+/// 之前——那正是冷启动白屏的一部分。现在由 [InsightApiKeyNotifier.load] 在开屏
+/// 播完之后补读；那时界面已经可交互，但用户还要点进设置、再进「洞察服务」，
+/// 比这 860ms 长得多。
+///
+/// 原来那条「必须 await 一次，否则输入框会先空一下」的约束仍然成立，只是兜底换了
+/// 地方：读取完成前用户走不到那个输入框，而就算走到了，
+/// [InsightApiKeyNotifier.load] 也只在**用户没动过输入框**时才写入。
 final insightApiKeySeedProvider = Provider<String>((ref) => '');
 
 /// The API key for the current run.
@@ -76,11 +81,35 @@ class InsightApiKeyNotifier extends Notifier<String> {
   /// 上一次已经落盘的值，用来判断「这次改动要不要真的写钥匙串」。
   String? _persisted;
 
+  /// 钥匙串补读是否已经发起过。只读一次。
+  bool _loaded = false;
+
+  /// 用户动过输入框（输入或清除）。**机器不能覆盖人**：动过之后就不再接受补读值。
+  bool _userEdited = false;
+
   @override
   String build() {
     final seed = ref.watch(insightApiKeySeedProvider);
     _persisted = seed.trim().isEmpty ? null : seed.trim();
     return seed;
+  }
+
+  /// 从钥匙串补读一次，**在开屏播完之后调用**（见 [insightApiKeySeedProvider]）。
+  ///
+  /// 幂等。三种情况直接放弃：已经读过、用户动过输入框、内存里已经有值。
+  /// 读到空值也放弃——「没有密钥」是正常状态，不需要再写一遍空串。
+  Future<void> load() async {
+    if (_loaded) return;
+    _loaded = true;
+    if (_userEdited || state.isNotEmpty) return;
+
+    final stored =
+        (await ref.read(insightKeyStoreProvider).read())?.trim() ?? '';
+    // await 期间用户可能已经打开设置页开始输入，再判一次。
+    if (stored.isEmpty || _userEdited || state.isNotEmpty) return;
+
+    state = stored;
+    _persisted = stored;
   }
 
   /// 用户改了输入框。内存立刻生效（请求马上就能用），落盘异步跟上。
@@ -89,6 +118,7 @@ class InsightApiKeyNotifier extends Notifier<String> {
   /// 而且钥匙串写入是一次很快的平台调用，`_persisted` 挡住重复值之后，
   /// 一个 40 字符的 key 最多写 40 次。
   void update(String value) {
+    _userEdited = true;
     state = value;
     final trimmed = value.trim();
     if (trimmed == _persisted) return;
@@ -98,6 +128,7 @@ class InsightApiKeyNotifier extends Notifier<String> {
 
   /// 手动清除（设置页的「清除密钥」）。内存与钥匙串一起清。
   Future<void> clear() async {
+    _userEdited = true;
     state = '';
     _persisted = null;
     try {

@@ -948,7 +948,7 @@ void main() {
     // 点第 5 颗星，**按语义标签点**。原先用 `find.byType(QualityStars)` 点的是
     // 组件包围盒的**中心**，落的是第 3 颗「一般」；而 `isNotNull` 分辨不出
     // 「用户点的那一档」与「任意一档」。
-    await tester.tap(find.bySemanticsLabel('睡眠质量 精力充沛'));
+    await tester.tap(find.bySemanticsLabel('睡眠质量 极好'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();

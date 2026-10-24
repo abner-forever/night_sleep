@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/app_tokens.dart';
 import '../../../../core/widgets/app_icons.dart';
+import '../../../../core/widgets/quiet_surface.dart';
 import '../../domain/sleep_entry.dart';
 import '../../domain/sleep_stage.dart';
 import 'stage_style.dart';
@@ -60,6 +61,207 @@ class SleepTimes extends StatelessWidget {
             ],
           ),
       ],
+    );
+  }
+}
+
+/// 所选周期的睡眠评分与三项核心读数。
+class SleepSummary extends StatelessWidget {
+  const SleepSummary({
+    super.key,
+    required this.records,
+    this.periodLabel = '本周',
+  });
+
+  final List<SleepEntry> records;
+  final String periodLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppTokens.of(context);
+    final scored = records.where((entry) => entry.score != null).toList();
+    final score = scored.isEmpty
+        ? null
+        : (scored.fold<int>(0, (sum, entry) => sum + entry.score!) /
+                scored.length)
+            .round();
+    final average = records.isEmpty
+        ? null
+        : records.fold<double>(
+              0,
+              (sum, entry) => sum + entry.durationHours,
+            ) /
+            records.length;
+    final good = records.where((entry) => entry.durationHours >= 7).length;
+    final label = score == null
+        ? '暂无评分'
+        : score >= 85
+            ? '优秀'
+            : score >= 70
+                ? '良好'
+                : '待改善';
+
+    return QuietSurface(
+      borderRadius: BorderRadius.circular(AppRadii.panel),
+      padding: const EdgeInsets.fromLTRB(20, 19, 20, 19),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$periodLabel睡眠评分',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: tokens.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 13),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                score?.toString() ?? '—',
+                style: AppTheme.num(
+                  context,
+                  size: 43,
+                  weight: FontWeight.w600,
+                  letterSpacing: -1.72,
+                  color: tokens.textPrimary,
+                ),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                '/100',
+                style: TextStyle(fontSize: 12, color: tokens.textMuted),
+              ),
+              const SizedBox(width: 18),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: score == null ? tokens.textMuted : tokens.accent,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '基于已保存的睡眠记录',
+            style: TextStyle(fontSize: 10, color: tokens.textMuted),
+          ),
+          const SizedBox(height: 18),
+          Container(height: 1, color: tokens.border),
+          const SizedBox(height: 17),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _SummaryMetric(
+                  label: '平均时长',
+                  value: average?.toStringAsFixed(1) ?? '—',
+                  unit: average == null ? '' : 'h',
+                  note: '建议 7–9 小时',
+                ),
+              ),
+              const _MetricDivider(),
+              Expanded(
+                child: _SummaryMetric(
+                  label: '达标天数',
+                  value: '$good',
+                  unit: '/${records.length}',
+                  note: '目标 ≥ 7 小时',
+                ),
+              ),
+              const _MetricDivider(),
+              Expanded(
+                child: _SummaryMetric(
+                  label: '记录夜数',
+                  value: '${records.length}',
+                  unit: '',
+                  note: '$periodLabel记录',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryMetric extends StatelessWidget {
+  const _SummaryMetric({
+    required this.label,
+    required this.value,
+    required this.unit,
+    required this.note,
+  });
+
+  final String label;
+  final String value;
+  final String unit;
+  final String note;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppTokens.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(fontSize: 10, color: tokens.textMuted),
+        ),
+        const SizedBox(height: 7),
+        Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(
+                text: value,
+                style: AppTheme.num(
+                  context,
+                  size: 23,
+                  weight: FontWeight.w600,
+                  letterSpacing: -0.46,
+                  color: tokens.textPrimary,
+                ),
+              ),
+              if (unit.isNotEmpty)
+                TextSpan(
+                  text: unit,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: tokens.textSecondary,
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          note,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(fontSize: 9, color: tokens.good),
+        ),
+      ],
+    );
+  }
+}
+
+class _MetricDivider extends StatelessWidget {
+  const _MetricDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 1,
+      height: 54,
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+      color: AppTokens.of(context).border,
     );
   }
 }

@@ -1,5 +1,7 @@
 package com.abner.night_sleep
 
+import android.os.Bundle
+import androidx.core.view.WindowCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -9,6 +11,25 @@ class MainActivity : FlutterActivity() {
 
     private var compassHandler: CompassStreamHandler? = null
     private var appUpdateHandler: AppUpdateHandler? = null
+
+    /**
+     * 内容铺到屏幕物理边缘（状态栏 / 导航栏背后）。
+     *
+     * **写在原生而不是 Dart 侧。** 原来由 `main()` await
+     * `SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge)` 完成，但在
+     * 小米 9 + Android 11 上这一次调用要 **~800ms** 才返回，并且把同一根平台线程上的
+     * 其它平台通道一起堵住（实测开库从 15ms 被拖到 800ms 之后）。那 800ms 正好落在
+     * 冷启动最关键的窗口里。
+     *
+     * `setDecorFitsSystemWindows(false)` 是那一调用真正做的事，这里在 Activity 一创建
+     * 就把它设好，Flutter 的第一帧本来就是边到边的，不需要等任何回包。
+     * 两条栏的颜色与图标明暗仍由 Dart 侧的 `appSystemUiOverlayRegion` 按
+     * 应用主题（而不是系统设置）设置——那是另一件事，见 `lib/core/platform/system_bars.dart`。
+     */
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         // **这一行必须留着。** 本工程用的是 embedding v2（清单里 `flutterEmbedding=2`），

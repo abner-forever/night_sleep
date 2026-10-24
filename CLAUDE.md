@@ -81,7 +81,10 @@ flutter test integration_test/app_screens_test.dart -d <device>     # 界面截�
 `只开 plan` 档在当前会话里直接做，审查集中在阶段末尾做一次——每个 subagent 都要从头重读
 CLAUDE.md 与源码，对小改动是纯开销。
 
-**需求写完只记一条 `CHANGELOG.md`**：新增了什么、修好了什么、行为变了什么，每条三五行为宜。
+**`CHANGELOG.md` 跟着 git 提交走**：每次提交前，把这次提交的改动**汇总成一条**（关联改动
+合并），**不按单次改代码逐条追加**。一条一句话，一般不超过 20 字；**样式改动只写
+「样式改动：…」**，只有大改版才多写两句；功能与修复同样点到为止。测试条数、截图核对、
+踩坑过程放 commit message 或验证记录，**不进 CHANGELOG**（**没验证过的仍要写「未验证」**）。
 **纯文档改动不进 CHANGELOG**（git 历史就是记录）。**不要顺手同步 README、规格、验证记录**，
 也不要为一个需求补一份计划——只有一种情况必须动它们：**你的改动让那里已经写下的一句话变成了假话**。
 那时改的也是**那一句话**。
@@ -127,9 +130,11 @@ lib/
 - **平台**（`core/platform/`）：`reminderSchedulerProvider`、`nightAudioServiceProvider`、
   `appSettingsLauncherProvider`。
 
-`main.dart` 里 override 了三个：`databaseProvider`、`insightApiKeySeedProvider`（密钥必须在这里
-`await` 读到，否则输入框会先空一下）、`reminderSchedulerProvider`（使用启动时已初始化的
-本地通知调度器）。
+`main.dart` 里 override 了两个：`databaseProvider`、`reminderSchedulerProvider`（使用启动时
+创建的本地通知调度器）。**密钥不在这里读**：`flutter_secure_storage` 第一次读在 MIUI 上要
+几百毫秒，改由 `InsightApiKeyNotifier.load()` 在首帧之后补读（开屏页盖住那段时间，且不会
+覆盖用户已经输入的值）。启动路径只留 `AppDatabase.open()`——冷启动优化过一轮，别把 await
+链加回来。
 
 **`NotifierProvider`（`toastProvider`、`insightApiKeyProvider`）与 `ChangeNotifierProvider`
 （录音、白噪音、片段回放）并存，是有意的分工**——前者是纯值，后者本来就是要 dispose 的控制器。

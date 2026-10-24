@@ -329,7 +329,7 @@ void main() {
       expect(find.text('23:30'), findsOneWidget, reason: '入睡时间应预填');
       expect(find.text('07:00'), findsOneWidget, reason: '起床时间应预填');
       expect(find.text('2026-09-27'), findsOneWidget, reason: '日期按醒来日预填');
-      expect(find.text('精力充沛'), findsOneWidget, reason: '主观质量应预填');
+      expect(find.text('极好'), findsOneWidget, reason: '主观质量应预填');
       expect(find.text('昨晚做梦了'), findsOneWidget, reason: '备注应预填');
 
       // The edit form is pushed over the shell and therefore inherits none of

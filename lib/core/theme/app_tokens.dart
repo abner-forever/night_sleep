@@ -324,4 +324,4 @@ const double kWideLayoutBreakpoint = 768;
 
 const double kSubpageNavigationHeight = 44;
 
-const double kBottomNavigationHeight = 49;
+const double kBottomNavigationHeight = 50;

@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -15,22 +14,15 @@ import 'package:flutter/services.dart';
 /// 这两条都是「不像 iOS」的直接来源。这里把 Android 拉齐到 iOS 的语义：内容铺到
 /// 屏幕物理边缘，两条栏都设成透明、并关掉那层自动蒙层。
 ///
-/// 调用点只有三处：启动时调一次 [enableEdgeToEdge]；[appSystemUiOverlayRegion]
-/// 挂在 `MaterialApp.builder` 上跟随应用主题；常暗的会话页再用
+/// **「铺满整屏」那一半在原生侧**：`MainActivity.onCreate` 里的
+/// `WindowCompat.setDecorFitsSystemWindows(window, false)`。它曾经是 Dart 侧的
+/// `SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge)`，但实测在
+/// 小米 9 + Android 11 上要 **~800ms** 才返回，而且会把同一根平台线程上的其它
+/// 平台通道一起堵住——那正好是冷启动最贵的窗口。原生化之后第一帧天然就是边到边。
+///
+/// 本文件负责另一半：[appSystemUiOverlayRegion] 挂在 `MaterialApp.builder` 上，
+/// 把两条栏的颜色与图标明暗钉到**应用当前生效的主题**；常暗的会话页再用
 /// [appSystemUiOverlayStyle] 自己覆写一层。
-
-/// 让内容铺满整屏（含两条系统栏背后）。
-///
-/// **只在 Android 上调。** iOS 本来就是边到边，调它等于空操作。
-///
-/// Android 10（API 29）以下这一调用是空操作：引擎的
-/// `PlatformPlugin.setSystemChromeEnabledSystemUIMode` 里有 `SDK_INT >= 29` 的门槛，
-/// 低于它的设备维持旧行为（状态栏盖在内容上、导航栏把内容顶起来）。
-/// **这不是遗漏，是引擎自己就不支持**，不要试图在这里补。
-Future<void> enableEdgeToEdge() async {
-  if (defaultTargetPlatform != TargetPlatform.android) return;
-  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-}
 
 /// 跟随应用主题明暗的系统栏样式。
 ///

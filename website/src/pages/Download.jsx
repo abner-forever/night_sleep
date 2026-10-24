@@ -6,8 +6,18 @@ import { useI18n } from '../i18n/index.jsx'
 import Reveal from '../components/ui/Reveal.jsx'
 import { IosStoreButton } from '../components/download/StoreButtons.jsx'
 import BrandedQrCode from '../components/download/BrandedQrCode.jsx'
-import { AppleLogo, ArrowRight, Smartphone } from '../components/ui/Icons.jsx'
+import { AppleLogo, ArrowRight, Clock, Smartphone } from '../components/ui/Icons.jsx'
 import './Download.css'
+
+const formatSize = (size) => `${(size / 1024 / 1024).toFixed(1)} MB`
+
+function formatDate(iso) {
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime())
+    ? String(iso ?? '').slice(0, 10)
+    : date.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
+}
+
 export default function Download() {
   const { t, tList } = useI18n()
   const [state, setState] = useState({ loading: true, download: null, beta: null })
@@ -58,7 +68,7 @@ export default function Download() {
                 </h3>
                 <p>
                   {state.download
-                    ? `${(state.download.size / 1024 / 1024).toFixed(1)} MB · 直接下载 APK`
+                    ? `${formatSize(state.download.size)} · 直接下载 APK`
                     : state.stableFailed
                       ? '版本服务暂时不可用，请稍后重试，或前往 GitHub 查看发布版本。'
                       : '正式发布后，这里会提供最新正式版安装包，也可先体验 Beta 测试版。'}
@@ -76,20 +86,31 @@ export default function Download() {
                       {state.loading ? '正在检查版本…' : state.stableFailed ? '暂时无法获取正式版' : '正式版尚未发布'}
                     </button>
                   )}
-                  <span className="beta-download">
-                    {state.beta ? (
-                      <a className="beta-download__link" href={state.beta.url} title={`v${state.beta.version}${state.betaFailed ? ' · 暂时无法检查更新' : ''}`}>
-                        下载 Beta <span className="beta-download__version">v{state.beta.version}</span> <ArrowRight size={14} />
-                      </a>
-                    ) : state.betaFailed ? (
-                      <button className="beta-download__link" type="button" onClick={() => {
+                  {state.beta ? (
+                    <a
+                      className="btn btn--secondary btn--lg beta-download"
+                      href={state.beta.url}
+                      title={`v${state.beta.version}${state.betaFailed ? ' · 暂时无法检查更新' : ''}`}
+                    >
+                      下载 Beta 版
+                      <span className="beta-download__version">v{state.beta.version}</span>
+                    </a>
+                  ) : state.betaFailed ? (
+                    <button
+                      className="btn btn--secondary btn--lg beta-download"
+                      type="button"
+                      onClick={() => {
                         setState((current) => ({ ...current, loading: true, betaFailed: false }))
                         setRetry((value) => value + 1)
-                      }}>重试获取 Beta</button>
-                    ) : (
-                      <span role="status">{state.loading ? '正在获取 Beta…' : 'Beta 尚未发布'}</span>
-                    )}
-                  </span>
+                      }}
+                    >
+                      重试获取 Beta
+                    </button>
+                  ) : (
+                    <span className="beta-download__pending" role="status">
+                      {state.loading ? '正在获取 Beta…' : 'Beta 尚未发布'}
+                    </span>
+                  )}
                 </div>
                 {state.stableFailed && (
                   <p className="dl-card__req" role="status">
@@ -143,16 +164,39 @@ export default function Download() {
                   onClick={() => {
                     const svg = document.getElementById('download-qr')
                     if (!svg) return
+                    // JPG 不支持透明，先铺白底；按 4 倍尺寸栅格化，缩略图与打印都够清晰
+                    const size = 720
                     const url = URL.createObjectURL(
                       new Blob([new XMLSerializer().serializeToString(svg)], {
-                        type: 'image/svg+xml',
+                        type: 'image/svg+xml;charset=utf-8',
                       }),
                     )
-                    const a = document.createElement('a')
-                    a.href = url
-                    a.download = 'yeshen-download-qr.svg'
-                    a.click()
-                    setTimeout(() => URL.revokeObjectURL(url), 1000)
+                    const image = new Image()
+                    image.onload = () => {
+                      URL.revokeObjectURL(url)
+                      const canvas = document.createElement('canvas')
+                      canvas.width = size
+                      canvas.height = size
+                      const context = canvas.getContext('2d')
+                      context.fillStyle = '#ffffff'
+                      context.fillRect(0, 0, size, size)
+                      context.drawImage(image, 0, 0, size, size)
+                      canvas.toBlob(
+                        (blob) => {
+                          if (!blob) return
+                          const downloadUrl = URL.createObjectURL(blob)
+                          const a = document.createElement('a')
+                          a.href = downloadUrl
+                          a.download = 'yeshen-download-qr.jpg'
+                          a.click()
+                          setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000)
+                        },
+                        'image/jpeg',
+                        0.92,
+                      )
+                    }
+                    image.onerror = () => URL.revokeObjectURL(url)
+                    image.src = url
                   }}
                 >
                   保存二维码 ↓
@@ -173,6 +217,82 @@ export default function Download() {
               </div>
             </header>
             <IosStoreButton size="lg" />
+          </Reveal>
+          <Reveal className="dl-card dl-history">
+            <header className="dl-card__head">
+              <span className="dl-card__icon">
+                <Clock size={24} />
+              </span>
+              <div>
+                <h2 className="dl-card__name">版本历史</h2>
+                <p className="dl-card__store">
+                  按版本倒序 · 只列出带 APK 与 SHA-256 的发布
+                </p>
+              </div>
+            </header>
+            {state.history?.length ? (
+              <>
+                <ul className="dl-history__list">
+                  {state.history.map((item) => (
+                    <li className="dl-history__item" key={item.version}>
+                      <div className="dl-history__main">
+                        <span className="dl-history__version">
+                          v{item.version}
+                        </span>
+                        <span
+                          className={`dl-history__tag dl-history__tag--${item.channel}`}
+                        >
+                          {item.channel === 'beta' ? 'Beta' : '正式版'}
+                        </span>
+                        {item.version === state.download?.version && (
+                          <span className="dl-history__tag dl-history__tag--current">
+                            当前
+                          </span>
+                        )}
+                      </div>
+                      <span className="dl-history__meta">
+                        <time dateTime={item.publishedAt}>
+                          {formatDate(item.publishedAt)}
+                        </time>
+                        <span aria-hidden="true">·</span>
+                        <span>{formatSize(item.size)}</span>
+                      </span>
+                      <a
+                        className="dl-history__download"
+                        href={item.url}
+                        aria-label={`下载 v${item.version}`}
+                      >
+                        下载 <ArrowRight size={14} />
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+                <a
+                  className="dl-history__more"
+                  href={RELEASES_PAGE}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  在 GitHub 查看全部发布 ↗
+                </a>
+              </>
+            ) : (
+              <p className="dl-history__empty">
+                {state.loading
+                  ? '正在获取版本列表…'
+                  : '暂时无法获取版本列表，可前往 '}
+                {!state.loading && (
+                  <a
+                    href={RELEASES_PAGE}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    GitHub Releases ↗
+                  </a>
+                )}
+                {!state.loading && ' 查看。'}
+              </p>
+            )}
           </Reveal>
         </div>
       </section>

@@ -2,7 +2,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
-import 'package:timezone/data/latest_all.dart' as tzdata;
+// **`latest` 而不是 `latest_all`。** 两者都含全部时区，差别只在历史数据：
+// `latest_all` 多带上 1970 年前的过渡记录（源码里是 1.9MB 对 1.1MB 的转义字符串）。
+// 本应用只排**未来**的提醒，用不到那些历史；少 800KB 对包体和启动时的加载都是净收益。
+import 'package:timezone/data/latest.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
 /// 系统是否真的会投递通知。

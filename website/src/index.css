@@ -109,7 +109,8 @@
   --radius-xl: 24px;
   --radius-2xl: 28px;
   --radius-3xl: 36px;
-  --radius-pill: 16px;
+  /* 按钮类控件一律走胶囊圆角（.btn / .store-btn / .segmented） */
+  --radius-pill: 999px;
   --radius-full: 999px;
 
   /* 字体 */
@@ -212,6 +213,44 @@ html {
   -webkit-text-size-adjust: 100%;
   scroll-behavior: smooth;
   scroll-padding-top: calc(var(--nav-height) + var(--space-6));
+}
+
+/* --------------------------------------------------------------------------
+   滚动条 —— 细、圆角、半透明的悬浮样式
+   --------------------------------------------------------------------------
+   底槽透明，滑块是主题文字色的低透明度版本，深浅主题各一套。
+   颜色收在变量里：App 内嵌页（?app=1&theme=）会用同一个变量钉成 App 的
+   当前主题，不必重写整套规则（见 pages/PrivacyPolicy.css）。
+   -------------------------------------------------------------------------- */
+
+html {
+  --scrollbar-thumb: rgba(83, 101, 122, 0.32);
+  --scrollbar-thumb-active: rgba(83, 101, 122, 0.52);
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+html[data-theme='dark'] {
+  --scrollbar-thumb: rgba(192, 208, 229, 0.32);
+  --scrollbar-thumb-active: rgba(192, 208, 229, 0.52);
+}
+
+html::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+html::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--scrollbar-thumb);
+}
+
+html::-webkit-scrollbar-thumb:active {
+  background: var(--scrollbar-thumb-active);
 }
 
 body {

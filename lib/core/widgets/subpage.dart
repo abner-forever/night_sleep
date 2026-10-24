@@ -8,6 +8,49 @@ import '../theme/app_tokens.dart';
 import 'atmosphere.dart';
 import 'app_basics.dart';
 
+/// 返回箭头本身的尺寸（原型里 `polyline points="8,1 1,7.5 8,14"`）。
+const double _chevronWidth = 9;
+const double _chevronHeight = 15;
+
+/// 二级页统一的返回按钮：44×44 点击区，箭头只有图标没有文字。
+class SubpageBackButton extends StatelessWidget {
+  const SubpageBackButton({
+    super.key,
+    required this.onTap,
+    this.semanticLabel = '返回',
+  });
+
+  final VoidCallback onTap;
+  final String semanticLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppTokens.of(context);
+    return Pressable(
+      semanticLabel: semanticLabel,
+      onTap: onTap,
+      child: SizedBox(
+        width: kSubpageNavigationHeight,
+        height: kSubpageNavigationHeight,
+        child: Center(
+          child: SizedBox(
+            key: const ValueKey('subpage-back-icon'),
+            width: _chevronWidth,
+            height: _chevronHeight,
+            child: CustomPaint(
+              painter: _ChevronPainter(
+                Theme.of(context).brightness == Brightness.dark
+                    ? tokens.textPrimary
+                    : Colors.black,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Shared chrome for a page pushed **over** the tab shell: a back pill, the page
 /// title, and a scrolling content column.
 ///
@@ -29,11 +72,15 @@ class Subpage extends StatelessWidget {
     required this.title,
     required this.children,
     this.maxContentWidth = 720,
+    this.action,
   });
 
   final String title;
   final List<Widget> children;
   final double maxContentWidth;
+
+  /// 右上角的动作（可空）。约定是一个 44×44 的点击区，图标 20 左右。
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -84,6 +131,7 @@ class Subpage extends StatelessWidget {
             sideInset: sideInset,
             statusBarInset: MediaQuery.paddingOf(context).top,
             rowHeight: rowHeight,
+            action: action,
           ),
         ),
         SliverPadding(
@@ -112,10 +160,12 @@ class _SubpageHeaderDelegate extends SliverPersistentHeaderDelegate {
     required this.sideInset,
     required this.statusBarInset,
     required this.rowHeight,
+    required this.action,
   });
 
   final AppTokens tokens;
   final String title;
+  final Widget? action;
 
   /// 标题行离屏幕左右边缘的距离（已含内容限宽的居中留白）。
   final double sideInset;
@@ -170,9 +220,11 @@ class _SubpageHeaderDelegate extends SliverPersistentHeaderDelegate {
             ),
           ),
         ),
+        // **整行铺满宽度**：返回键的触控区要比标题多探出半个按钮宽，
+        // 探出的那截必须留在 Stack 的边界里才收得到点击。
         Positioned(
-          left: sideInset,
-          right: sideInset,
+          left: 0,
+          right: 0,
           top: statusBarInset,
           bottom: 0,
           child: _headerRow(context),
@@ -182,56 +234,65 @@ class _SubpageHeaderDelegate extends SliverPersistentHeaderDelegate {
   }
 
   Widget _headerRow(BuildContext context) {
-    return Row(
+    // **返回箭头与正文左边缘齐平**（和隐私协议页那个 AppBar 返回键同一个位置），
+    // 所以触控区整体向左探出留白：44×44 的点击范围不变，只是不再从留白处起算。
+    // 标题仍按两侧各让出一个按钮宽居中。
+    final backLeft = sideInset - (kSubpageNavigationHeight - _chevronWidth) / 2;
+
+    return Stack(
       children: [
-        // **只有图标，没有文字标签。** 读屏靠 `semanticLabel` 说明它是返回；
-        // 删掉文字之后不能让无障碍跟着一起消失。
-        Pressable(
-          key: const ValueKey('subpage-back'),
-          semanticLabel: '返回',
-          onTap: () {
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              context.go('/');
-            }
-          },
-          // The chevron is drawn inline as the prototype does, so it
-          // keeps its 2.2 stroke and tight 9×15 proportion.
-          child: SizedBox(
-            width: kSubpageNavigationHeight,
-            height: kSubpageNavigationHeight,
-            child: Center(
-              child: SizedBox(
-                width: 9,
-                height: 15,
-                child: CustomPaint(
-                  painter: _ChevronPainter(
-                    Theme.of(context).brightness == Brightness.dark
-                        ? tokens.textPrimary
-                        : Colors.black,
-                  ),
-                ),
+        Center(
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: sideInset + kSubpageNavigationHeight,
+            ),
+            child: Text(
+              title,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+                height: 1.4,
+                letterSpacing: -0.3,
+                color: tokens.textPrimary,
               ),
             ),
           ),
         ),
-        Expanded(
-          child: Text(
-            title,
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w600,
-              height: 1.4,
-              letterSpacing: -0.3,
-              color: tokens.textPrimary,
+        Positioned(
+          left: backLeft,
+          top: 0,
+          bottom: 0,
+          // 大字号把行高顶高时，按钮跟着标题一起垂直居中。
+          child: Align(
+            alignment: Alignment.centerLeft,
+            // **只有图标，没有文字标签。** 读屏靠 `semanticLabel` 说明它是返回；
+            // 删掉文字之后不能让无障碍跟着一起消失。
+            child: SubpageBackButton(
+              key: const ValueKey('subpage-back'),
+              onTap: () {
+                if (context.canPop()) {
+                  context.pop();
+                } else {
+                  context.go('/');
+                }
+              },
             ),
           ),
         ),
-        const SizedBox(width: kSubpageNavigationHeight),
+        // 右上角动作与返回键对称：44 宽的点击区向留白里探出，图标仍与正文右边缘齐平。
+        if (action != null)
+          Positioned(
+            right: sideInset - 12,
+            top: 0,
+            bottom: 0,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: action,
+            ),
+          ),
       ],
     );
   }
@@ -242,7 +303,8 @@ class _SubpageHeaderDelegate extends SliverPersistentHeaderDelegate {
       oldDelegate.title != title ||
       oldDelegate.sideInset != sideInset ||
       oldDelegate.statusBarInset != statusBarInset ||
-      oldDelegate.rowHeight != rowHeight;
+      oldDelegate.rowHeight != rowHeight ||
+      oldDelegate.action != action;
 }
 
 class _ChevronPainter extends CustomPainter {

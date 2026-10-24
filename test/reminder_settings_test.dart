@@ -252,6 +252,28 @@ void main() {
     expect(scheduler.lastSynced?.wakeMinutes, isNull, reason: '起床提醒还关着');
   });
 
+  testWidgets('提醒时间提供整列 44px 以上的点击区域', (tester) async {
+    final scheduler = _FakeScheduler(grants: true);
+    await pumpSettings(tester, scheduler);
+
+    await tester.tap(reminderToggle(0));
+    await tester.pumpAndSettle();
+    echoSettings(bedtimeEnabled: true);
+    await tester.pumpAndSettle();
+
+    final target = find.byKey(const ValueKey('bedtime-reminder-time'));
+    expect(tester.getSize(target).height, greaterThanOrEqualTo(44));
+    expect(
+      find.bySemanticsLabel(RegExp('修改就寝提醒时间')),
+      findsOneWidget,
+    );
+
+    await tester.tap(target);
+    await tester.pumpAndSettle();
+    expect(find.text('就寝提醒时间'), findsOneWidget);
+    expect(find.byType(AppTimePicker), findsOneWidget);
+  });
+
   testWidgets('关掉提醒时写回 false 且计划里那一项变成 null', (tester) async {
     // 先开再关。这一条同时覆盖两处**此前零覆盖**的路径：
     // ① `_syncReminders` 把关掉的那一项传 `null`（只测「从未开启」走不到）；

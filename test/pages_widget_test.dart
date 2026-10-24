@@ -25,7 +25,9 @@ import 'package:night_sleep/core/widgets/top_fade.dart';
 import 'package:night_sleep/features/home/presentation/home_page.dart';
 import 'package:night_sleep/features/compass/presentation/compass_page.dart';
 import 'package:night_sleep/features/log/presentation/log_page.dart';
+import 'package:night_sleep/features/log/presentation/review_page.dart';
 import 'package:night_sleep/features/sleep/presentation/widgets/quality_rating.dart';
+import 'package:night_sleep/features/sleep/presentation/widgets/event_tiles.dart';
 import 'package:night_sleep/features/settings/presentation/appearance_settings_page.dart';
 import 'package:night_sleep/features/settings/presentation/about_page.dart';
 import 'package:night_sleep/features/settings/presentation/demo_data_page.dart';
@@ -476,6 +478,22 @@ void main() {
       expect(find.text('开始入睡'), findsNothing, reason: '会话在跑时不该再给开始按钮');
     });
 
+    testWidgets('助眠音效小卡片的箭头按整张卡片垂直居中', (tester) async {
+      await pumpPage(tester, home(), entries: await demoEntries());
+
+      final card = tester.getRect(
+        find.byKey(const ValueKey('home-noise-card')),
+      );
+      final arrow = tester.getRect(
+        find.byKey(const ValueKey('home-noise-chevron')),
+      );
+      expect(
+        arrow.center.dy,
+        moreOrLessEquals(card.center.dy, epsilon: 1),
+        reason: '箭头没有按卡片整体高度居中',
+      );
+    });
+
     /// v3.3 起首页那颗按钮**只进页面**：记录起点在页内那颗「开始睡眠」上，所以
     /// 「点进来看一眼又退出」不该留下一段并不存在的睡眠。走真实路由，顺带覆盖
     /// `app.dart` 里注册的 `path: 'sleep/session'`。
@@ -521,6 +539,31 @@ void main() {
       expect(find.text('备注'), findsOneWidget);
     });
 
+    testWidgets('手动补录复用回顾页的事件胶囊并写回多选事件', (tester) async {
+      await pumpLogPushed(tester);
+
+      expect(find.byType(SleepEventPicker), findsOneWidget);
+      expect(find.byKey(const ValueKey('log-event-calm')), findsOneWidget);
+
+      await tester.tap(find.text('打鼾'));
+      await tester.pump();
+      await tester.tap(find.text('说梦话'));
+      await tester.pump();
+
+      final picker = tester.widget<SleepEventPicker>(
+        find.byType(SleepEventPicker),
+      );
+      expect(picker.events.snore, isTrue);
+      expect(picker.events.talk, isTrue);
+
+      await tester.tap(find.text('保存记录'));
+      await tester.pumpAndSettle();
+
+      final saved = (await SleepRepository(database).loadAll()).single;
+      expect(saved.loggedEvents.snore, isTrue);
+      expect(saved.loggedEvents.talk, isTrue);
+    });
+
     testWidgets('时长由起止时间派生并给出充足度提示', (tester) async {
       await pumpPage(tester, const LogPage());
       // Defaults 23:00 → 07:00.
@@ -556,12 +599,12 @@ void main() {
       expect(saved.single.hasSoundEvents, isFalse);
     });
 
-    testWidgets('点第 4 档再保存，质量是「清醒」并按它估算', (tester) async {
+    testWidgets('点第 4 档再保存，质量是「良好」并按它估算', (tester) async {
       // `ensureSemantics` 必须在用例体内释放：绑定会在 tearDown 里检查。
       final semantics = tester.ensureSemantics();
       await pumpLogPushed(tester);
 
-      await tester.tap(find.bySemanticsLabel('睡眠质量 清醒'));
+      await tester.tap(find.bySemanticsLabel('睡眠质量 良好'));
       await tester.pump();
 
       await tester.tap(find.text('保存记录'));
@@ -605,6 +648,22 @@ void main() {
       expect(find.text('Page Not Found'), findsNothing,
           reason: '/log/new 必须注册');
     });
+  });
+
+  testWidgets('首页之外的主页面顶部只保留大标题', (tester) async {
+    final entry = _nightDaysAgo(0);
+
+    await pumpPage(tester, const ReviewPage(), entries: [entry]);
+    expect(find.text('睡得怎么样？'), findsOneWidget);
+    expect(find.text('回顾'), findsNothing);
+
+    await pumpPage(tester, const StatsPage(), entries: [entry]);
+    expect(find.text('统计'), findsOneWidget);
+    expect(find.text('睡眠统计'), findsNothing);
+
+    await pumpPage(tester, const SettingsPage(), entries: [entry]);
+    expect(find.text('设置'), findsOneWidget);
+    expect(find.text('偏好设置'), findsNothing);
   });
 
   group('图标颜色', () {
@@ -658,7 +717,8 @@ void main() {
       expect(find.textContaining('7 小时目标'), findsOneWidget);
       expect(find.text('7h'), findsOneWidget, reason: 'y 轴目标刻度');
       expect(find.text('平均时长'), findsOneWidget);
-      expect(find.text('充足天数'), findsOneWidget);
+      expect(find.text('达标天数'), findsOneWidget);
+      expect(find.text('记录夜数'), findsOneWidget);
       expect(find.text('打鼾夜数'), findsOneWidget);
       expect(find.text('梦话夜数'), findsOneWidget);
       expect(find.text('7天'), findsOneWidget);
@@ -669,7 +729,7 @@ void main() {
     testWidgets('演示洞察被呈现并附免责声明', (tester) async {
       await pumpPage(tester, const StatsPage(), entries: await demoEntries());
 
-      expect(find.text('睡眠评分'), findsOneWidget);
+      expect(find.text('本周睡眠评分'), findsOneWidget);
       expect(find.textContaining('不构成医疗建议'), findsWidgets);
       expect(find.text('梦话记录'), findsOneWidget);
     });
@@ -1041,6 +1101,14 @@ void main() {
             final initialBack = tester.getRect(back);
             expect(initialBack.top, topInset);
             expect(initialBack.size, const Size(44, 44));
+            // 返回箭头要和正文左边缘齐平（隐私协议页那个 AppBar 返回键的位置），
+            // 不是居中于自己的触控区——所以整块从留白里向左探出半个按钮宽。
+            final iconLeft = tester
+                .getRect(find.byKey(const ValueKey('subpage-back-icon')))
+                .left;
+            final bodyLeft = tester.getTopLeft(find.text('第 0 行')).dx;
+            expect(iconLeft, moreOrLessEquals(bodyLeft),
+                reason: '返回箭头没有和正文左边缘对齐');
             expect(tester.getRect(band),
                 Rect.fromLTWH(0, 0, width, topInset + 44));
             expect(

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 开屏页第一帧的底色（`SplashScreen` 的 night0，#07102D）。
+         系统的启动窗口与 Flutter 引擎初始化期间都画这个颜色：点图标之后立刻就是
+         夜深自己的深蓝，而不是模板默认的白屏——白屏正是「冷启动要等五秒」的观感来源，
+         那段时间其实一直有画面，只是画错了颜色。 -->
+    <color name="launch_background">#FF07102D</color>
+</resources>
