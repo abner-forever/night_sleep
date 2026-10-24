@@ -8,6 +8,10 @@ import '../theme/app_tokens.dart';
 import 'atmosphere.dart';
 import 'app_basics.dart';
 
+/// 返回箭头本身的尺寸（原型里 `polyline points="8,1 1,7.5 8,14"`）。
+const double _chevronWidth = 9;
+const double _chevronHeight = 15;
+
 /// Shared chrome for a page pushed **over** the tab shell: a back pill, the page
 /// title, and a scrolling content column.
 ///
@@ -170,9 +174,11 @@ class _SubpageHeaderDelegate extends SliverPersistentHeaderDelegate {
             ),
           ),
         ),
+        // **整行铺满宽度**：返回键的触控区要比标题多探出半个按钮宽，
+        // 探出的那截必须留在 Stack 的边界里才收得到点击。
         Positioned(
-          left: sideInset,
-          right: sideInset,
+          left: 0,
+          right: 0,
           top: statusBarInset,
           bottom: 0,
           child: _headerRow(context),
@@ -182,56 +188,75 @@ class _SubpageHeaderDelegate extends SliverPersistentHeaderDelegate {
   }
 
   Widget _headerRow(BuildContext context) {
-    return Row(
+    // **返回箭头与正文左边缘齐平**（和隐私协议页那个 AppBar 返回键同一个位置），
+    // 所以触控区整体向左探出留白：44×44 的点击范围不变，只是不再从留白处起算。
+    // 标题仍按两侧各让出一个按钮宽居中。
+    final backLeft = sideInset - (kSubpageNavigationHeight - _chevronWidth) / 2;
+
+    return Stack(
       children: [
-        // **只有图标，没有文字标签。** 读屏靠 `semanticLabel` 说明它是返回；
-        // 删掉文字之后不能让无障碍跟着一起消失。
-        Pressable(
-          key: const ValueKey('subpage-back'),
-          semanticLabel: '返回',
-          onTap: () {
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              context.go('/');
-            }
-          },
-          // The chevron is drawn inline as the prototype does, so it
-          // keeps its 2.2 stroke and tight 9×15 proportion.
-          child: SizedBox(
-            width: kSubpageNavigationHeight,
-            height: kSubpageNavigationHeight,
-            child: Center(
+        Center(
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: sideInset + kSubpageNavigationHeight,
+            ),
+            child: Text(
+              title,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+                height: 1.4,
+                letterSpacing: -0.3,
+                color: tokens.textPrimary,
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          left: backLeft,
+          top: 0,
+          bottom: 0,
+          // 大字号把行高顶高时，按钮跟着标题一起垂直居中。
+          child: Align(
+            alignment: Alignment.centerLeft,
+            // **只有图标，没有文字标签。** 读屏靠 `semanticLabel` 说明它是返回；
+            // 删掉文字之后不能让无障碍跟着一起消失。
+            child: Pressable(
+              key: const ValueKey('subpage-back'),
+              semanticLabel: '返回',
+              onTap: () {
+                if (context.canPop()) {
+                  context.pop();
+                } else {
+                  context.go('/');
+                }
+              },
+              // The chevron is drawn inline as the prototype does, so it
+              // keeps its 2.2 stroke and tight 9×15 proportion.
               child: SizedBox(
-                width: 9,
-                height: 15,
-                child: CustomPaint(
-                  painter: _ChevronPainter(
-                    Theme.of(context).brightness == Brightness.dark
-                        ? tokens.textPrimary
-                        : Colors.black,
+                width: kSubpageNavigationHeight,
+                height: kSubpageNavigationHeight,
+                child: Center(
+                  child: SizedBox(
+                    key: const ValueKey('subpage-back-icon'),
+                    width: _chevronWidth,
+                    height: _chevronHeight,
+                    child: CustomPaint(
+                      painter: _ChevronPainter(
+                        Theme.of(context).brightness == Brightness.dark
+                            ? tokens.textPrimary
+                            : Colors.black,
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
           ),
         ),
-        Expanded(
-          child: Text(
-            title,
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w600,
-              height: 1.4,
-              letterSpacing: -0.3,
-              color: tokens.textPrimary,
-            ),
-          ),
-        ),
-        const SizedBox(width: kSubpageNavigationHeight),
       ],
     );
   }

@@ -82,7 +82,6 @@
   transform: translateY(-12px) rotate(2deg);
 }
 .android-download {
-  max-width: 950px;
   margin: auto;
 }
 .android-download .dl-card__body {

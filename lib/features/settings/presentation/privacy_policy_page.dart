@@ -24,6 +24,9 @@ class _PrivacyPolicyPageState extends State<PrivacyPolicyPage> {
   bool _loading = true;
   bool _failed = false;
 
+  /// 已加载百分比（0–100），由 WebView 的 `onProgress` 推进。
+  int _progress = 0;
+
   @override
   void initState() {
     super.initState();
@@ -49,9 +52,13 @@ class _PrivacyPolicyPageState extends State<PrivacyPolicyPage> {
         onNavigationRequest: _navigate,
         onPageStarted: (_) {
           if (!mounted) return;
-          setState(() => _loading = true);
+          setState(() {
+            _loading = true;
+            _progress = 0;
+          });
           _startTimeout();
         },
+        onProgress: _onProgress,
         onPageFinished: (_) {
           _timeout?.cancel();
           if (mounted) setState(() => _loading = false);
@@ -102,6 +109,13 @@ class _PrivacyPolicyPageState extends State<PrivacyPolicyPage> {
     );
   }
 
+  void _onProgress(int progress) {
+    if (!mounted || _failed) return;
+    final next = progress.clamp(0, 100);
+    if (next == _progress) return;
+    setState(() => _progress = next);
+  }
+
   void _startTimeout() {
     _timeout?.cancel();
     _timeout = Timer(const Duration(seconds: 25), _showError);
@@ -120,6 +134,7 @@ class _PrivacyPolicyPageState extends State<PrivacyPolicyPage> {
     setState(() {
       _failed = false;
       _loading = true;
+      _progress = 0;
     });
     _startTimeout();
     try {
@@ -166,9 +181,28 @@ class _PrivacyPolicyPageState extends State<PrivacyPolicyPage> {
                 child: WebViewWidget(controller: _controller),
               ),
             ),
+            // **确定值进度条，不用默认跑马灯**：WebView 会按加载百分比回调，
+            // 直接画出来比来回循环的动画更像「正在加载」，也更安静。
+            // 颜色取主题令牌：填充用主色、底槽用分隔线色，不另写色值。
             if (_loading)
-              LinearProgressIndicator(
-                  color: tokens.accent, backgroundColor: tokens.accentSoft),
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween<double>(end: _progress / 100),
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, value, _) => LinearProgressIndicator(
+                    value: value,
+                    minHeight: 3,
+                    borderRadius: BorderRadius.circular(2),
+                    color: tokens.accent,
+                    backgroundColor: tokens.border,
+                    semanticsLabel: '页面加载进度',
+                  ),
+                ),
+              ),
             if (_failed)
               Center(
                 child: Padding(

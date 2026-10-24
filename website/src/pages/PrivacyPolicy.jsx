@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import './PrivacyPolicy.css'
 
@@ -7,6 +8,20 @@ export default function PrivacyPolicy() {
   const [params] = useSearchParams()
   const embedded = params.get('app') === '1'
   const theme = params.get('theme') === 'dark' ? 'dark' : 'light'
+
+  // 官网滚动条是全局样式（index.css），画在 <html> 上，取不到页面外层那层
+  // data-theme；这里把「内嵌 + App 主题」标到 <html>，供 PrivacyPolicy.css
+  // 把滚动条颜色钉成 App 的深浅，不影响官网自身的主题属性。
+  useEffect(() => {
+    if (!embedded) return
+    const root = document.documentElement
+    root.dataset.page = 'privacy-embedded'
+    root.dataset.pageTheme = theme
+    return () => {
+      delete root.dataset.page
+      delete root.dataset.pageTheme
+    }
+  }, [embedded, theme])
 
   return (
     <div className={`privacy-policy${embedded ? ' privacy-policy--embedded' : ''}`} data-theme={embedded ? theme : undefined} lang="zh-CN">

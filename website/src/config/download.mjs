@@ -33,21 +33,30 @@ function releaseDownload(release) {
       channel: version.includes('-') ? 'beta' : 'stable',
       sha256: asset.digest.slice(7).toLowerCase(),
       size: asset.size,
+      publishedAt: release.published_at,
     }
   } catch {
     return null
   }
 }
 
+function newestFirst(a, b) {
+  const left = versionParts(a.version), right = versionParts(b.version)
+  for (let i = 0; i < left.length; i++) {
+    if (left[i] !== right[i]) return right[i] - left[i]
+  }
+  return 0
+}
+
 export function selectLatestDownload(releases, channel = 'stable') {
   if (!Array.isArray(releases)) return null
-  return releases.map(releaseDownload).filter((item) => item && item.channel === channel).sort((a, b) => {
-    const left = versionParts(a.version), right = versionParts(b.version)
-    for (let i = 0; i < left.length; i++) {
-      if (left[i] !== right[i]) return right[i] - left[i]
-    }
-    return 0
-  })[0] ?? null
+  return releases.map(releaseDownload).filter((item) => item && item.channel === channel).sort(newestFirst)[0] ?? null
+}
+
+// 历史版本与下载按钮同源：只收带版本化 APK 与 SHA-256 的发布，按版本倒序。
+export function selectReleaseHistory(releases) {
+  if (!Array.isArray(releases)) return []
+  return releases.map(releaseDownload).filter(Boolean).sort(newestFirst)
 }
 
 // 短缓存减轻匿名 API 限流；网络异常时仅保留一天内已成功验证的数据。
@@ -62,6 +71,7 @@ export function createDownloadClient({ fetcher = globalThis.fetch, storage, now 
     return {
       valid: age >= 0 && age < maxAge && Array.isArray(entry?.releases),
       download: age >= 0 && age < maxAge ? selectLatestDownload(entry?.releases, channel) : null,
+      releases: Array.isArray(entry?.releases) ? entry.releases : [],
     }
   }
 
@@ -82,9 +92,10 @@ export function createDownloadClient({ fetcher = globalThis.fetch, storage, now 
       const download = selectLatestDownload(releases, channel)
       memory = { ...memory, [channel]: { time: now(), releases } }
       try { storage?.setItem(CACHE_KEY, JSON.stringify(memory)) } catch { /* 存储容量或隐私模式 */ }
-      return { download, stale: false, failed: false }
+      return { download, releases, stale: false, failed: false }
     } catch {
-      return { download: cached(channel, OFFLINE_FOR).download, stale: true, failed: true }
+      const fallback = cached(channel, OFFLINE_FOR)
+      return { download: fallback.download, releases: fallback.releases, stale: true, failed: true }
     } finally {
       clearTimeout(timeout)
     }
@@ -94,6 +105,7 @@ export function createDownloadClient({ fetcher = globalThis.fetch, storage, now 
     const [stable, beta] = await Promise.all(['stable', 'beta'].map(requestChannel))
     return {
       download: stable.download, beta: beta.download,
+      history: selectReleaseHistory(beta.releases),
       stableFailed: stable.failed, betaFailed: beta.failed,
       stale: stable.stale || beta.stale, failed: stable.failed || beta.failed,
     }
@@ -104,6 +116,7 @@ export function createDownloadClient({ fetcher = globalThis.fetch, storage, now 
       const stable = cached('stable', FRESH_FOR), beta = cached('beta', FRESH_FOR)
       if (!refresh && stable.valid && beta.valid) return Promise.resolve({
         download: stable.download, beta: beta.download,
+        history: selectReleaseHistory(beta.releases),
         stableFailed: false, betaFailed: false, stale: false, failed: false,
       })
       if (!pending) pending = request().finally(() => { pending = null })

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { createDownloadClient, selectLatestDownload, RELEASES_URL, STABLE_RELEASE_URL } from '../src/config/download.mjs'
+import { createDownloadClient, selectLatestDownload, selectReleaseHistory, RELEASES_URL, STABLE_RELEASE_URL } from '../src/config/download.mjs'
 
 function release(version = '0.49.0-beta.1', overrides = {}) {
   const tag = `v${version}`
@@ -50,6 +50,34 @@ test('兼容已公开的首个 preview 包，但 Beta 版本必须使用版本�
   assert.equal(selectLatestDownload([preview], 'beta').version, '0.49.0-preview.1')
   assert.equal(selectLatestDownload([preview, release()], 'beta').version, '0.49.0-beta.1')
   assert.equal(selectLatestDownload([release('0.49.0-beta.1', { assets: preview.assets })], 'beta'), null)
+})
+
+test('历史版本按版本倒序，且与下载入口同样只收带 APK 与 SHA-256 的发布', () => {
+  const bad = [null, {}, release('9.0.0', { draft: true }), release('9.0.0', { assets: [] }),
+    release('9.0.0', { assets: [{ ...release('9.0.0').assets[0], digest: null }] })]
+  const history = selectReleaseHistory([
+    release('0.49.0'), release('0.50.0-beta.2'), release('0.50.0-beta.10'),
+    release('0.49.0-beta.1'), ...bad,
+  ])
+  assert.deepEqual(history.map((item) => item.version),
+    ['0.50.0-beta.10', '0.50.0-beta.2', '0.49.0', '0.49.0-beta.1'])
+  assert.equal(history[0].publishedAt, '2026-10-20T00:00:00Z')
+  assert.deepEqual(selectReleaseHistory(null), [])
+})
+
+test('版本历史随缓存一起返回，缓存命中时不必重新请求', async () => {
+  let time = 1, calls = 0
+  const releases = [release('0.50.0-beta.2'), release('0.50.0-beta.1'), release('0.49.0')]
+  const client = createDownloadClient({ now: () => time, fetcher: async (url) => {
+    calls++
+    return response(url === STABLE_RELEASE_URL ? release('0.49.0') : releases)
+  } })
+  const first = await client.load()
+  assert.deepEqual(first.history.map((item) => item.version),
+    ['0.50.0-beta.2', '0.50.0-beta.1', '0.49.0'])
+  const cached = await client.load()
+  assert.deepEqual(cached.history, first.history)
+  assert.equal(calls, 2)
 })
 
 test('并发合并、五分钟缓存，发布新版本后重新请求即可更新，无需改官网', async () => {

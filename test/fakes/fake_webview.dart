@@ -52,6 +52,7 @@ class FakeNavigationDelegate extends PlatformNavigationDelegate {
   late NavigationRequestCallback onNavigationRequest;
   late PageEventCallback onPageStarted;
   late PageEventCallback onPageFinished;
+  late ProgressCallback onProgress;
   late WebResourceErrorCallback onWebResourceError;
   late HttpResponseErrorCallback onHttpError;
 
@@ -67,6 +68,10 @@ class FakeNavigationDelegate extends PlatformNavigationDelegate {
   @override
   Future<void> setOnPageFinished(PageEventCallback callback) async =>
       onPageFinished = callback;
+
+  @override
+  Future<void> setOnProgress(ProgressCallback callback) async =>
+      onProgress = callback;
 
   @override
   Future<void> setOnWebResourceError(WebResourceErrorCallback callback) async =>

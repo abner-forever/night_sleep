@@ -1041,6 +1041,14 @@ void main() {
             final initialBack = tester.getRect(back);
             expect(initialBack.top, topInset);
             expect(initialBack.size, const Size(44, 44));
+            // 返回箭头要和正文左边缘齐平（隐私协议页那个 AppBar 返回键的位置），
+            // 不是居中于自己的触控区——所以整块从留白里向左探出半个按钮宽。
+            final iconLeft = tester
+                .getRect(find.byKey(const ValueKey('subpage-back-icon')))
+                .left;
+            final bodyLeft = tester.getTopLeft(find.text('第 0 行')).dx;
+            expect(iconLeft, moreOrLessEquals(bodyLeft),
+                reason: '返回箭头没有和正文左边缘对齐');
             expect(tester.getRect(band),
                 Rect.fromLTWH(0, 0, width, topInset + 44));
             expect(

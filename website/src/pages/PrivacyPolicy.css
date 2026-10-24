@@ -104,3 +104,21 @@
   border-radius: 0;
   background: transparent;
 }
+
+/* --------------------------------------------------------------------------
+   内嵌视图的滚动条颜色
+   --------------------------------------------------------------------------
+   形状和底槽沿用 index.css 的全局滚动条，这里只钉颜色。
+   App 会带 ?theme= 进来；WebView 的 prefers-color-scheme 未必跟 App 设置
+   一致（用户可以在 App 里单独覆盖深浅），所以按参数覆盖那两个变量。
+   -------------------------------------------------------------------------- */
+
+html[data-page='privacy-embedded'][data-page-theme='light'] {
+  --scrollbar-thumb: rgba(83, 101, 122, 0.32);
+  --scrollbar-thumb-active: rgba(83, 101, 122, 0.52);
+}
+
+html[data-page='privacy-embedded'][data-page-theme='dark'] {
+  --scrollbar-thumb: rgba(192, 208, 229, 0.32);
+  --scrollbar-thumb-active: rgba(192, 208, 229, 0.52);
+}

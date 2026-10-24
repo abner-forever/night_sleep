@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sleep/core/theme/app_theme.dart';
+import 'package:night_sleep/core/theme/app_tokens.dart';
 import 'package:night_sleep/features/settings/presentation/privacy_policy_page.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -42,6 +43,19 @@ void main() {
     expect(find.byType(WebViewWidget), findsOneWidget);
     expect(tester.getSize(find.byType(AppBar)).height, 44);
     expect(find.byType(LinearProgressIndicator), findsOneWidget);
+
+    // 进度条是确定值的那种：跟着 WebView 报的百分比走，颜色取主题令牌。
+    final tokens = AppTokens.of(tester.element(find.byType(PrivacyPolicyPage)));
+    webview.delegate.onProgress(40);
+    await tester.pump(); // 重建后动画才起跑
+    await tester.pump(const Duration(milliseconds: 200));
+    final indicator = tester.widget<LinearProgressIndicator>(
+      find.byType(LinearProgressIndicator),
+    );
+    expect(indicator.value, moreOrLessEquals(0.4));
+    expect(indicator.color, tokens.accent);
+    expect(indicator.backgroundColor, tokens.border);
+
     webview.delegate.onPageFinished(request.uri.toString());
     await tester.pump();
     expect(find.byType(LinearProgressIndicator), findsNothing);
