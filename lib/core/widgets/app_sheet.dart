@@ -349,6 +349,7 @@ class AppSheet extends StatelessWidget {
     this.heightFactor,
     this.expanded = false,
     this.background,
+    this.respectTopSafeArea = true,
   }) : assert(
           (child == null) != (slivers == null),
           'AppSheet 要么给 child，要么给 slivers——两者只能有一个。',
@@ -367,6 +368,13 @@ class AppSheet extends StatelessWidget {
   final double? heightFactor;
   final bool expanded;
   final Widget? background;
+
+  /// 是否由 [AppSheet] 统一避让顶部安全区。
+  ///
+  /// 普通弹层保持开启；带自绘吸顶导航的全屏弹层要关掉，让导航底板从屏幕
+  /// 物理顶部开始绘制，再由导航自身把状态栏高度算进行高。否则状态栏和
+  /// 导航会各铺一层不同背景，交界处出现一条硬边。
+  final bool respectTopSafeArea;
 
   /// 直接由 sliver 组成的正文，与 [child] 二选一。
   ///
@@ -439,7 +447,9 @@ class AppSheet extends StatelessWidget {
           Material(
             type: MaterialType.transparency,
             child: SafeArea(
-              top: expanded && media.size.width < kWideLayoutBreakpoint,
+              top: respectTopSafeArea &&
+                  expanded &&
+                  media.size.width < kWideLayoutBreakpoint,
               bottom: false,
               left: false,
               right: false,

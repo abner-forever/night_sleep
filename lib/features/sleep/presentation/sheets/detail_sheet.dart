@@ -649,6 +649,8 @@ class _DetailSheetState extends ConsumerState<DetailSheet> {
       expanded: true,
       showHandle: false,
       background: const _DetailBackground(),
+      // 吸顶头自己把状态栏高度算进底板，才能从屏幕顶部连续铺下来。
+      respectTopSafeArea: false,
       slivers: [
         SliverPersistentHeader(
           pinned: true,
@@ -701,11 +703,25 @@ class _DetailHeaderDelegate extends SliverPersistentHeaderDelegate {
       fit: StackFit.expand,
       children: [
         Opacity(
+          key: const ValueKey('sleep-detail-header-band'),
           opacity: collapse,
           child: ClipRect(
             child: BackdropFilter(
               filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-              child: const ColoredBox(color: Color(0xEC061426)),
+              child: const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0xF2061426),
+                      Color(0xCC061426),
+                      Color(0x00061426),
+                    ],
+                    stops: [0, 0.72, 1],
+                  ),
+                ),
+              ),
             ),
           ),
         ),
