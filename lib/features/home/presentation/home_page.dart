@@ -147,6 +147,7 @@ class _HomeContent extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _masthead(context, wide, clock, weather),
+        SizedBox(height: wide ? 18 : 14),
         if (today != null)
           SleepHeroCard(entry: today, animateRing: animateRing, wide: wide)
         else
@@ -417,72 +418,96 @@ class _HomeContent extends StatelessWidget {
   ) {
     final tokens = AppTokens.of(context);
     final foreground = wide ? tokens.textPrimary : Colors.white;
-    final masthead =
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Expanded(
-          child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('夜深',
-              style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w600,
-                  color: foreground,
-                  letterSpacing: -.84)),
-          const SizedBox(height: 5),
-          Text('让每一次睡眠都有迹可循',
-              style: TextStyle(
-                  fontSize: 12,
-                  color: wide ? tokens.textMuted : const Color(0xFFDFECFF))),
-        ],
-      )),
-      const SizedBox(width: 12),
-      Padding(
-        padding: const EdgeInsets.only(top: 9),
-        child: Semantics(
-          button: true,
-          label: '打开睡眠日历',
-          child: Pressable(
-            onTap: () => context.push('/calendar'),
-            child: Container(
-              width: 40,
-              height: 40,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: wide
-                    ? tokens.accentSoft
-                    : Colors.white.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: wide
-                      ? tokens.border
-                      : Colors.white.withValues(alpha: 0.18),
-                ),
-              ),
-              child: AppIcons.calendar(
-                size: 20,
-                color: wide ? tokens.accent : Colors.white,
-                strokeWidth: 1.7,
-              ),
+    final brand = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '夜深',
+          style: TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.w600,
+            color: foreground,
+            letterSpacing: -.84,
+          ),
+        ),
+        const SizedBox(height: 5),
+        Text(
+          '让每一次睡眠都有迹可循',
+          style: TextStyle(
+            fontSize: 12,
+            color: wide ? tokens.textMuted : const Color(0xFFDFECFF),
+          ),
+        ),
+      ],
+    );
+    final calendarAction = Semantics(
+      button: true,
+      label: '打开睡眠日历',
+      child: Pressable(
+        onTap: () => context.push('/calendar'),
+        child: Container(
+          width: 42,
+          height: 42,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color:
+                wide ? tokens.accentSoft : Colors.white.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color:
+                  wide ? tokens.border : Colors.white.withValues(alpha: 0.20),
             ),
+          ),
+          child: AppIcons.calendar(
+            size: 20,
+            color: wide ? tokens.accent : Colors.white,
+            strokeWidth: 1.7,
           ),
         ),
       ),
-    ]);
+    );
+    final clockAndWeather = _HomeClock(
+      clock: clock,
+      weather: weather,
+      wide: wide,
+    );
 
-    return Container(
-      constraints: BoxConstraints(minHeight: wide ? 85 : 164),
-      padding: EdgeInsets.symmetric(horizontal: wide ? 0 : 5),
-      child: wide
-          ? masthead
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                masthead,
-                const SizedBox(height: 18),
-                _HomeClock(clock: clock, weather: weather),
-              ],
-            ),
+    if (wide) {
+      return ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 96),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(flex: 3, child: brand),
+            const SizedBox(width: 28),
+            Expanded(flex: 6, child: clockAndWeather),
+            const SizedBox(width: 20),
+            calendarAction,
+          ],
+        ),
+      );
+    }
+
+    return SizedBox(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: brand),
+              const SizedBox(width: 12),
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: calendarAction,
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          clockAndWeather,
+        ],
+      ),
     );
   }
 
@@ -583,10 +608,12 @@ class _HomeClock extends StatefulWidget {
   const _HomeClock({
     required this.clock,
     required this.weather,
+    required this.wide,
   });
 
   final DateTime Function() clock;
   final AsyncValue<WeatherSnapshot?> weather;
+  final bool wide;
 
   @override
   State<_HomeClock> createState() => _HomeClockState();
@@ -640,101 +667,231 @@ class _HomeClockState extends State<_HomeClock> {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = AppTokens.of(context);
     final hour = _now.hour.toString().padLeft(2, '0');
     final minute = _now.minute.toString().padLeft(2, '0');
     final weekday = const ['一', '二', '三', '四', '五', '六', '日'][_now.weekday - 1];
     final date = '${_now.month} 月 ${_now.day} 日';
+    final weatherLabel = widget.weather.when(
+      loading: () => '，天气获取中',
+      error: (error, stack) => '，天气暂不可用',
+      data: (snapshot) => snapshot == null
+          ? ''
+          : '，${snapshot.city}，${snapshot.weatherText}，'
+              '${snapshot.temperature.round()} 度',
+    );
+    final hasWeather = widget.weather.when(
+      loading: () => true,
+      error: (error, stack) => true,
+      data: (snapshot) => snapshot != null,
+    );
+    final onImage = !widget.wide;
+    final primary = onImage ? Colors.white : tokens.textPrimary;
+    final muted = onImage ? const Color(0xAFFFFFFF) : tokens.textMuted;
 
     return Semantics(
       key: const ValueKey('home-clock'),
-      label: '当前时间 $hour:$minute，$date，星期$weekday',
+      container: true,
+      label: '当前时间 $hour:$minute，$date，星期$weekday$weatherLabel',
       excludeSemantics: true,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(
-            '$hour:$minute',
-            style: AppTheme.num(
-              context,
-              size: 46,
-              weight: FontWeight.w500,
-              color: Colors.white,
-              letterSpacing: -1.6,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Container(
-            width: 1,
-            height: 36,
-            margin: const EdgeInsets.only(bottom: 4),
-            color: Colors.white.withValues(alpha: 0.24),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    date,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xE6FFFFFF),
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    '周$weekday',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: Color(0xAFFFFFFF),
-                    ),
-                  ),
-                  const SizedBox(height: 7),
-                  _HomeWeather(weather: widget.weather),
-                ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final stacked = constraints.maxWidth < 350;
+          final timeReadout = _HomeTimeReadout(
+            time: '$hour:$minute',
+            date: date,
+            weekday: weekday,
+            wide: widget.wide,
+            primary: primary,
+            muted: muted,
+          );
+          final weatherReadout = _HomeWeather(
+            weather: widget.weather,
+            wide: widget.wide,
+          );
+
+          if (!hasWeather) return timeReadout;
+          if (stacked) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                timeReadout,
+                const SizedBox(height: 14),
+                weatherReadout,
+              ],
+            );
+          }
+
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: widget.wide ? 144 : 132,
+                child: timeReadout,
               ),
-            ),
-          ),
-        ],
+              Container(
+                width: 1,
+                height: widget.wide ? 58 : 64,
+                margin: const EdgeInsets.symmetric(horizontal: 14),
+                color: onImage
+                    ? Colors.white.withValues(alpha: 0.20)
+                    : tokens.border,
+              ),
+              Expanded(child: weatherReadout),
+            ],
+          );
+        },
       ),
     );
   }
 }
 
-class _HomeWeather extends StatelessWidget {
-  const _HomeWeather({required this.weather});
+class _HomeTimeReadout extends StatelessWidget {
+  const _HomeTimeReadout({
+    required this.time,
+    required this.date,
+    required this.weekday,
+    required this.wide,
+    required this.primary,
+    required this.muted,
+  });
 
-  final AsyncValue<WeatherSnapshot?> weather;
+  final String time;
+  final String date;
+  final String weekday;
+  final bool wide;
+  final Color primary;
+  final Color muted;
 
   @override
   Widget build(BuildContext context) {
-    return weather.when(
-      loading: () => const Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 10,
-            height: 10,
-            child: CircularProgressIndicator(
-              strokeWidth: 1.4,
-              color: Color(0xAFFFFFFF),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '此刻',
+          style: TextStyle(
+            fontSize: 9,
+            fontWeight: FontWeight.w600,
+            color: muted,
+            letterSpacing: 2.4,
+          ),
+        ),
+        const SizedBox(height: 4),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            time,
+            maxLines: 1,
+            style: AppTheme.num(
+              context,
+              size: wide ? 40 : 46,
+              weight: FontWeight.w500,
+              color: primary,
+              letterSpacing: -1.8,
             ),
           ),
-          SizedBox(width: 6),
-          Text(
-            '天气获取中',
-            style: TextStyle(fontSize: 10, color: Color(0xAFFFFFFF)),
-          ),
-        ],
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 7,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              date,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: primary,
+              ),
+            ),
+            Container(
+              width: 3,
+              height: 3,
+              decoration: BoxDecoration(
+                color: muted,
+                shape: BoxShape.circle,
+              ),
+            ),
+            Text(
+              '周$weekday',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: muted,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _HomeWeather extends StatelessWidget {
+  const _HomeWeather({
+    required this.weather,
+    required this.wide,
+  });
+
+  final AsyncValue<WeatherSnapshot?> weather;
+  final bool wide;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppTokens.of(context);
+    final onImage = !wide;
+    final primary = onImage ? Colors.white : tokens.textPrimary;
+    final muted = onImage ? const Color(0xAFFFFFFF) : tokens.textMuted;
+
+    return weather.when(
+      loading: () => _WeatherSurface(
+        onImage: onImage,
+        child: Row(
+          children: [
+            SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 1.5,
+                color: muted,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              '正在获取天气',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: primary,
+              ),
+            ),
+          ],
+        ),
       ),
-      error: (error, stack) => const Text(
-        '天气暂不可用',
-        style: TextStyle(fontSize: 10, color: Color(0xAFFFFFFF)),
+      error: (error, stack) => _WeatherSurface(
+        onImage: onImage,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '天气暂不可用',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: primary,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '稍后自动重试',
+              style: TextStyle(fontSize: 10, color: muted),
+            ),
+          ],
+        ),
       ),
       data: (snapshot) {
         if (snapshot == null) return const SizedBox.shrink();
@@ -742,37 +899,153 @@ class _HomeWeather extends StatelessWidget {
           label:
               '${snapshot.city}，${snapshot.weatherText}，${snapshot.temperature.round()} 度',
           excludeSemantics: true,
-          child: Row(
-            children: [
-              Text(
-                snapshot.weatherEmoji,
-                style: const TextStyle(fontSize: 14),
-              ),
-              const SizedBox(width: 5),
-              Text(
-                '${snapshot.temperature.round()}° ${snapshot.weatherText}',
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xE6FFFFFF),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  snapshot.city,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    color: Color(0x9FFFFFFF),
+          child: _WeatherSurface(
+            onImage: onImage,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 1),
+                  child: Text(
+                    snapshot.weatherEmoji,
+                    style: const TextStyle(fontSize: 29),
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '${snapshot.temperature.round()}°',
+                            style: AppTheme.num(
+                              context,
+                              size: 29,
+                              weight: FontWeight.w600,
+                              color: primary,
+                              letterSpacing: -1,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Padding(
+                              padding: const EdgeInsets.only(bottom: 3),
+                              child: Text(
+                                snapshot.weatherText,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: primary,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        snapshot.city,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
+                          color: muted,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 3,
+                        children: [
+                          _WeatherMetric(
+                            text: '↑ ${snapshot.temperatureMax.round()}°',
+                            color: muted,
+                          ),
+                          _WeatherMetric(
+                            text: '↓ ${snapshot.temperatureMin.round()}°',
+                            color: muted,
+                          ),
+                          if (snapshot.humidity != null)
+                            _WeatherMetric(
+                              text: '湿度 ${snapshot.humidity!.round()}%',
+                              color: muted,
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       },
+    );
+  }
+}
+
+class _WeatherSurface extends StatelessWidget {
+  const _WeatherSurface({
+    required this.child,
+    required this.onImage,
+  });
+
+  final Widget child;
+  final bool onImage;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppTokens.of(context);
+    return Container(
+      key: const ValueKey('home-weather'),
+      constraints: const BoxConstraints(minHeight: 88),
+      padding: const EdgeInsets.fromLTRB(13, 11, 13, 12),
+      alignment: Alignment.centerLeft,
+      decoration: BoxDecoration(
+        color: onImage ? null : tokens.bgRaised,
+        gradient: onImage
+            ? const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0x26FFFFFF), Color(0x0FFFFFFF)],
+              )
+            : null,
+        borderRadius: BorderRadius.circular(AppRadii.panel),
+        border: Border.all(
+          color: onImage ? Colors.white.withValues(alpha: 0.16) : tokens.border,
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _WeatherMetric extends StatelessWidget {
+  const _WeatherMetric({
+    required this.text,
+    required this.color,
+  });
+
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: TextStyle(
+        fontSize: 10,
+        fontWeight: FontWeight.w500,
+        color: color,
+        fontFeatures: AppTheme.tabular,
+      ),
     );
   }
 }

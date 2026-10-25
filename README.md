@@ -190,9 +190,24 @@ flutter run -d <设备ID> \
   --dart-define=WEATHER_LOCATION=上海
 ```
 
-release 未提供 `WEATHER_API_BASE_URL` 时不请求天气。生产域名确定后必须使用 HTTPS 基址，例如
-`--dart-define=WEATHER_API_BASE_URL=https://api.example.com/api`；不要把和风天气密钥写进 App。
-Android 发布工作流会读取仓库 Actions variable `WEATHER_API_BASE_URL`，未配置时保持天气功能关闭。
+Android 真机本地调试优先使用 USB 反向映射，不依赖手机和电脑处于同一 Wi-Fi，也不会被电脑防火墙或
+VPN 影响。每次重新连接设备后执行：
+
+```bash
+adb reverse tcp:8080 tcp:8080
+flutter run -d <设备ID> \
+  --dart-define=WEATHER_API_BASE_URL=http://127.0.0.1:8080/api \
+  --dart-define=WEATHER_LOCATION=上海
+```
+
+`--dart-define` 是编译期参数，修改后必须完整停止并重新执行 `flutter run`；热重载不会更新接口地址。
+本地请求的 IP 是私有地址，服务端无法据此定位城市，因此真机本地调试需要同时传
+`WEATHER_LOCATION`，或在 `server/.env` 中设置 `WEATHER_DEFAULT_LOCATION`。
+
+Android 发布工作流按分支注入 `APP_RELEASE_CHANNEL`，App 自动选择 Beta 或正式天气服务。
+本地 debug 仍默认连接本机服务。需要临时切换其他服务时，可用
+`--dart-define=WEATHER_API_BASE_URL=https://api.example.com/api` 覆盖分支默认值；
+不要把和风天气密钥写进 App。
 
 ### 构建
 
