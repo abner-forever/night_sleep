@@ -18,6 +18,16 @@ import '../../sleep/presentation/sheets/detail_sheet.dart';
 import '../../sleep/presentation/widgets/sleep_summary.dart';
 import '../../sleep/presentation/widgets/stage_style.dart';
 
+/// 统计页柱状图的稳定标识，供无障碍与布局测试定位到具体一晚。
+Key statsDurationBarKey(String entryId) =>
+    ValueKey<String>('stats-duration-bar-$entryId');
+
+/// 当前选中柱顶的数值徽标。
+const Key statsSelectedDurationLabelKey = Key('stats-selected-duration-label');
+
+/// 每日时长柱状图的绘图区。
+const Key statsDurationChartKey = Key('stats-duration-chart');
+
 /// 统计页——所选周期内的时长趋势、评分与声音汇总。
 class StatsPage extends ConsumerStatefulWidget {
   const StatsPage({super.key});
@@ -85,12 +95,12 @@ class _StatsPageState extends ConsumerState<StatsPage> {
                     padding: const EdgeInsets.only(bottom: 4, left: 12),
                     child: Pressable(
                       onTap: () => context.push('/stats/all'),
-                      semanticLabel: '查看所有睡眠数据',
+                      semanticLabel: '查看全部数据',
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            '查看所有数据',
+                            '全部数据',
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
@@ -290,12 +300,20 @@ class _DurationChartCard extends StatelessWidget {
                             barGap * (stats.entries.length - 1)) /
                         stats.entries.length;
                     final showEventIcons = slot >= 24;
+                    final selectedIndex = selected == null
+                        ? -1
+                        : stats.entries
+                            .indexWhere((entry) => entry.id == selected!.id);
+                    final selectedEntry =
+                        selectedIndex < 0 ? null : stats.entries[selectedIndex];
 
                     return Column(
                       children: [
                         SizedBox(
                           height: _chartHeight,
                           child: Stack(
+                            key: statsDurationChartKey,
+                            clipBehavior: Clip.none,
                             children: [
                               // Baseline, target and ceiling rules.
                               for (final fraction in [
@@ -327,8 +345,8 @@ class _DurationChartCard extends StatelessWidget {
                                         entry: entry,
                                         percent: stats.barPercentFor(entry),
                                         selected: selected?.id == entry.id,
-                                        showLabel: showDayLabels ||
-                                            selected?.id == entry.id,
+                                        showLabel: showDayLabels &&
+                                            selected?.id != entry.id,
                                         onTap: () {
                                           AppHaptics.select();
                                           onSelect(entry);
@@ -338,6 +356,16 @@ class _DurationChartCard extends StatelessWidget {
                                   ],
                                 ),
                               ),
+                              if (selectedEntry != null)
+                                _SelectedDurationLabel(
+                                  key: statsSelectedDurationLabelKey,
+                                  entry: selectedEntry,
+                                  percent: stats.barPercentFor(selectedEntry),
+                                  index: selectedIndex,
+                                  slotWidth: slot,
+                                  gap: barGap,
+                                  chartWidth: constraints.maxWidth,
+                                ),
                             ],
                           ),
                         ),
@@ -462,8 +490,10 @@ class _Bar extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
     final color = durationBandColor(tokens, entry.durationHours);
+    final selectionOutline = Color.lerp(color, Colors.white, 0.2)!;
 
     return Semantics(
+      key: statsDurationBarKey(entry.id),
       button: true,
       selected: selected,
       label:
@@ -492,26 +522,110 @@ class _Bar extends StatelessWidget {
               ),
             Align(
               alignment: Alignment.bottomCenter,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 260),
+              child: AnimatedScale(
+                scale: selected ? 1.04 : 1,
+                alignment: Alignment.bottomCenter,
+                duration: AppDurations.control,
                 curve: AppMotion.standardCurve,
-                height: (percent / 100 * 160).clamp(6.0, 160.0),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: selected ? 1 : 0.82),
-                  borderRadius:
-                      const BorderRadius.vertical(top: Radius.circular(5)),
-                  boxShadow: selected
-                      ? [
-                          BoxShadow(
-                            color: color.withValues(alpha: 0.24),
-                            spreadRadius: 3,
-                          ),
-                        ]
-                      : null,
+                child: AnimatedContainer(
+                  duration: AppDurations.control,
+                  curve: AppMotion.standardCurve,
+                  height: (percent / 100 * 160).clamp(6.0, 160.0),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.72),
+                    borderRadius:
+                        const BorderRadius.vertical(top: Radius.circular(5)),
+                    border: selected
+                        ? Border.all(
+                            color: selectionOutline,
+                            width: 1.25,
+                          )
+                        : null,
+                    boxShadow: selected
+                        ? [
+                            BoxShadow(
+                              color: color.withValues(alpha: 0.34),
+                              blurRadius: 12,
+                              spreadRadius: 1,
+                            ),
+                            BoxShadow(
+                              color: color.withValues(alpha: 0.2),
+                              blurRadius: 3,
+                              spreadRadius: 1,
+                            ),
+                          ]
+                        : null,
+                  ),
                 ),
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 选中柱子的时长数值。
+///
+/// 数值不跟随柱子的窄槽位布局，而是在整张图表的坐标系里夹到左右边界内：
+/// 30 天视图里最右一根柱子的槽位可能只有 7px，直接向两侧扩标签会被卡片圆角裁掉。
+class _SelectedDurationLabel extends StatelessWidget {
+  const _SelectedDurationLabel({
+    super.key,
+    required this.entry,
+    required this.percent,
+    required this.index,
+    required this.slotWidth,
+    required this.gap,
+    required this.chartWidth,
+  });
+
+  static const _width = 48.0;
+  static const _height = 22.0;
+
+  final SleepEntry entry;
+  final double percent;
+  final int index;
+  final double slotWidth;
+  final double gap;
+  final double chartWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppTokens.of(context);
+    final center = index * (slotWidth + gap) + slotWidth / 2;
+    final maxLeft = chartWidth > _width ? chartWidth - _width : 0.0;
+    final left = (center - _width / 2).clamp(0.0, maxLeft).toDouble();
+    final barHeight =
+        (percent / 100 * _DurationChartCard._chartHeight).clamp(6.0, 160.0);
+    const maxTop = _DurationChartCard._chartHeight - _height;
+    final top = (barHeight - _height - 6).clamp(0.0, maxTop).toDouble();
+
+    return AnimatedPositioned(
+      duration: AppDurations.control,
+      curve: AppMotion.standardCurve,
+      left: left,
+      top: top,
+      width: _width,
+      height: _height,
+      child: Center(
+        child: Text(
+          '${entry.durationHours.toStringAsFixed(1)}h',
+          maxLines: 1,
+          style: AppTheme.num(
+            context,
+            size: 11,
+            weight: FontWeight.w700,
+            color: tokens.textPrimary,
+          ).copyWith(
+            shadows: [
+              Shadow(
+                color: tokens.bgCardSolid.withValues(alpha: 0.96),
+                blurRadius: 3,
+              ),
+            ],
+          ),
         ),
       ),
     );

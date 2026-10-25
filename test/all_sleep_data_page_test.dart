@@ -11,7 +11,7 @@ import 'package:night_sleep/features/sleep/domain/sleep_insight.dart';
 import 'package:night_sleep/features/sleep/domain/sleep_quality.dart';
 import 'package:night_sleep/features/stats/presentation/all_sleep_data_page.dart';
 
-/// 「所有睡眠数据」页的 widget 测试。
+/// 「全部数据」页的 widget 测试。
 ///
 /// 周期口径本身在 `test/sleep_history_test.dart` 里钉死；这里管的是界面：
 /// 默认周期、翻页与禁用、三种粒度的柱状图、汇总卡、行内容与两处空状态。
@@ -107,7 +107,7 @@ void main() {
       ];
 
   PeriodBarChart chartOf(WidgetTester tester) =>
-      tester.widget<PeriodBarChart>(find.byType(PeriodBarChart));
+      tester.widget<PeriodBarChart>(find.byKey(allDataCurrentChartKey));
 
   /// 柱子按标签索引，断言里就不用数下标。
   Map<String, double?> barsByLabel(WidgetTester tester) =>
@@ -124,6 +124,8 @@ void main() {
   testWidgets('默认是本周：抬头是本周区间，下面写本周期条数', (tester) async {
     await pumpRoute(tester, entries: threeNights());
 
+    expect(find.text('全部数据'), findsOneWidget);
+    expect(find.text('所有睡眠数据'), findsNothing);
     // 分段控件是周 / 月 / 年三档（不是「按周 / 按月 / 按年」）。
     expect(find.text('周'), findsOneWidget);
     expect(find.text('月'), findsOneWidget);
@@ -219,6 +221,42 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('2026年10月12日 – 10月18日'), findsOneWidget);
     expect(nextEnabled(tester), isFalse, reason: '翻回最新周期后再次禁用');
+  });
+
+  testWidgets('在图表上右滑看上一周期，左滑回到最新周期', (tester) async {
+    await pumpRoute(tester, entries: threeNights());
+    final chart = find.byKey(allDataChartPageViewKey);
+    expect(chart, findsOneWidget);
+
+    await tester.fling(chart, const Offset(260, 0), 1000);
+    await tester.pumpAndSettle();
+
+    expect(find.text('2026年10月5日 – 10月11日'), findsOneWidget);
+    expect(nextEnabled(tester), isTrue);
+
+    await tester.pump();
+    await tester.fling(
+      find.byKey(allDataChartPageViewKey),
+      const Offset(-260, 0),
+      1000,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('2026年10月12日 – 10月18日'), findsOneWidget);
+    expect(nextEnabled(tester), isFalse);
+  });
+
+  testWidgets('最新周期继续左滑不会越过边界', (tester) async {
+    await pumpRoute(tester, entries: threeNights());
+
+    await tester.drag(
+      find.byKey(allDataChartPageViewKey),
+      const Offset(-180, 0),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('2026年10月12日 – 10月18日'), findsOneWidget);
+    expect(nextEnabled(tester), isFalse);
   });
 
   testWidgets('切到月：柱数换成当月天数，标签只在一号与逢五的日子写', (tester) async {

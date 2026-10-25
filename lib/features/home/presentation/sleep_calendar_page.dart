@@ -13,6 +13,9 @@ import '../../sleep/data/sleep_repository.dart';
 import '../../sleep/domain/sleep_entry.dart';
 import '../../sleep/presentation/sheets/detail_sheet.dart';
 
+/// 月历网格轮播的 key。
+const Key calendarMonthPageViewKey = Key('calendar-month-page-view');
+
 /// 睡眠日历：按月回看每一晚，并从日期直接进入当晚详情。
 class SleepCalendarPage extends ConsumerWidget {
   const SleepCalendarPage({super.key});
@@ -63,6 +66,8 @@ class _SleepCalendar extends StatefulWidget {
 }
 
 class _SleepCalendarState extends State<_SleepCalendar> {
+  final GlobalKey<_CalendarMonthViewState> _monthViewKey = GlobalKey();
+
   late DateTime _month;
   String? _selectedDate;
 
@@ -81,10 +86,9 @@ class _SleepCalendarState extends State<_SleepCalendar> {
     _selectedDate = sorted.isEmpty ? null : sorted.first.dateLabel;
   }
 
-  void _changeMonth(int offset) {
-    AppHaptics.select();
+  void _selectMonth(DateTime month) {
     setState(() {
-      _month = DateTime(_month.year, _month.month + offset);
+      _month = DateTime(month.year, month.month);
       _selectedDate = null;
     });
   }
@@ -118,16 +122,6 @@ class _SleepCalendarState extends State<_SleepCalendar> {
                 scored.length)
             .round();
     final selected = _selectedDate == null ? null : recordMap[_selectedDate!];
-    final leading =
-        (DateTime(_month.year, _month.month).weekday - DateTime.monday) % 7;
-    final daysInMonth = DateTime(_month.year, _month.month + 1, 0).day;
-    final cells = <int?>[
-      for (var index = 0; index < 42; index++)
-        if (index >= leading && index - leading < daysInMonth)
-          index - leading + 1
-        else
-          null,
-    ];
     final demoCount =
         sorted.where((entry) => entry.source == AppConfig.demoSource).length;
 
@@ -189,7 +183,7 @@ class _SleepCalendarState extends State<_SleepCalendar> {
                 children: [
                   _MonthButton(
                     semanticLabel: '上个月',
-                    onTap: () => _changeMonth(-1),
+                    onTap: () => _monthViewKey.currentState?.showPrevious(),
                     icon: Transform.rotate(
                       angle: 3.1415926535897932,
                       child: AppIcons.chevronRight(
@@ -212,7 +206,7 @@ class _SleepCalendarState extends State<_SleepCalendar> {
                   ),
                   _MonthButton(
                     semanticLabel: '下个月',
-                    onTap: () => _changeMonth(1),
+                    onTap: () => _monthViewKey.currentState?.showNext(),
                     icon: AppIcons.chevronRight(
                       size: 18,
                       color: tokens.textSecondary,
@@ -240,31 +234,13 @@ class _SleepCalendarState extends State<_SleepCalendar> {
                     ),
                 ],
               ),
-              GridView.builder(
-                padding: EdgeInsets.zero,
-                physics: const NeverScrollableScrollPhysics(),
-                shrinkWrap: true,
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 7,
-                  childAspectRatio: 1,
-                ),
-                itemCount: cells.length,
-                itemBuilder: (context, index) {
-                  final day = cells[index];
-                  if (day == null) return const SizedBox.shrink();
-                  final date = '$prefix-${day.toString().padLeft(2, '0')}';
-                  final entry = recordMap[date];
-                  return Padding(
-                    padding: const EdgeInsets.all(2),
-                    child: _DayCell(
-                      day: day,
-                      date: date,
-                      entry: entry,
-                      selected: date == _selectedDate,
-                      onTap: () => _selectDate(date),
-                    ),
-                  );
-                },
+              _CalendarMonthView(
+                key: _monthViewKey,
+                month: _month,
+                records: recordMap,
+                selectedDate: _selectedDate,
+                onSelectDate: _selectDate,
+                onMonthChanged: _selectMonth,
               ),
               const SizedBox(height: 10),
               Row(
@@ -339,6 +315,187 @@ class _SleepCalendarState extends State<_SleepCalendar> {
   static String _dayLabel(String date) {
     final parts = date.split('-');
     return '${int.parse(parts[1])} 月 ${int.parse(parts[2])} 日';
+  }
+}
+
+/// 月历网格轮播。
+///
+/// 三页分别是上月、当前月、下月；左右滑动吸附后提交新月份并回到中间页，
+/// 因而可以连续向前或向后翻，而不用一次构建所有月份。
+class _CalendarMonthView extends StatefulWidget {
+  const _CalendarMonthView({
+    super.key,
+    required this.month,
+    required this.records,
+    required this.selectedDate,
+    required this.onSelectDate,
+    required this.onMonthChanged,
+  });
+
+  final DateTime month;
+  final Map<String, SleepEntry> records;
+  final String? selectedDate;
+  final ValueChanged<String> onSelectDate;
+  final ValueChanged<DateTime> onMonthChanged;
+
+  @override
+  State<_CalendarMonthView> createState() => _CalendarMonthViewState();
+}
+
+class _CalendarMonthViewState extends State<_CalendarMonthView> {
+  late final PageController _pageController = PageController(initialPage: 1);
+
+  bool _committingPage = false;
+  int _visiblePage = 1;
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void showPrevious() {
+    _animateToPage(0);
+  }
+
+  void showNext() {
+    _animateToPage(2);
+  }
+
+  void _animateToPage(int page) {
+    if (!_pageController.hasClients) return;
+    _pageController.animateToPage(
+      page,
+      duration: MediaQuery.maybeDisableAnimationsOf(context) ?? false
+          ? Duration.zero
+          : const Duration(milliseconds: 300),
+      curve: AppMotion.standardCurve,
+    );
+  }
+
+  bool _onScrollNotification(ScrollNotification notification) {
+    if (notification is! ScrollEndNotification ||
+        _committingPage ||
+        !_pageController.hasClients) {
+      return false;
+    }
+
+    final metrics = notification.metrics;
+    final page = metrics is PageMetrics
+        ? metrics.page?.round() ?? _visiblePage
+        : _visiblePage;
+    if (page == 0) {
+      _commitMonth(-1);
+    } else if (page == 2) {
+      _commitMonth(1);
+    }
+    return false;
+  }
+
+  void _commitMonth(int offset) {
+    _committingPage = true;
+    _visiblePage = 1;
+    _pageController.jumpToPage(1);
+    widget.onMonthChanged(
+      DateTime(widget.month.year, widget.month.month + offset),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _committingPage = false;
+    });
+  }
+
+  DateTime _monthAt(int index) => DateTime(
+        widget.month.year,
+        widget.month.month + (index - 1),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final dayExtent = constraints.maxWidth / 7;
+        return SizedBox(
+          height: dayExtent * 6,
+          child: NotificationListener<ScrollEndNotification>(
+            onNotification: _onScrollNotification,
+            child: PageView.builder(
+              key: calendarMonthPageViewKey,
+              controller: _pageController,
+              itemCount: 3,
+              padEnds: false,
+              allowImplicitScrolling: true,
+              physics: const PageScrollPhysics(),
+              onPageChanged: (page) {
+                _visiblePage = page;
+                if (!_committingPage) AppHaptics.select();
+              },
+              itemBuilder: (context, index) {
+                return _CalendarMonthGrid(
+                  month: _monthAt(index),
+                  records: widget.records,
+                  selectedDate: index == 1 ? widget.selectedDate : null,
+                  onSelectDate: widget.onSelectDate,
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _CalendarMonthGrid extends StatelessWidget {
+  const _CalendarMonthGrid({
+    required this.month,
+    required this.records,
+    required this.selectedDate,
+    required this.onSelectDate,
+  });
+
+  final DateTime month;
+  final Map<String, SleepEntry> records;
+  final String? selectedDate;
+  final ValueChanged<String> onSelectDate;
+
+  @override
+  Widget build(BuildContext context) {
+    final prefix = '${month.year}-${month.month.toString().padLeft(2, '0')}';
+    final leading =
+        (DateTime(month.year, month.month).weekday - DateTime.monday) % 7;
+    final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
+    final cells = <int?>[
+      for (var index = 0; index < 42; index++)
+        if (index >= leading && index - leading < daysInMonth)
+          index - leading + 1
+        else
+          null,
+    ];
+
+    return GridView.builder(
+      padding: EdgeInsets.zero,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 7,
+        childAspectRatio: 1,
+      ),
+      itemCount: cells.length,
+      itemBuilder: (context, index) {
+        final day = cells[index];
+        if (day == null) return const SizedBox.shrink();
+        final date = '$prefix-${day.toString().padLeft(2, '0')}';
+        return Padding(
+          padding: const EdgeInsets.all(2),
+          child: _DayCell(
+            day: day,
+            date: date,
+            entry: records[date],
+            selected: date == selectedDate,
+            onTap: () => onSelectDate(date),
+          ),
+        );
+      },
+    );
   }
 }
 

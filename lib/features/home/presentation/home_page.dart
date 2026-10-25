@@ -23,8 +23,6 @@ import '../../sleep/presentation/widgets/stage_style.dart';
 import '../domain/home_insight.dart';
 import 'widgets/sleep_hero.dart';
 
-const _homeHeaderTopColor = Color(0xFF0B3979);
-
 /// 「现在」的读取接缝。
 ///
 /// 默认现读系统时钟；测试把它冻住，好让「已睡 3h 42m」这类读数不随运行测试的
@@ -319,12 +317,26 @@ class _HomeContent extends StatelessWidget {
                       statusBarIconBrightness: Brightness.light,
                     ),
                     child: Stack(children: [
-                      const Positioned(
+                      Positioned(
                         top: 0,
                         left: 0,
                         right: 0,
                         bottom: 34,
-                        child: DecoratedBox(
+                        // 矮屏或数据较多时，深色头部可能越过首屏；底边渐隐到页面底色，
+                        // 避免滚动后出现一条生硬的蓝白分界。
+                        child: ShaderMask(
+                          shaderCallback: (rect) => const LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.black,
+                              Colors.black,
+                              Colors.transparent,
+                            ],
+                            stops: [0, .62, 1],
+                          ).createShader(rect),
+                          blendMode: BlendMode.dstIn,
+                          child: const DecoratedBox(
                             key: ValueKey('home-header-background'),
                             decoration: BoxDecoration(
                               image: DecorationImage(
@@ -339,13 +351,15 @@ class _HomeContent extends StatelessWidget {
                                 begin: Alignment.topCenter,
                                 end: Alignment.bottomCenter,
                                 colors: [
-                                  _homeHeaderTopColor,
+                                  homeHeaderTopColor,
                                   Color(0x80183F76),
                                   Color(0xFF0C2344)
                                 ],
                                 stops: [0, .45, 1],
                               ),
-                            ))),
+                            )),
+                          ),
+                        ),
                       ),
                       Padding(
                         padding: EdgeInsets.fromLTRB(
@@ -582,7 +596,7 @@ class _HomePullBackgroundState extends State<_HomePullBackground> {
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
-                          colors: [Color(0xFF0C2344), _homeHeaderTopColor],
+                          colors: [Color(0xFF0C2344), homeHeaderTopColor],
                         ),
                       ),
                     ),

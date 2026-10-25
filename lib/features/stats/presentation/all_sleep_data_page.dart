@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/config/app_config.dart';
+import '../../../core/platform/haptics.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_basics.dart';
@@ -24,7 +25,13 @@ const Key periodPreviousButtonKey = Key('all-data-period-previous');
 /// 「下一个周期」按钮的 key。理由同上。
 const Key periodNextButtonKey = Key('all-data-period-next');
 
-/// 所有睡眠数据：一次只看一个周期，靠翻页看别的周期。
+/// 图表周期轮播的 key。
+const Key allDataChartPageViewKey = Key('all-data-chart-page-view');
+
+/// 轮播中间页的图表 key。
+const Key allDataCurrentChartKey = Key('all-data-current-chart');
+
+/// 全部数据：一次只看一个周期，靠翻页或横向滑动看别的周期。
 ///
 /// 与统计页分工不同——统计页算最近 7 / 14 / 30 条的**趋势**，这一页按周 / 月 / 年
 /// **翻阅全部**：一张按周期的汇总卡（平均时长、柱状图、平均评分 / 达标率 / 记录夜数）
@@ -44,6 +51,8 @@ class AllSleepDataPage extends ConsumerStatefulWidget {
 }
 
 class _AllSleepDataPageState extends ConsumerState<AllSleepDataPage> {
+  final GlobalKey<_SummaryCardState> _summaryCardKey = GlobalKey();
+
   /// 默认按周：一周七根柱子是最容易一眼读完的粒度，也照原型的默认档。
   HistoryGrouping _grouping = HistoryGrouping.week;
 
@@ -76,9 +85,9 @@ class _AllSleepDataPageState extends ConsumerState<AllSleepDataPage> {
     );
   }
 
-  /// 加载 / 出错 / 有数据三态共用同一副外壳。标题照原型是「所有睡眠数据」。
+  /// 加载 / 出错 / 有数据三态共用同一副外壳。
   Widget _shell(List<Widget> children) => Subpage(
-        title: '所有睡眠数据',
+        title: '全部数据',
         children: children,
       );
 
@@ -107,12 +116,18 @@ class _AllSleepDataPageState extends ConsumerState<AllSleepDataPage> {
     // 已经是最新周期时「下一个」禁用：往后翻永远是空周期（偏差 #71）。
     final atLatest = isLatestWindow(allEntries: records, window: window);
 
-    // 演示记录照列（与统计页同口径），但要在卡里报数——这一卡的三个数字把合成的
-    // 与真实的混在了一起。数的是**本周期内**的条数：卡里的数字都是本周期的，
-    // 报一个全库的条数会描述一个不在这屏上的集合。只有调试构建里会有它。
-    final demoCount = window.entries
-        .where((entry) => entry.source == AppConfig.demoSource)
-        .length;
+    final previousWindow = windowOf(
+      allEntries: records,
+      grouping: _grouping,
+      anchor: _shiftedAnchor(anchor, _grouping, -1),
+    );
+    final nextWindow = atLatest
+        ? null
+        : windowOf(
+            allEntries: records,
+            grouping: _grouping,
+            anchor: _shiftedAnchor(anchor, _grouping, 1),
+          );
 
     return _shell([
       SegmentedControl<HistoryGrouping>(
@@ -129,16 +144,19 @@ class _AllSleepDataPageState extends ConsumerState<AllSleepDataPage> {
       _PeriodPager(
         label: window.label,
         count: window.count,
-        onPrevious: () =>
-            setState(() => _anchor = _shiftedAnchor(anchor, _grouping, -1)),
+        onPrevious: () => _summaryCardKey.currentState?.showPrevious(),
         // `null` 就是禁用：颜色随之降到 muted，点击也不再接住。
-        onNext: atLatest
-            ? null
-            : () =>
-                setState(() => _anchor = _shiftedAnchor(anchor, _grouping, 1)),
+        onNext:
+            atLatest ? null : () => _summaryCardKey.currentState?.showNext(),
       ),
       const SizedBox(height: 16),
-      _SummaryCard(window: window, demoCount: demoCount),
+      _SummaryCard(
+        key: _summaryCardKey,
+        window: window,
+        previousWindow: previousWindow,
+        nextWindow: nextWindow,
+        onWindowChanged: (nextAnchor) => setState(() => _anchor = nextAnchor),
+      ),
       const SizedBox(height: 18),
       if (window.isEmpty)
         EmptyState(
@@ -300,137 +318,299 @@ class _PeriodPager extends StatelessWidget {
 ///
 /// 材质是 `StatsDataHero`（规格 §2.3 的「冷净」）：描边是 accent 12% 混
 /// `glassBorder`，底色是 accentSoft 30% 到 45% 处透明的线性渐变叠 `materialStrong`。
-class _SummaryCard extends StatelessWidget {
-  const _SummaryCard({required this.window, required this.demoCount});
+class _SummaryCard extends StatefulWidget {
+  const _SummaryCard({
+    super.key,
+    required this.window,
+    required this.previousWindow,
+    required this.nextWindow,
+    required this.onWindowChanged,
+  });
 
   final HistoryWindow window;
+  final HistoryWindow previousWindow;
 
-  /// 本周期内的演示记录条数。大于 0 时在卡片末尾如实写一句。
-  final int demoCount;
+  /// 为空表示已是最新周期，左滑不越过边界。
+  final HistoryWindow? nextWindow;
+
+  final ValueChanged<DateTime> onWindowChanged;
+
+  @override
+  State<_SummaryCard> createState() => _SummaryCardState();
+}
+
+class _SummaryCardState extends State<_SummaryCard> {
+  late final PageController _pageController = PageController(
+    viewportFraction: 0.94,
+    initialPage: 1,
+  );
+
+  bool _committingPage = false;
+  int _visiblePage = 1;
+
+  @override
+  void didUpdateWidget(covariant _SummaryCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.window.grouping != oldWidget.window.grouping) {
+      _visiblePage = 1;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _pageController.hasClients) {
+          _pageController.jumpToPage(1);
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void showPrevious() {
+    _animateToPage(0);
+  }
+
+  void showNext() {
+    if (widget.nextWindow != null) {
+      _animateToPage(2);
+    }
+  }
+
+  void _animateToPage(int page) {
+    if (!_pageController.hasClients) return;
+    _pageController.animateToPage(
+      page,
+      duration: MediaQuery.maybeDisableAnimationsOf(context) ?? false
+          ? Duration.zero
+          : const Duration(milliseconds: 320),
+      curve: AppMotion.standardCurve,
+    );
+  }
+
+  bool _onScrollNotification(ScrollNotification notification) {
+    if (notification is! ScrollEndNotification ||
+        _committingPage ||
+        !_pageController.hasClients) {
+      return false;
+    }
+
+    final metrics = notification.metrics;
+    final page = metrics is PageMetrics
+        ? metrics.page?.round() ?? _visiblePage
+        : _visiblePage;
+    if (page == 0) {
+      _commitWindow(widget.previousWindow);
+    } else if (page == 2 && widget.nextWindow != null) {
+      _commitWindow(widget.nextWindow!);
+    }
+    return false;
+  }
+
+  void _commitWindow(HistoryWindow window) {
+    _committingPage = true;
+    _visiblePage = 1;
+    _pageController.jumpToPage(1);
+    widget.onWindowChanged(window.anchor);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _committingPage = false;
+    });
+  }
+
+  HistoryWindow _windowAt(int index) {
+    if (index == 0) return widget.previousWindow;
+    if (index == 1) return widget.window;
+    return widget.nextWindow!;
+  }
 
   @override
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
-    final average = window.averageHours;
-    final score = window.averageScore;
+    final average = widget.window.averageHours;
+    final score = widget.window.averageScore;
     // 目标达成只看**平均时长**这一件真的测过的事；没有记录时谈不上达标。
     final reached = average != null && average >= 7;
 
-    return QuietSurface(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '平均睡眠时长',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.96,
-                        color: tokens.textMuted,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
-                      children: [
-                        Text(
-                          // 空周期写「—」：没有记录就没有平均，不摆一个 0。
-                          average == null ? '—' : average.toStringAsFixed(1),
-                          style: AppTheme.num(
-                            context,
-                            size: 36,
-                            weight: FontWeight.w700,
-                            letterSpacing: -1.44,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          '小时',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: tokens.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Text(
-                  reached ? '已达到睡眠目标' : '目标 7 小时',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    // 「达标」判断用 good 薄荷绿；没达标就是一句中性提示，不涂色。
-                    color: reached ? tokens.good : tokens.textMuted,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          PeriodBarChart(bars: _barsFor(window), maxBarWidth: _maxBarWidth),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.only(top: 12),
-            decoration: BoxDecoration(
-              border: Border(top: BorderSide(color: tokens.border)),
-            ),
-            child: Row(
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 280),
+      alignment: Alignment.topCenter,
+      curve: AppMotion.standardCurve,
+      child: QuietSurface(
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Expanded(
-                  child: _Metric(
-                    label: '平均评分',
-                    // 一条都没评分时写「—」：一个 0 会被读成「大家都打了 0 分」。
-                    value: score == null ? '—' : '$score',
-                    color: score == null ? null : scoreBandColor(tokens, score),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '平均睡眠时长',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.96,
+                          color: tokens.textMuted,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          Text(
+                            // 空周期写「—」：没有记录就没有平均，不摆一个 0。
+                            average == null ? '—' : average.toStringAsFixed(1),
+                            style: AppTheme.num(
+                              context,
+                              size: 36,
+                              weight: FontWeight.w700,
+                              letterSpacing: -1.44,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '小时',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: tokens.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-                Expanded(
-                  child: _Metric(
-                    label: '达标率',
-                    value: '${window.sufficientRate}%',
-                    // 「达标」是本轮新加的那个语义色唯一的用途（规格 §3.2）。
-                    // 空窗口的 0% 不上色——那不是「没达标」，是「没有可算的东西」。
-                    color: window.isEmpty ? null : tokens.good,
+                const SizedBox(width: 12),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    reached ? '已达到睡眠目标' : '目标 7 小时',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      // 「达标」判断用 good 薄荷绿；没达标就是一句中性提示，不涂色。
+                      color: reached ? tokens.good : tokens.textMuted,
+                    ),
                   ),
-                ),
-                Expanded(
-                  child: _Metric(label: '记录夜数', value: '${window.count}'),
                 ),
               ],
             ),
-          ),
-          if (demoCount > 0) ...[
-            const SizedBox(height: 10),
-            Text(
-              '其中 $demoCount 条是演示数据，不是你的记录',
-              style: TextStyle(
-                fontSize: 12,
-                height: 1.5,
-                color: tokens.textMuted,
+            const SizedBox(height: 18),
+            Semantics(
+              label: '每日睡眠时长柱状图',
+              hint: '左右滑动切换周期',
+              child: SizedBox(
+                height: PeriodBarChart.height + 20,
+                child: NotificationListener<ScrollEndNotification>(
+                  onNotification: _onScrollNotification,
+                  child: PageView.builder(
+                    key: allDataChartPageViewKey,
+                    controller: _pageController,
+                    itemCount: widget.nextWindow == null ? 2 : 3,
+                    padEnds: true,
+                    allowImplicitScrolling: true,
+                    physics: const PageScrollPhysics(),
+                    onPageChanged: (page) {
+                      _visiblePage = page;
+                      if (!_committingPage) AppHaptics.select();
+                    },
+                    itemBuilder: (context, index) {
+                      final window = _windowAt(index);
+                      // PageView 负责跟手与吸附；相邻页按滚动进度缩放、淡出，
+                      // 形成常见卡片轮播的纵深和侧边露出。
+                      return AnimatedBuilder(
+                        animation: _pageController,
+                        builder: (context, child) {
+                          final page = _pageController.hasClients &&
+                                  _pageController.position.hasContentDimensions
+                              ? (_pageController.page ?? 1.0)
+                              : 1.0;
+                          final distance =
+                              (page - index).abs().clamp(0.0, 1.0).toDouble();
+                          return Transform.scale(
+                            scale: 1 - distance * 0.035,
+                            child: Opacity(
+                              opacity: 1 - distance * 0.22,
+                              child: child,
+                            ),
+                          );
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 5),
+                          child: PeriodBarChart(
+                            key: index == 1 ? allDataCurrentChartKey : null,
+                            bars: _barsFor(window),
+                            maxBarWidth: _maxBarWidthFor(window),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
               ),
             ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.only(top: 12),
+              decoration: BoxDecoration(
+                border: Border(top: BorderSide(color: tokens.border)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _Metric(
+                      label: '平均评分',
+                      // 一条都没评分时写「—」：一个 0 会被读成「大家都打了 0 分」。
+                      value: score == null ? '—' : '$score',
+                      color:
+                          score == null ? null : scoreBandColor(tokens, score),
+                    ),
+                  ),
+                  Expanded(
+                    child: _Metric(
+                      label: '达标率',
+                      value: '${widget.window.sufficientRate}%',
+                      // 「达标」是本轮新加的那个语义色唯一的用途（规格 §3.2）。
+                      // 空窗口的 0% 不上色——那不是「没达标」，是「没有可算的东西」。
+                      color: widget.window.isEmpty ? null : tokens.good,
+                    ),
+                  ),
+                  Expanded(
+                    child: _Metric(
+                      label: '记录夜数',
+                      value: '${widget.window.count}',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (_demoCount(widget.window) > 0) ...[
+              const SizedBox(height: 10),
+              Text(
+                '其中 ${_demoCount(widget.window)} 条是演示数据，不是你的记录',
+                style: TextStyle(
+                  fontSize: 12,
+                  height: 1.5,
+                  color: tokens.textMuted,
+                ),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
 
-  double get _maxBarWidth => switch (window.grouping) {
+  int _demoCount(HistoryWindow window) => window.entries
+      .where((entry) => entry.source == AppConfig.demoSource)
+      .length;
+
+  double _maxBarWidthFor(HistoryWindow window) => switch (window.grouping) {
         HistoryGrouping.week => 28,
         HistoryGrouping.month => 14,
         HistoryGrouping.year => 14,
