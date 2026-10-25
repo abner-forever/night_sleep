@@ -37,6 +37,10 @@ Pages 静态站点配置。Workers Builds 使用：
 - 构建命令：`npm run build`
 - 部署命令：`npx wrangler deploy`
 
+`npx wrangler deploy` 发布正式 Worker。`npx wrangler preview` 是 Cloudflare 的预览部署命令，
+需要 `wrangler.jsonc` 中独立的 `previews` 配置，预览环境的密钥通过
+`npx wrangler preview secret put <名称>` 单独管理。不要用 Preview 代替正式部署。
+
 部署前在 Cloudflare 的 Variables and Secrets 中配置 `QWEATHER_API_HOST`、
 `QWEATHER_PRIVATE_KEY`、`QWEATHER_PROJECT_ID`、`QWEATHER_KEY_ID` 和
 `QWEATHER_DEVELOPER_ID`。私钥必须使用 Secret，不能作为普通变量提交到仓库。

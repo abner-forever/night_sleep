@@ -12,6 +12,7 @@
     "deploy": "wrangler deploy",
     "dev": "nest start --watch",
     "dev:worker": "wrangler dev",
+    "preview": "wrangler preview",
     "start": "nest start",
     "start:prod": "node dist/main",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.worker.json",

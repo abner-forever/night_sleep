@@ -3,7 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { WeatherModule } from './weather/weather.module';
 
-const readLocalEnvFile = process.env.NODE_ENV !== 'production';
+const readLocalEnvFile = ['development', 'test'].includes(process.env.NODE_ENV ?? '');
 
 @Module({
   imports: [

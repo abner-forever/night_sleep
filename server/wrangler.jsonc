@@ -10,6 +10,11 @@
   "vars": {
     "NODE_ENV": "production"
   },
+  "previews": {
+    "vars": {
+      "NODE_ENV": "preview"
+    }
+  },
   "alias": {
     "@nestjs/microservices": "./src/worker-empty-module.ts",
     "@nestjs/microservices/microservices-module": "./src/worker-empty-module.ts",
