@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,7 +22,9 @@ import '../../sleep/presentation/sheets/detail_sheet.dart';
 import '../../sleep/presentation/widgets/stage_chart.dart';
 import '../../sleep/presentation/widgets/sleep_summary.dart';
 import '../../sleep/presentation/widgets/stage_style.dart';
+import '../data/weather_service.dart';
 import '../domain/home_insight.dart';
+import '../domain/weather_snapshot.dart';
 import 'widgets/sleep_hero.dart';
 
 /// 「现在」的读取接缝。
@@ -54,7 +58,9 @@ class HomePage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final entries = ref.watch(sleepEntriesProvider);
     final session = ref.watch(activeSessionProvider).valueOrNull;
-    final now = ref.watch(homeNowProvider)();
+    final clock = ref.watch(homeNowProvider);
+    final now = clock();
+    final weather = ref.watch(weatherProvider);
 
     // 外壳不再兜底留白，状态栏留白由页面自己补（见 [pageTopInset]），
     // 所以加载与错误分支也要和数据分支的 ListView 用同一套顶部与横向留白。
@@ -83,6 +89,8 @@ class HomePage extends ConsumerWidget {
         records: records,
         session: session,
         now: now,
+        clock: clock,
+        weather: weather,
         animateRing: animateRing,
         onRingConsumed: onRingConsumed,
         onOpenNoise: onOpenNoise,
@@ -97,6 +105,8 @@ class _HomeContent extends StatelessWidget {
     required this.records,
     required this.session,
     required this.now,
+    required this.clock,
+    required this.weather,
     required this.animateRing,
     required this.onRingConsumed,
     required this.onOpenNoise,
@@ -106,6 +116,8 @@ class _HomeContent extends StatelessWidget {
   final List<SleepEntry> records;
   final SleepSession? session;
   final DateTime now;
+  final DateTime Function() clock;
+  final AsyncValue<WeatherSnapshot?> weather;
   final bool animateRing;
   final VoidCallback onRingConsumed;
   final VoidCallback onOpenNoise;
@@ -134,7 +146,7 @@ class _HomeContent extends StatelessWidget {
     final overview = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _masthead(context, wide),
+        _masthead(context, wide, clock, weather),
         if (today != null)
           SleepHeroCard(entry: today, animateRing: animateRing, wide: wide)
         else
@@ -397,63 +409,80 @@ class _HomeContent extends StatelessWidget {
     });
   }
 
-  Widget _masthead(BuildContext context, bool wide) {
+  Widget _masthead(
+    BuildContext context,
+    bool wide,
+    DateTime Function() clock,
+    AsyncValue<WeatherSnapshot?> weather,
+  ) {
     final tokens = AppTokens.of(context);
     final foreground = wide ? tokens.textPrimary : Colors.white;
-    return Container(
-      constraints: BoxConstraints(minHeight: wide ? 85 : 164),
-      padding: EdgeInsets.symmetric(horizontal: wide ? 0 : 5),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(
-            child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('夜深',
-                style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w600,
-                    color: foreground,
-                    letterSpacing: -.84)),
-            const SizedBox(height: 5),
-            Text('让每一次睡眠都有迹可循',
-                style: TextStyle(
-                    fontSize: 12,
-                    color: wide ? tokens.textMuted : const Color(0xFFDFECFF))),
-          ],
-        )),
-        const SizedBox(width: 12),
-        Padding(
-          padding: const EdgeInsets.only(top: 9),
-          child: Semantics(
-            button: true,
-            label: '打开睡眠日历',
-            child: Pressable(
-              onTap: () => context.push('/calendar'),
-              child: Container(
-                width: 40,
-                height: 40,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
+    final masthead =
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Expanded(
+          child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('夜深',
+              style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w600,
+                  color: foreground,
+                  letterSpacing: -.84)),
+          const SizedBox(height: 5),
+          Text('让每一次睡眠都有迹可循',
+              style: TextStyle(
+                  fontSize: 12,
+                  color: wide ? tokens.textMuted : const Color(0xFFDFECFF))),
+        ],
+      )),
+      const SizedBox(width: 12),
+      Padding(
+        padding: const EdgeInsets.only(top: 9),
+        child: Semantics(
+          button: true,
+          label: '打开睡眠日历',
+          child: Pressable(
+            onTap: () => context.push('/calendar'),
+            child: Container(
+              width: 40,
+              height: 40,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: wide
+                    ? tokens.accentSoft
+                    : Colors.white.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
                   color: wide
-                      ? tokens.accentSoft
-                      : Colors.white.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: wide
-                        ? tokens.border
-                        : Colors.white.withValues(alpha: 0.18),
-                  ),
+                      ? tokens.border
+                      : Colors.white.withValues(alpha: 0.18),
                 ),
-                child: AppIcons.calendar(
-                  size: 20,
-                  color: wide ? tokens.accent : Colors.white,
-                  strokeWidth: 1.7,
-                ),
+              ),
+              child: AppIcons.calendar(
+                size: 20,
+                color: wide ? tokens.accent : Colors.white,
+                strokeWidth: 1.7,
               ),
             ),
           ),
         ),
-      ]),
+      ),
+    ]);
+
+    return Container(
+      constraints: BoxConstraints(minHeight: wide ? 85 : 164),
+      padding: EdgeInsets.symmetric(horizontal: wide ? 0 : 5),
+      child: wide
+          ? masthead
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                masthead,
+                const SizedBox(height: 18),
+                _HomeClock(clock: clock, weather: weather),
+              ],
+            ),
     );
   }
 
@@ -546,6 +575,204 @@ class _HomeContent extends StatelessWidget {
           ),
         ),
       ]),
+    );
+  }
+}
+
+class _HomeClock extends StatefulWidget {
+  const _HomeClock({
+    required this.clock,
+    required this.weather,
+  });
+
+  final DateTime Function() clock;
+  final AsyncValue<WeatherSnapshot?> weather;
+
+  @override
+  State<_HomeClock> createState() => _HomeClockState();
+}
+
+class _HomeClockState extends State<_HomeClock> {
+  late DateTime _now;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _now = widget.clock();
+    _scheduleNextMinute();
+  }
+
+  @override
+  void didUpdateWidget(covariant _HomeClock oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.clock != oldWidget.clock) {
+      _now = widget.clock();
+      _scheduleNextMinute();
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _scheduleNextMinute() {
+    _timer?.cancel();
+    final nextMinute = DateTime(
+      _now.year,
+      _now.month,
+      _now.day,
+      _now.hour,
+      _now.minute + 1,
+    );
+    final delay = nextMinute.difference(_now);
+    _timer = Timer(
+      delay > Duration.zero ? delay : const Duration(minutes: 1),
+      () {
+        if (!mounted) return;
+        setState(() => _now = widget.clock());
+        _scheduleNextMinute();
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hour = _now.hour.toString().padLeft(2, '0');
+    final minute = _now.minute.toString().padLeft(2, '0');
+    final weekday = const ['一', '二', '三', '四', '五', '六', '日'][_now.weekday - 1];
+    final date = '${_now.month} 月 ${_now.day} 日';
+
+    return Semantics(
+      key: const ValueKey('home-clock'),
+      label: '当前时间 $hour:$minute，$date，星期$weekday',
+      excludeSemantics: true,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(
+            '$hour:$minute',
+            style: AppTheme.num(
+              context,
+              size: 46,
+              weight: FontWeight.w500,
+              color: Colors.white,
+              letterSpacing: -1.6,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Container(
+            width: 1,
+            height: 36,
+            margin: const EdgeInsets.only(bottom: 4),
+            color: Colors.white.withValues(alpha: 0.24),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    date,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xE6FFFFFF),
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    '周$weekday',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xAFFFFFFF),
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                  _HomeWeather(weather: widget.weather),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HomeWeather extends StatelessWidget {
+  const _HomeWeather({required this.weather});
+
+  final AsyncValue<WeatherSnapshot?> weather;
+
+  @override
+  Widget build(BuildContext context) {
+    return weather.when(
+      loading: () => const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 10,
+            height: 10,
+            child: CircularProgressIndicator(
+              strokeWidth: 1.4,
+              color: Color(0xAFFFFFFF),
+            ),
+          ),
+          SizedBox(width: 6),
+          Text(
+            '天气获取中',
+            style: TextStyle(fontSize: 10, color: Color(0xAFFFFFFF)),
+          ),
+        ],
+      ),
+      error: (error, stack) => const Text(
+        '天气暂不可用',
+        style: TextStyle(fontSize: 10, color: Color(0xAFFFFFFF)),
+      ),
+      data: (snapshot) {
+        if (snapshot == null) return const SizedBox.shrink();
+        return Semantics(
+          label:
+              '${snapshot.city}，${snapshot.weatherText}，${snapshot.temperature.round()} 度',
+          excludeSemantics: true,
+          child: Row(
+            children: [
+              Text(
+                snapshot.weatherEmoji,
+                style: const TextStyle(fontSize: 14),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                '${snapshot.temperature.round()}° ${snapshot.weatherText}',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xE6FFFFFF),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  snapshot.city,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: Color(0x9FFFFFFF),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

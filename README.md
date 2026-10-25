@@ -160,6 +160,23 @@ flutter run -d <设备ID> --dart-define=DEMO_DATA=true     # 强制开启
 flutter build apk --dart-define=DEMO_DATA=false    # 发布构建强制关闭
 ```
 
+**天气服务**在 debug 中默认连接本机 NestJS：
+
+- Android 模拟器：`http://10.0.2.2:8080/api`
+- iOS 模拟器 / 其他本地目标：`http://localhost:8080/api`
+
+真机或独立服务可覆盖接口基址，也可指定城市避免服务端按 IP 解析：
+
+```bash
+flutter run -d <设备ID> \
+  --dart-define=WEATHER_API_BASE_URL=http://192.168.1.10:8080/api \
+  --dart-define=WEATHER_LOCATION=上海
+```
+
+release 未提供 `WEATHER_API_BASE_URL` 时不请求天气。生产域名确定后必须使用 HTTPS 基址，例如
+`--dart-define=WEATHER_API_BASE_URL=https://api.example.com/api`；不要在和风天气密钥写进 App。
+Android 发布工作流会读取仓库 Actions variable `WEATHER_API_BASE_URL`，未配置时保持天气功能关闭。
+
 ### 构建
 
 ```bash

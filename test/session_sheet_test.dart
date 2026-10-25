@@ -14,6 +14,7 @@ import 'package:night_sleep/features/session/presentation/session_panel_transiti
 import 'package:night_sleep/features/session/presentation/sleep_session_page.dart';
 import 'package:night_sleep/features/session/presentation/widgets/night_backdrop.dart';
 import 'package:night_sleep/features/session/presentation/widgets/session_header.dart';
+import 'package:night_sleep/features/home/data/weather_service.dart';
 import 'package:night_sleep/features/sleep/data/noise_asset.dart';
 import 'package:night_sleep/features/sleep/data/noise_player.dart';
 import 'package:night_sleep/features/sleep/data/session_repository.dart';
@@ -120,6 +121,7 @@ void main() {
           settingsProvider.overrideWith((ref) => Stream.value(settings)),
           sleepEntriesProvider.overrideWith((ref) => const <SleepEntry>[]),
           activeSessionProvider.overrideWith((ref) => session),
+          weatherProvider.overrideWith((ref) async => null),
           reminderSchedulerProvider.overrideWithValue(NoopReminderScheduler()),
           noisePlayerProvider.overrideWithValue(player ?? _FakePlayer()),
         ],

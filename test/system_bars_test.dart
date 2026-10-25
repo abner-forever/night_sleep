@@ -9,6 +9,7 @@ import 'package:night_sleep/core/platform/system_bars.dart';
 import 'package:night_sleep/core/theme/app_theme.dart';
 import 'package:night_sleep/features/sleep/data/session_repository.dart';
 import 'package:night_sleep/features/sleep/data/sleep_repository.dart';
+import 'package:night_sleep/features/home/data/weather_service.dart';
 
 import 'system_bar_probe.dart';
 
@@ -164,6 +165,7 @@ void main() {
             ),
             sleepEntriesProvider.overrideWith((ref) => const []),
             activeSessionProvider.overrideWith((ref) => null),
+            weatherProvider.overrideWith((ref) async => null),
           ],
           child: const NightSleepApp(),
         ),

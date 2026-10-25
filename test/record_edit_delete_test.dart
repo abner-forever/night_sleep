@@ -14,6 +14,7 @@ import 'package:night_sleep/core/theme/app_tokens.dart';
 import 'package:night_sleep/core/widgets/app_basics.dart';
 import 'package:night_sleep/core/widgets/app_icons.dart';
 import 'package:night_sleep/features/home/presentation/home_page.dart';
+import 'package:night_sleep/features/home/data/weather_service.dart';
 import 'package:night_sleep/features/log/presentation/log_page.dart';
 import 'package:night_sleep/features/sleep/data/clip_store.dart';
 import 'package:night_sleep/features/sleep/data/demo_seed.dart';
@@ -136,6 +137,7 @@ void main() {
           // `watch*` 流，在 widget 测试里留下 pending timer（见 pages_widget_test
           // 文件头）。这些用例不关心会话，直接给 null。
           activeSessionProvider.overrideWith((ref) => null),
+          weatherProvider.overrideWith((ref) async => null),
           // 真 `ClipFileStore.platform()` 要 `path_provider` 的平台通道。删一条
           // 没有录音的记录不会碰到它（`deleteClip(null)` 直接返回），但只要用例里
           // 有文件要删，就必须换成指向临时目录的这一份。
@@ -171,6 +173,7 @@ void main() {
             (ref) => Stream.value(testSettings()),
           ),
           activeSessionProvider.overrideWith((ref) => null),
+          weatherProvider.overrideWith((ref) async => null),
         ],
         child: MaterialApp(
           theme: AppTheme.light(),
@@ -277,6 +280,7 @@ void main() {
             // 外壳里的首页会读 `activeSessionProvider`。不覆盖它会真订阅 drift
             // 的流，测试拆树时留下 pending timer（见本文件上方注释）。
             activeSessionProvider.overrideWith((ref) => null),
+            weatherProvider.overrideWith((ref) async => null),
           ],
           child: const NightSleepApp(),
         ),

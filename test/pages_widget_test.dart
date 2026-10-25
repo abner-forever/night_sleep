@@ -23,6 +23,8 @@ import 'package:night_sleep/core/widgets/ios_controls.dart';
 import 'package:night_sleep/core/widgets/subpage.dart';
 import 'package:night_sleep/core/widgets/top_fade.dart';
 import 'package:night_sleep/features/home/presentation/home_page.dart';
+import 'package:night_sleep/features/home/data/weather_service.dart';
+import 'package:night_sleep/features/home/domain/weather_snapshot.dart';
 import 'package:night_sleep/features/compass/presentation/compass_page.dart';
 import 'package:night_sleep/features/log/presentation/log_page.dart';
 import 'package:night_sleep/features/log/presentation/review_page.dart';
@@ -162,6 +164,7 @@ void main() {
     Size surface = const Size(430, 2600),
     SleepSession? activeSession,
     DateTime? clock,
+    WeatherSnapshot? weather,
     List<Override> overrides = const [],
   }) async {
     tester.view.physicalSize = surface;
@@ -179,6 +182,7 @@ void main() {
           // 会话也走 provider 覆盖：真订阅 `activeSessionWatchProvider` 会留下
           // pending timer（见文件头的说明）。默认 null = 没有会话在跑。
           activeSessionProvider.overrideWith((ref) => activeSession),
+          weatherProvider.overrideWith((ref) async => weather),
           // 冻住「现在」，好让「已睡 3h 42m」这类读数与跑测试的日期无关。
           if (clock != null) homeNowProvider.overrideWithValue(() => clock),
           ...overrides,
@@ -199,6 +203,7 @@ void main() {
     Size surface = const Size(430, 2600),
     SleepSession? activeSession,
     DateTime? clock,
+    WeatherSnapshot? weather,
     List<Override> overrides = const [],
   }) {
     return pumpWithOverrides(
@@ -209,6 +214,7 @@ void main() {
       surface: surface,
       activeSession: activeSession,
       clock: clock,
+      weather: weather,
       overrides: overrides,
     );
   }
@@ -232,6 +238,7 @@ void main() {
             (ref) => Stream.value(settings()),
           ),
           activeSessionProvider.overrideWith((ref) => null),
+          weatherProvider.overrideWith((ref) async => null),
         ],
         child: const NightSleepApp(),
       ),
@@ -318,6 +325,46 @@ void main() {
       );
 
   group('首页', () {
+    testWidgets('手机顶部 banner 显示当前时间、日期和星期', (tester) async {
+      await pumpPage(
+        tester,
+        home(),
+        entries: await demoEntries(),
+        clock: DateTime(2026, 10, 25, 21, 8),
+        surface: const Size(430, 932),
+      );
+
+      expect(find.byKey(const ValueKey('home-clock')), findsOneWidget);
+      expect(find.text('21:08'), findsOneWidget);
+      expect(find.text('10 月 25 日'), findsOneWidget);
+      expect(find.text('周日'), findsOneWidget);
+    });
+
+    testWidgets('手机顶部 banner 显示天气服务返回的实况', (tester) async {
+      await pumpPage(
+        tester,
+        home(),
+        entries: await demoEntries(),
+        clock: DateTime(2026, 10, 25, 21, 8),
+        surface: const Size(430, 932),
+        weather: const WeatherSnapshot(
+          city: '上海',
+          temperature: 24.4,
+          temperatureMax: 27,
+          temperatureMin: 19,
+          weatherCode: 1,
+          weatherText: '多云',
+          weatherEmoji: '⛅',
+          isDay: false,
+          windspeed: 12,
+        ),
+      );
+
+      expect(find.text('24° 多云'), findsOneWidget);
+      expect(find.text('上海'), findsOneWidget);
+      expect(find.text('⛅'), findsOneWidget);
+    });
+
     testWidgets('手机夜景头部底边渐隐到页面底色', (tester) async {
       await pumpPage(
         tester,
