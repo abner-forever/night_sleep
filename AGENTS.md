@@ -32,7 +32,7 @@ flutter build ios --simulator --no-codesign
 
 官网命令在 `website/` 执行：`npm ci`、`npm run dev`、`npm run check`、`npm run build`。`check` 是 Node 测试，不是 lint 或类型检查。
 
-应用服务命令在 `server/` 执行：`npm ci`、`npm run dev`、`npm run typecheck`、`npm test`、`npm run build`。
+应用服务命令在 `server/` 执行：`npm ci`、`npm run dev`、`npm run dev:worker`、`npm run typecheck`、`npm test`、`npm run build`。Cloudflare 部署目标是 Worker，配置文件为 `server/wrangler.jsonc`。
 
 ## 实现约定
 

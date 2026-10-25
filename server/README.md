@@ -29,6 +29,27 @@ curl "http://localhost:8080/api/health"
 
 Swagger 文档位于 `http://localhost:8080/api/docs`。
 
+## Cloudflare Workers
+
+本项目同时提供 Cloudflare Worker 入口。Cloudflare 项目必须是 **Worker**，不能使用只识别静态文件的
+Pages 静态站点配置。Workers Builds 使用：
+
+- Worker 名称：`night-sleep`
+- 构建命令：`npm run build`
+- 部署命令：`npx wrangler deploy`
+
+`npx wrangler deploy` 发布正式 Worker。`npx wrangler preview` 是 Cloudflare 的预览部署命令，
+需要 `wrangler.jsonc` 中独立的 `previews` 配置，预览环境的密钥通过
+`npx wrangler preview secret put <名称>` 单独管理。不要用 Preview 代替正式部署。
+
+部署前在 Cloudflare 的 Variables and Secrets 中配置 `QWEATHER_API_HOST`、
+`QWEATHER_PRIVATE_KEY`、`QWEATHER_PROJECT_ID`、`QWEATHER_KEY_ID` 和
+`QWEATHER_DEVELOPER_ID`。私钥必须使用 Secret，不能作为普通变量提交到仓库。
+
+Worker 通过 Cloudflare 的 Node HTTP 兼容层运行 NestJS，生产环境不暴露 Swagger UI；本地 Node
+模式仍可通过 `http://localhost:8080/api/docs` 查看。可先运行 `npm run dev:worker` 在 Workerd
+中检查 Worker 入口。
+
 ## 天气接口
 
 `GET /api/weather`
@@ -73,4 +94,5 @@ Swagger 文档位于 `http://localhost:8080/api/docs`。
 npm run typecheck
 npm test
 npm run build
+npm run dev:worker
 ```

@@ -25,11 +25,19 @@
 
 首页手机端顶部增加当前时间、日期与星期展示。
 
-首页接入天气服务：debug 默认请求本地接口，release 通过环境变量配置线上基址；真机联网未验证。
+首页接入天气服务：debug 默认请求本地接口，release 按发布分支连接 Beta/Production Worker；真机联网未验证。
+
+首页重排时间与天气层级，天气展示温度、城市、高低温、湿度和加载状态。
 
 新增 NestJS 应用服务与天气接口，支持和风天气 JWT、城市/日期查询、三日预报和进程内缓存。
 
 server 显式依赖 webpack 5.112.2。
+
+应用服务增加 Cloudflare Worker 入口与 Wrangler 配置，修正静态站点部署错误。
+
+应用服务补充 Cloudflare Worker Preview 配置。
+
+应用服务对齐 Cloudflare Worker 正式部署名称。
 
 隐私协议补充天气联网、IP 城市级定位与天气服务商说明。
 

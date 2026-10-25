@@ -357,12 +357,71 @@ void main() {
           weatherEmoji: '⛅',
           isDay: false,
           windspeed: 12,
+          humidity: 68,
         ),
       );
 
-      expect(find.text('24° 多云'), findsOneWidget);
+      expect(find.byKey(const ValueKey('home-weather')), findsOneWidget);
+      expect(find.text('24°'), findsOneWidget);
+      expect(find.text('多云'), findsOneWidget);
       expect(find.text('上海'), findsOneWidget);
       expect(find.text('⛅'), findsOneWidget);
+      expect(find.text('↑ 27°'), findsOneWidget);
+      expect(find.text('↓ 19°'), findsOneWidget);
+      expect(find.text('湿度 68%'), findsOneWidget);
+    });
+
+    testWidgets('宽屏顶部同样显示时间和天气', (tester) async {
+      await pumpPage(
+        tester,
+        home(),
+        entries: await demoEntries(),
+        clock: DateTime(2026, 10, 25, 21, 8),
+        surface: const Size(1024, 1200),
+        weather: const WeatherSnapshot(
+          city: '上海',
+          temperature: 24.4,
+          temperatureMax: 27,
+          temperatureMin: 19,
+          weatherCode: 1,
+          weatherText: '多云',
+          weatherEmoji: '⛅',
+          isDay: false,
+          windspeed: 12,
+        ),
+      );
+
+      expect(find.byKey(const ValueKey('home-clock')), findsOneWidget);
+      expect(find.byKey(const ValueKey('home-weather')), findsOneWidget);
+      expect(find.text('21:08'), findsOneWidget);
+      expect(find.text('24°'), findsOneWidget);
+      expect(find.text('上海'), findsOneWidget);
+    });
+
+    testWidgets('窄屏将时间和天气上下排列且不溢出', (tester) async {
+      await pumpPage(
+        tester,
+        home(),
+        clock: DateTime(2026, 10, 25, 21, 8),
+        surface: const Size(320, 932),
+        weather: const WeatherSnapshot(
+          city: '上海',
+          temperature: 24.4,
+          temperatureMax: 27,
+          temperatureMin: 19,
+          weatherCode: 1,
+          weatherText: '多云',
+          weatherEmoji: '⛅',
+          isDay: false,
+          windspeed: 12,
+          humidity: 68,
+        ),
+      );
+
+      expect(find.byKey(const ValueKey('home-clock')), findsOneWidget);
+      expect(find.byKey(const ValueKey('home-weather')), findsOneWidget);
+      expect(find.text('21:08'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('手机夜景头部底边渐隐到页面底色', (tester) async {

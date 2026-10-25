@@ -1,6 +1,12 @@
 node_modules/
 dist/
+dist-worker/
 coverage/
+.wrangler-config/
+.wrangler-dry-run/
+.wrangler-tmp/
+.wrangler/
+.dev.vars
 .env
 .env.local
 .env.*.local

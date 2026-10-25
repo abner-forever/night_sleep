@@ -76,6 +76,32 @@ describe('WeatherController', () => {
     );
   });
 
+  it('Cloudflare Worker 使用 CF-Connecting-IP 做城市定位', async () => {
+    weatherService.getWeather.mockResolvedValue({
+      city: '上海',
+      latitude: 31.23,
+      longitude: 121.47,
+      forecastDate: '2026-10-25',
+      temperature: 24,
+      temperatureMax: 27,
+      temperatureMin: 19,
+      weatherCode: 1,
+      weatherText: '大体晴朗',
+      weatherEmoji: '🌤️',
+      isDay: true,
+      windspeed: 12,
+    });
+
+    await request(app.getHttpServer())
+      .get('/api/weather')
+      .set('CF-Connecting-IP', '203.0.113.8')
+      .expect(200);
+
+    expect(weatherService.getWeather).toHaveBeenCalledWith(
+      expect.objectContaining({ clientIp: '203.0.113.8' }),
+    );
+  });
+
   it('把参数校验错误包装为统一错误响应', async () => {
     const response = await request(app.getHttpServer())
       .get('/api/weather')

@@ -109,6 +109,7 @@ jobs:
         run: >-
           flutter build apk --release
           --dart-define=DEMO_DATA=false
+          --dart-define=APP_RELEASE_CHANNEL=${{ github.ref_name }}
           --dart-define=WEATHER_API_BASE_URL=${{ vars.WEATHER_API_BASE_URL }}
       - name: 检查安装包与签名并生成校验文件
         shell: bash
