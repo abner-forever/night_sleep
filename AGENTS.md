@@ -2,13 +2,14 @@
 
 ## 项目与目录
 
-「夜深」是中文、本地优先的睡眠记录应用，使用 Flutter / Dart，支持 Android 和 iOS 手机、平板。`website/` 是独立的 React / Vite 官网，不是 Flutter Web。
+「夜深」是中文、本地优先的睡眠记录应用，使用 Flutter / Dart，支持 Android 和 iOS 手机、平板。`website/` 是独立的 React / Vite 官网，`server/` 是 NestJS 应用服务，二者都不是 Flutter Web。
 
 - `lib/main.dart`：启动、数据库与通知初始化、密钥读取及 Riverpod overrides。
 - `lib/app/`：GoRouter、标签外壳与跨功能编排，包括录音、音效会话和提醒。
 - `lib/core/`：Drift 数据库、平台适配、主题令牌和共享控件。
 - `lib/features/<feature>/`：按需组织 `presentation/`、`domain/`、`data/`，不强求每个功能都有三层。
 - `test/`：领域、数据库和 Widget 测试；`integration_test/`：需设备的界面巡检与平台验证。
+- `server/`：NestJS 11 应用服务，当前提供天气接口；密钥只从服务端环境变量读取。
 - `tool/`：资源生成器、音频复核及 Android 发布脚本；`.github/workflows/`：Android 发布与官网部署。
 - `docs/release-plan.md`、`docs/android-signing.md`：发布及签名细则；`README.md`：使用与环境说明；`CLAUDE.md`：更详细的架构与历史踩坑说明。涉及具体行为时以当前源码、工作流及用户要求核实。
 
@@ -30,6 +31,8 @@ flutter build ios --simulator --no-codesign
 首次检出或修改 Drift 表后必须生成代码。`lib/**/*.g.dart` 已忽略，不手改、不提交。演示数据由 `DEMO_DATA` 控制，默认只在 debug 构建开启；发布 APK 必须使用 `--dart-define=DEMO_DATA=false`。
 
 官网命令在 `website/` 执行：`npm ci`、`npm run dev`、`npm run check`、`npm run build`。`check` 是 Node 测试，不是 lint 或类型检查。
+
+应用服务命令在 `server/` 执行：`npm ci`、`npm run dev`、`npm run typecheck`、`npm test`、`npm run build`。
 
 ## 实现约定
 
@@ -65,6 +68,7 @@ flutter build ios --simulator --no-codesign
 
 - Release automation: `python3 -m unittest discover -s tool -p 'test_*release.py'` and `python3 -m unittest discover -s tool -p 'test_*signing.py'`.
 - Website: run `npm run check` and `npm run build` in `website/`.
+- 应用服务：在 `server/` 运行 `npm run typecheck`、`npm test` 和 `npm run build`；涉及真实天气上游时另做接口联调，不把密钥写入仓库。
 - Flutter changes: run `dart analyze` and relevant Flutter tests.
 - 对修改的 Dart 文件运行 `dart format <paths>`；跨功能或公共基础设施变更需运行完整 `flutter test`。集成测试不包含在默认测试扫描内，使用 `NO_PROXY=127.0.0.1,localhost flutter test integration_test/app_screens_test.dart -d <device-id>` 等指定文件与设备的命令。
 - Widget 测试用 provider overrides / fake 隔离平台通道、真实文件 I/O 和 Drift watch 流；无限动画用显式 `pump()`，不要等待 `pumpAndSettle()`。页面测试不得额外包 Scaffold 来掩盖真实路由缺少 Material 或背景的问题。
