@@ -42,9 +42,8 @@ Pages 静态站点配置。Workers Builds 使用：
 需要 `wrangler.jsonc` 中独立的 `previews` 配置，预览环境的密钥通过
 `npx wrangler preview secret put <名称>` 单独管理。不要用 Preview 代替正式部署。
 
-部署前在 Cloudflare 的 Variables and Secrets 中配置 `QWEATHER_API_HOST`、
-`QWEATHER_PRIVATE_KEY`、`QWEATHER_PROJECT_ID`、`QWEATHER_KEY_ID` 和
-`QWEATHER_DEVELOPER_ID`。私钥必须使用 Secret，不能作为普通变量提交到仓库。
+非敏感天气配置已经写入 `wrangler.jsonc` 的 `vars` 和 `previews.vars`，由 Git 统一维护。
+部署前只需在 Cloudflare Secret 中配置 `QWEATHER_PRIVATE_KEY`；私钥不能写进仓库或普通变量。
 
 Worker 通过 Cloudflare 的 Node HTTP 兼容层运行 NestJS，生产环境不暴露 Swagger UI；本地 Node
 模式仍可通过 `http://localhost:8080/api/docs` 查看。可先运行 `npm run dev:worker` 在 Workerd

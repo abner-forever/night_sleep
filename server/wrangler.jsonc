@@ -7,13 +7,31 @@
     "nodejs_compat",
     "nodejs_compat_populate_process_env"
   ],
+  // 非敏感运行时配置；QWEATHER_PRIVATE_KEY 只通过 Cloudflare Secret 提供。
   "vars": {
-    "NODE_ENV": "production"
+    "NODE_ENV": "production",
+    "QWEATHER_API_HOST": "p73yft8fmx.re.qweatherapi.com",
+    "QWEATHER_PROJECT_ID": "478AXDJYBY",
+    "QWEATHER_KEY_ID": "KNB28K7PRW",
+    "QWEATHER_DEVELOPER_ID": "Q850623081",
+    "WEATHER_TIME_ZONE": "Asia/Shanghai",
+    "WEATHER_HTTP_TIMEOUT_MS": "8000",
+    "WEATHER_CACHE_TTL_SECONDS": "600",
+    "IP_GEOLOCATION_BASE_URL": "https://ipwho.is"
   },
   "workers_dev": true,
   "previews": {
+    // Preview 不会继承顶层 vars，因此非敏感配置需要重复声明。
     "vars": {
-      "NODE_ENV": "preview"
+      "NODE_ENV": "preview",
+      "QWEATHER_API_HOST": "p73yft8fmx.re.qweatherapi.com",
+      "QWEATHER_PROJECT_ID": "478AXDJYBY",
+      "QWEATHER_KEY_ID": "KNB28K7PRW",
+      "QWEATHER_DEVELOPER_ID": "Q850623081",
+      "WEATHER_TIME_ZONE": "Asia/Shanghai",
+      "WEATHER_HTTP_TIMEOUT_MS": "8000",
+      "WEATHER_CACHE_TTL_SECONDS": "600",
+      "IP_GEOLOCATION_BASE_URL": "https://ipwho.is"
     }
   },
   "alias": {

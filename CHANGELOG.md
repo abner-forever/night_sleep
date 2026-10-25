@@ -41,6 +41,8 @@ server 显式依赖 webpack 5.112.2。
 
 应用服务对齐 Cloudflare Worker 正式部署名称。
 
+应用服务把天气配置写进 Wrangler，私钥只留 Secret。
+
 隐私协议补充天气联网、IP 城市级定位与天气服务商说明。
 
 ## 未发布（2026-10-24）
