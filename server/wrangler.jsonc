@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "night-sleep-server",
+  "name": "night-sleep",
   "main": "dist-worker/worker.js",
   "compatibility_date": "2026-10-25",
   "compatibility_flags": [
@@ -10,6 +10,7 @@
   "vars": {
     "NODE_ENV": "production"
   },
+  "workers_dev": true,
   "previews": {
     "vars": {
       "NODE_ENV": "preview"

@@ -34,6 +34,7 @@ Swagger 文档位于 `http://localhost:8080/api/docs`。
 本项目同时提供 Cloudflare Worker 入口。Cloudflare 项目必须是 **Worker**，不能使用只识别静态文件的
 Pages 静态站点配置。Workers Builds 使用：
 
+- Worker 名称：`night-sleep`
 - 构建命令：`npm run build`
 - 部署命令：`npx wrangler deploy`
 

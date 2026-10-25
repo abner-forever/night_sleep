@@ -35,6 +35,8 @@ server 显式依赖 webpack 5.112.2。
 
 应用服务补充 Cloudflare Worker Preview 配置。
 
+应用服务对齐 Cloudflare Worker 正式部署名称。
+
 隐私协议补充天气联网、IP 城市级定位与天气服务商说明。
 
 ## 未发布（2026-10-24）
