@@ -179,6 +179,8 @@ npm run dev
 城市无法解析时返回 404，上游不可用或配置缺失时返回 503，不返回占位天气。
 未传城市时，服务会使用 `WEATHER_DEFAULT_LOCATION`，或用公网请求 IP 做城市级定位；
 只发送网络位置给定位/天气服务商，不发送睡眠记录、备注或音频。
+服务也可通过 `wrangler.jsonc` 部署到 Cloudflare Worker；Cloudflare 项目必须选择 Worker，
+不能使用静态 Pages 部署，密钥在 Variables and Secrets 中配置。
 
 真机或独立服务可覆盖接口基址，也可指定城市避免服务端按 IP 解析：
 

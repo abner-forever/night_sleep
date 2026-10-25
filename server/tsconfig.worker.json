@@ -1,0 +1,24 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "ES2022",
+    "moduleResolution": "Bundler",
+    "outDir": "./dist-worker",
+    "declaration": false,
+    "incremental": false,
+    "typeRoots": [
+      "./node_modules/@types",
+      "./node_modules/@cloudflare"
+    ],
+    "types": [
+      "node",
+      "workers-types"
+    ]
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "src/**/*.spec.ts"
+  ]
+}

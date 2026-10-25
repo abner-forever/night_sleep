@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "night-sleep-server",
+  "main": "dist-worker/worker.js",
+  "compatibility_date": "2026-10-25",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "nodejs_compat_populate_process_env"
+  ],
+  "vars": {
+    "NODE_ENV": "production"
+  },
+  "alias": {
+    "@nestjs/microservices": "./src/worker-empty-module.ts",
+    "@nestjs/microservices/microservices-module": "./src/worker-empty-module.ts",
+    "@nestjs/websockets/socket-module": "./src/worker-empty-module.ts",
+    "class-transformer/storage": "./node_modules/class-transformer/cjs/storage.js"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

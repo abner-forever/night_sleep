@@ -33,10 +33,18 @@ export class WeatherController {
   })
   getWeather(@Req() request: Request, @Query() query: WeatherQueryDto): Promise<WeatherData> {
     return this.weatherService.getWeather({
-      clientIp: request.ip || request.socket.remoteAddress || '',
+      clientIp: resolveClientIp(request),
       location: query.location,
       adm: query.adm,
       date: query.date,
     });
   }
+}
+
+function resolveClientIp(request: Request): string {
+  const cloudflareIp = request.headers['cf-connecting-ip'];
+  if (typeof cloudflareIp === 'string' && cloudflareIp.trim()) {
+    return cloudflareIp.trim();
+  }
+  return request.ip || request.socket.remoteAddress || '';
 }
