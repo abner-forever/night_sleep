@@ -22,4 +22,25 @@ abstract final class AppConfig {
 
   /// `source` value marking bundled sample rows.
   static const String demoSource = 'demo';
+
+  /// 天气接口基址。生产环境必须通过 dart-define 显式提供，未提供时不发起天气请求。
+  ///
+  /// debug 默认连接本机 NestJS 服务；Android 模拟器使用宿主机的 10.0.2.2。
+  static String get weatherApiBaseUrl {
+    const configured = String.fromEnvironment(
+      'WEATHER_API_BASE_URL',
+      defaultValue: '',
+    );
+    if (configured.isNotEmpty) return configured;
+    if (!kDebugMode) return '';
+    return defaultTargetPlatform == TargetPlatform.android
+        ? 'http://10.0.2.2:8080/api'
+        : 'http://localhost:8080/api';
+  }
+
+  /// 可选城市名。为空时服务端根据请求 IP 解析城市级大致位置。
+  static const String weatherLocation = String.fromEnvironment(
+    'WEATHER_LOCATION',
+    defaultValue: '',
+  );
 }

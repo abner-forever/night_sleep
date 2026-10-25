@@ -93,15 +93,6 @@ def package(args, metadata):
         'source_sha': args.source_sha, 'branch': args.branch,
         'application_id': APPLICATION_ID,
     }, ensure_ascii=False, indent=2) + '\n')
-    (output / 'README.txt').write_text(
-        f"夜深 Android {metadata['version']}（构建 {metadata['build_number']}）\n"
-        '使用夜深专用长期签名；演示数据关闭。\n'
-        f'Android 包名为 {APPLICATION_ID}。\n'
-        '从旧包名 com.example.night_sleep 或旧测试签名版本升级，需先导出记录、卸载后重装，'
-        '之后用同一长期签名覆盖更新。\n'
-        '助眠录音与模型授权说明请阅读仓库 README。\n'
-        'CI 只核验版本号、包名与签名；真机安装、锁屏录音与升级覆盖不在自动核验范围内。\n'
-    )
     print(json.dumps({**metadata, 'sha256': digest, 'size': len(payload)}))
 
 

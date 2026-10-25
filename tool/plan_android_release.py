@@ -159,8 +159,8 @@ def previous_release(releases, identity):
     return max(candidates, key=lambda item: item['metadata']['build_number'], default=None)
 
 
-def release_notes(folder, identity, releases):
-    sections = [(folder / 'README.txt').read_text().strip()]
+def release_notes(identity, releases):
+    sections = [f"夜深 Android {identity['version']}（构建 {identity['build_number']}）"]
     previous = previous_release(releases, identity)
     if previous is not None:
         changes = change_summary(previous['metadata']['source_sha'], identity['source_sha'])
@@ -195,7 +195,7 @@ def publish(repository, directory):
             print(f"Already published {metadata['tag']}")
             return
     notes = folder / 'release-notes.md'
-    notes.write_text(release_notes(folder, identity, releases))
+    notes.write_text(release_notes(identity, releases))
     if release is None:
         gh('release', 'create', metadata['tag'], '--repo', repository,
            '--target', identity['source_sha'], '--draft', '--title',

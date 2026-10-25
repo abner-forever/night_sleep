@@ -145,6 +145,8 @@ class _AppShellState extends State<AppShell> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isWide = constraints.maxWidth >= kWideLayoutBreakpoint;
+        final softHomeTopFade = widget.current == AppTab.home &&
+            Theme.of(context).brightness == Brightness.light;
         return Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -168,6 +170,10 @@ class _AppShellState extends State<AppShell> {
                       valueListenable: openSheetCount,
                       builder: (context, open, _) => TopFade(
                         visible: _scrolled && open == 0,
+                        tint: softHomeTopFade
+                            ? homeHeaderTopColor.withValues(alpha: 0.22)
+                            : null,
+                        blurSigma: softHomeTopFade ? 8 : 14,
                       ),
                     ),
                   if (!isWide)

@@ -174,13 +174,11 @@ class PlanAndroidReleaseTest(unittest.TestCase):
 
     @patch('plan_android_release.change_summary', return_value=['feat: 新增睡眠日历'])
     def test_release_notes_list_changes_since_the_previous_release(self, changes):
-        folder = Path(self.directory.name)
-        (folder / 'README.txt').write_text('安装与迁移说明\n')
         identity = {'version': '0.49.0-beta.3', 'build_number': 4,
                     'branch': 'beta', 'source_sha': SOURCE_SHA}
-        notes = release_notes(folder, identity, [history('0.49.0', 1, 'main'),
-                                                 history('0.49.0-beta.2', 2)])
-        self.assertIn('安装与迁移说明', notes)
+        notes = release_notes(identity, [history('0.49.0', 1, 'main'),
+                                         history('0.49.0-beta.2', 2)])
+        self.assertIn('夜深 Android 0.49.0-beta.3（构建 4）', notes)
         self.assertIn('## 本次改动（对比 v0.49.0-beta.2）', notes)
         self.assertIn('- feat: 新增睡眠日历', notes)
         self.assertIn(f'Source: {SOURCE_SHA}', notes)
@@ -189,12 +187,12 @@ class PlanAndroidReleaseTest(unittest.TestCase):
 
     @patch('plan_android_release.change_summary')
     def test_first_release_has_no_change_section(self, changes):
-        folder = Path(self.directory.name)
-        (folder / 'README.txt').write_text('安装与迁移说明\n')
         identity = {'version': '0.49.0', 'build_number': 1,
                     'branch': 'main', 'source_sha': SOURCE_SHA}
-        notes = release_notes(folder, identity, [])
+        notes = release_notes(identity, [])
+        self.assertIn('夜深 Android 0.49.0（构建 1）', notes)
         self.assertNotIn('本次改动', notes)
+        self.assertIn(f'Source: {SOURCE_SHA}', notes)
         changes.assert_not_called()
 
     def artifacts(self, branch='beta'):
@@ -202,7 +200,6 @@ class PlanAndroidReleaseTest(unittest.TestCase):
         folder = Path(self.directory.name) / 'artifacts'
         folder.mkdir()
         (folder / 'release.json').write_text(json.dumps(metadata))
-        (folder / 'README.txt').write_text('Version notes\n')
         (folder / metadata['filename']).write_bytes(b'APK')
         return folder, metadata
 

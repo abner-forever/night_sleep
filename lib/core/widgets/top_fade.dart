@@ -17,10 +17,18 @@ class TopFade extends StatelessWidget {
     super.key,
     required this.visible,
     this.height = 144,
+    this.tint,
+    this.blurSigma = 14,
   });
 
   final bool visible;
   final double height;
+
+  /// 覆盖在模糊层上的渐变色。为空时跟随页面底色；首页浅色模式的深色头部
+  /// 传入低透明度蓝色，只保留轻量柔化，避免白色或黑色阴影盖在夜景上。
+  final Color? tint;
+
+  final double blurSigma;
 
   /// The design reveals it at `scrollTop > 12`.
   static const double revealAfter = 12;
@@ -28,6 +36,7 @@ class TopFade extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AppTokens.of(context);
+    final fadeTint = tint ?? tokens.bgBase;
 
     return IgnorePointer(
       child: AnimatedSlide(
@@ -67,7 +76,10 @@ class TopFade extends StatelessWidget {
                 child: Stack(
                   children: [
                     BackdropFilter(
-                      filter: ui.ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                      filter: ui.ImageFilter.blur(
+                        sigmaX: blurSigma,
+                        sigmaY: blurSigma,
+                      ),
                       // `StackFit.loose` 下 `Stack` 按最大的非 position 子项定尺寸，
                       // 所以这里必须撑满，否则整条带会静缩到内容大小。
                       child: const SizedBox.expand(),
@@ -91,10 +103,10 @@ class TopFade extends StatelessWidget {
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
                             colors: [
-                              tokens.bgBase.withValues(alpha: 0.92),
-                              tokens.bgBase.withValues(alpha: 0.72),
-                              tokens.bgBase.withValues(alpha: 0.32),
-                              tokens.bgBase.withValues(alpha: 0),
+                              fadeTint.withValues(alpha: 0.92),
+                              fadeTint.withValues(alpha: 0.72),
+                              fadeTint.withValues(alpha: 0.32),
+                              fadeTint.withValues(alpha: 0),
                             ],
                             stops: const [0.0, 0.38, 0.70, 1.0],
                           ),

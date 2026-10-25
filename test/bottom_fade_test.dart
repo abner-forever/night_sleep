@@ -220,6 +220,22 @@ void main() {
     );
   });
 
+  testWidgets('浅色首页顶部渐隐使用轻量蓝色柔化', (tester) async {
+    await pumpShell(tester);
+
+    await tester.drag(find.byType(ListView), const Offset(0, -200));
+    await tester.pumpAndSettle();
+
+    final fade = tester.widget<TopFade>(find.byType(TopFade));
+    expect(fade.visible, isTrue);
+    expect(
+      fade.tint!.a,
+      closeTo(0.22, 0.01),
+      reason: '首页顶部不能再用接近不透明的白底或深黑阴影',
+    );
+    expect(fade.blurSigma, 8, reason: '首页模糊应比通用页面更轻');
+  });
+
   // 同样按 iPhone 的几何来量（安全区 34pt、胶囊离底 20pt），所以钉住 iOS。
   testWidgets(
     '底栏上方的内容仍可点击',

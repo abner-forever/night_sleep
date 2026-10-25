@@ -88,4 +88,21 @@ void main() {
 
     expect(find.text('2026 年 8 月'), findsOneWidget);
   });
+
+  testWidgets('左右滑动日历可以切换月份', (tester) async {
+    await pumpCalendar(tester, [
+      _night(id: 'aug-30', wake: DateTime(2026, 8, 30, 7)),
+      _night(id: 'sep-01', wake: DateTime(2026, 9, 1, 7)),
+    ]);
+    final calendar = find.byKey(calendarMonthPageViewKey);
+    expect(calendar, findsOneWidget);
+
+    await tester.fling(calendar, const Offset(260, 0), 1000);
+    await tester.pumpAndSettle();
+    expect(find.text('2026 年 8 月'), findsOneWidget);
+
+    await tester.fling(calendar, const Offset(-260, 0), 1000);
+    await tester.pumpAndSettle();
+    expect(find.text('2026 年 9 月'), findsOneWidget);
+  });
 }

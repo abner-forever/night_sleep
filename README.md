@@ -160,6 +160,38 @@ flutter run -d <设备ID> --dart-define=DEMO_DATA=true     # 强制开启
 flutter build apk --dart-define=DEMO_DATA=false    # 发布构建强制关闭
 ```
 
+**天气服务**在 debug 中默认连接本机 NestJS 服务（源码见 [`server/`](server/README.md)）：
+
+- Android 模拟器：`http://10.0.2.2:8080/api`
+- iOS 模拟器 / 其他本地目标：`http://localhost:8080/api`
+
+首次运行服务：
+
+```powershell
+cd server
+npm ci
+Copy-Item .env.example .env
+# 填写和风天气 QWEATHER_* 配置；模拟器联调时再设置 WEATHER_DEFAULT_LOCATION=上海
+npm run dev
+```
+
+服务接口为 `GET /api/weather?location=上海`，Swagger 位于 `http://localhost:8080/api/docs`。
+城市无法解析时返回 404，上游不可用或配置缺失时返回 503，不返回占位天气。
+未传城市时，服务会使用 `WEATHER_DEFAULT_LOCATION`，或用公网请求 IP 做城市级定位；
+只发送网络位置给定位/天气服务商，不发送睡眠记录、备注或音频。
+
+真机或独立服务可覆盖接口基址，也可指定城市避免服务端按 IP 解析：
+
+```bash
+flutter run -d <设备ID> \
+  --dart-define=WEATHER_API_BASE_URL=http://192.168.1.10:8080/api \
+  --dart-define=WEATHER_LOCATION=上海
+```
+
+release 未提供 `WEATHER_API_BASE_URL` 时不请求天气。生产域名确定后必须使用 HTTPS 基址，例如
+`--dart-define=WEATHER_API_BASE_URL=https://api.example.com/api`；不要把和风天气密钥写进 App。
+Android 发布工作流会读取仓库 Actions variable `WEATHER_API_BASE_URL`，未配置时保持天气功能关闭。
+
 ### 构建
 
 ```bash
@@ -214,6 +246,7 @@ test/           领域计算与页面测试（约 840 条用例）
 integration_test/  截图巡检与平台路径验证（裸跑 `flutter test` 扫不到，要指名文件 + 设备）
 tool/           图标与音效生成器、片段复核脚本
 assets/         助眠音效、YAMNet 模型、品牌图标
+server/         NestJS 11 应用服务；当前包含天气、统一响应与健康检查
 ```
 
 ## 技术选型
@@ -243,6 +276,14 @@ flutter analyze
 flutter test                     # 整套
 flutter test test/sleep_score_test.dart                       # 单个文件
 flutter test test/sleep_score_test.dart --plain-name "时长阶梯"  # 单个用例（子串匹配）
+```
+
+应用服务测试在 `server/` 执行：
+
+```powershell
+npm run typecheck
+npm test
+npm run build
 ```
 
 `integration_test/` **不在裸跑 `flutter test` 的扫描范围里**（它只扫 `test/`），要**指名文件 +

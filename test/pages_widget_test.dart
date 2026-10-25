@@ -23,6 +23,8 @@ import 'package:night_sleep/core/widgets/ios_controls.dart';
 import 'package:night_sleep/core/widgets/subpage.dart';
 import 'package:night_sleep/core/widgets/top_fade.dart';
 import 'package:night_sleep/features/home/presentation/home_page.dart';
+import 'package:night_sleep/features/home/data/weather_service.dart';
+import 'package:night_sleep/features/home/domain/weather_snapshot.dart';
 import 'package:night_sleep/features/compass/presentation/compass_page.dart';
 import 'package:night_sleep/features/log/presentation/log_page.dart';
 import 'package:night_sleep/features/log/presentation/review_page.dart';
@@ -162,6 +164,7 @@ void main() {
     Size surface = const Size(430, 2600),
     SleepSession? activeSession,
     DateTime? clock,
+    WeatherSnapshot? weather,
     List<Override> overrides = const [],
   }) async {
     tester.view.physicalSize = surface;
@@ -179,6 +182,7 @@ void main() {
           // 会话也走 provider 覆盖：真订阅 `activeSessionWatchProvider` 会留下
           // pending timer（见文件头的说明）。默认 null = 没有会话在跑。
           activeSessionProvider.overrideWith((ref) => activeSession),
+          weatherProvider.overrideWith((ref) async => weather),
           // 冻住「现在」，好让「已睡 3h 42m」这类读数与跑测试的日期无关。
           if (clock != null) homeNowProvider.overrideWithValue(() => clock),
           ...overrides,
@@ -199,6 +203,7 @@ void main() {
     Size surface = const Size(430, 2600),
     SleepSession? activeSession,
     DateTime? clock,
+    WeatherSnapshot? weather,
     List<Override> overrides = const [],
   }) {
     return pumpWithOverrides(
@@ -209,6 +214,7 @@ void main() {
       surface: surface,
       activeSession: activeSession,
       clock: clock,
+      weather: weather,
       overrides: overrides,
     );
   }
@@ -232,6 +238,7 @@ void main() {
             (ref) => Stream.value(settings()),
           ),
           activeSessionProvider.overrideWith((ref) => null),
+          weatherProvider.overrideWith((ref) async => null),
         ],
         child: const NightSleepApp(),
       ),
@@ -318,6 +325,65 @@ void main() {
       );
 
   group('首页', () {
+    testWidgets('手机顶部 banner 显示当前时间、日期和星期', (tester) async {
+      await pumpPage(
+        tester,
+        home(),
+        entries: await demoEntries(),
+        clock: DateTime(2026, 10, 25, 21, 8),
+        surface: const Size(430, 932),
+      );
+
+      expect(find.byKey(const ValueKey('home-clock')), findsOneWidget);
+      expect(find.text('21:08'), findsOneWidget);
+      expect(find.text('10 月 25 日'), findsOneWidget);
+      expect(find.text('周日'), findsOneWidget);
+    });
+
+    testWidgets('手机顶部 banner 显示天气服务返回的实况', (tester) async {
+      await pumpPage(
+        tester,
+        home(),
+        entries: await demoEntries(),
+        clock: DateTime(2026, 10, 25, 21, 8),
+        surface: const Size(430, 932),
+        weather: const WeatherSnapshot(
+          city: '上海',
+          temperature: 24.4,
+          temperatureMax: 27,
+          temperatureMin: 19,
+          weatherCode: 1,
+          weatherText: '多云',
+          weatherEmoji: '⛅',
+          isDay: false,
+          windspeed: 12,
+        ),
+      );
+
+      expect(find.text('24° 多云'), findsOneWidget);
+      expect(find.text('上海'), findsOneWidget);
+      expect(find.text('⛅'), findsOneWidget);
+    });
+
+    testWidgets('手机夜景头部底边渐隐到页面底色', (tester) async {
+      await pumpPage(
+        tester,
+        home(),
+        entries: await demoEntries(),
+        surface: const Size(430, 932),
+      );
+
+      final background = find.byKey(
+        const ValueKey('home-header-background'),
+      );
+      final mask = find.ancestor(
+        of: background,
+        matching: find.byType(ShaderMask),
+      );
+      expect(mask, findsOneWidget);
+      expect(tester.widget<ShaderMask>(mask).blendMode, BlendMode.dstIn);
+    });
+
     for (final dark in [false, true]) {
       for (final wide in [false, true]) {
         testWidgets('${dark ? '深色' : '浅色'}${wide ? '宽屏' : '手机'}下拉背景与回弹',
@@ -750,17 +816,50 @@ void main() {
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull, reason: '$label 有溢出');
       }
+
+      // 30 天视图最右一根柱子只有约 7px 宽。选中徽标必须夹在图表内，
+      // 不能再靠柱位向两侧扩张而被卡片圆角裁掉。
+      final chartStack = tester.widget<Stack>(
+        find.byKey(statsDurationChartKey),
+      );
+      expect(chartStack.clipBehavior, Clip.none, reason: '首尾柱描边不能被绘图区裁切');
+
+      await tester.tap(find.byKey(statsDurationBarKey('r29')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: '最左柱的选中态不能溢出或遮挡');
+
+      await tester.tap(find.byKey(statsDurationBarKey('r0')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(statsSelectedDurationLabelKey), findsOneWidget);
+      final selectedBar = tester.widget<AnimatedContainer>(
+        find.descendant(
+          of: find.byKey(statsDurationBarKey('r0')),
+          matching: find.byType(AnimatedContainer),
+        ),
+      );
+      final border =
+          (selectedBar.decoration! as BoxDecoration).border! as Border;
+      expect(border.top.width, 1.25, reason: '选中描边应贴在柱体实际高度外');
+      expect(
+        find.descendant(
+          of: find.byKey(statsSelectedDurationLabelKey),
+          matching: find.byType(DecoratedBox),
+        ),
+        findsNothing,
+        reason: '柱顶数值不再使用背景或边框',
+      );
+      expect(tester.takeException(), isNull, reason: '最右柱的选中态不能溢出或遮挡');
     });
 
     testWidgets('空库时右上角没有「全部数据」入口', (tester) async {
       await pumpPage(tester, const StatsPage());
-      expect(find.text('查看所有数据'), findsNothing,
+      expect(find.text('全部数据'), findsNothing,
           reason: '一条记录都没有时它通向一个只能显示空状态的地方');
     });
 
     testWidgets('有记录时右上角有「全部数据」入口', (tester) async {
       await pumpPage(tester, const StatsPage(), entries: await demoEntries());
-      expect(find.text('查看所有数据'), findsOneWidget);
+      expect(find.text('全部数据'), findsOneWidget);
     });
 
     testWidgets('右上角入口进全部睡眠数据页，返回后仍在统计页', (tester) async {
@@ -787,7 +886,7 @@ void main() {
       router.go('/');
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('查看所有数据'));
+      await tester.tap(find.text('全部数据'));
       await tester.pumpAndSettle();
 
       expect(find.byType(AllSleepDataPage), findsOneWidget);

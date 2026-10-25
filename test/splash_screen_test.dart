@@ -8,6 +8,7 @@ import 'package:night_sleep/app/app.dart';
 import 'package:night_sleep/core/database/app_database.dart';
 import 'package:night_sleep/features/onboarding/presentation/onboarding_overlay.dart';
 import 'package:night_sleep/features/onboarding/presentation/splash_screen.dart';
+import 'package:night_sleep/features/home/data/weather_service.dart';
 import 'package:night_sleep/features/sleep/data/session_repository.dart';
 import 'package:night_sleep/features/sleep/data/sleep_repository.dart';
 
@@ -79,6 +80,7 @@ void main() {
           sleepEntriesProvider.overrideWith((ref) => const []),
           settingsProvider.overrideWith((ref) => stream),
           activeSessionProvider.overrideWith((ref) => null),
+          weatherProvider.overrideWith((ref) async => null),
         ],
         child: const NightSleepApp(),
       ),

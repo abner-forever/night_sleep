@@ -325,3 +325,6 @@ const double kWideLayoutBreakpoint = 768;
 const double kSubpageNavigationHeight = 44;
 
 const double kBottomNavigationHeight = 50;
+
+/// 首页手机端夜景头部的顶部色。外壳的柔化模糊带也用它，避免白色叠加。
+const Color homeHeaderTopColor = Color(0xFF0B3979);

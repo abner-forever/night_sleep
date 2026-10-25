@@ -106,7 +106,10 @@ jobs:
       - name: 构建 Android release APK（项目长期签名，关闭演示数据）
         # 测试会生成包含 integration_test 的插件注册；release 构建需重新生成，
         # 不能使用 --no-pub，否则会保留测试注册而缺少对应的 release 插件。
-        run: flutter build apk --release --dart-define=DEMO_DATA=false
+        run: >-
+          flutter build apk --release
+          --dart-define=DEMO_DATA=false
+          --dart-define=WEATHER_API_BASE_URL=${{ vars.WEATHER_API_BASE_URL }}
       - name: 检查安装包与签名并生成校验文件
         shell: bash
         run: |

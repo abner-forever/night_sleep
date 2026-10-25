@@ -18,6 +18,7 @@ import 'package:night_sleep/core/platform/system_bars.dart';
 import 'package:night_sleep/core/theme/app_theme.dart';
 import 'package:night_sleep/core/widgets/ios_controls.dart';
 import 'package:night_sleep/features/log/presentation/log_new_page.dart';
+import 'package:night_sleep/features/home/data/weather_service.dart';
 import 'package:night_sleep/features/session/presentation/night_scene.dart';
 import 'package:night_sleep/features/session/presentation/night_style.dart';
 import 'package:night_sleep/features/session/presentation/sheets/night_noise_sheet.dart';
@@ -591,6 +592,7 @@ void main() {
           settingsProvider.overrideWith((ref) => Stream.value(appSettings)),
           sleepEntriesProvider.overrideWith((ref) => const <SleepEntry>[]),
           activeSessionProvider.overrideWith((ref) => sessionAt(start)),
+          weatherProvider.overrideWith((ref) async => null),
           reminderSchedulerProvider.overrideWithValue(NoopReminderScheduler()),
         ],
         child: const NightSleepApp(),
