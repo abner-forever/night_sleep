@@ -8,7 +8,7 @@ import 'package:path_provider/path_provider.dart';
 /// 现在只有一样东西，在 `getTemporaryDirectory()` 下面（macOS 上就是
 /// `~/Library/Caches/<bundle id>`）：
 ///
-///  * 导出时写给系统分享面板的那份 CSV / JSON 副本（`export_sharer.dart`）。
+///  * 导出前写到缓存、再交给系统目录的那份 CSV / JSON 副本（`export_storage.dart`）。
 ///
 /// **2026-10-03 起临时目录里不再有白噪音。** 助眠音效改成了打包在应用里的实景录音
 /// （`assets/noise/`），不再运行时合成、也就不再往临时目录写 WAV——那份录音是应用资源，

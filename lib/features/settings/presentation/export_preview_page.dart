@@ -129,7 +129,7 @@ class _ExportPreviewPageState extends ConsumerState<ExportPreviewPage> {
         const SizedBox(height: 16),
         Text(
           '表头、列序与每一格的文字都与导出的文件相同——预览读的就是生成文件的'
-          '那一份数据。文件通过系统分享面板交出，存到哪里、发给谁由你决定。',
+          '那一份数据。导出后会直接写入睡眠数据管理页设置的目录。',
           style: TextStyle(fontSize: 12, height: 1.5, color: tokens.textMuted),
         ),
       ],

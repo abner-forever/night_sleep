@@ -6,7 +6,9 @@ import UserNotifications
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private var compassChannel: FlutterEventChannel?
+  private var exportStorageChannel: FlutterMethodChannel?
   private let compassHandler = CompassStreamHandler()
+  private let exportStorageHandler = ExportStorageHandler()
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -29,7 +31,165 @@ import UserNotifications
       channel.setStreamHandler(compassHandler)
       compassChannel = channel
     }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "NightSleepExportStorage") {
+      let channel = FlutterMethodChannel(
+        name: "night_sleep/export_storage",
+        binaryMessenger: registrar.messenger()
+      )
+      channel.setMethodCallHandler(exportStorageHandler.handle)
+      exportStorageChannel = channel
+    }
   }
+}
+
+private final class ExportStorageHandler {
+  func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    switch call.method {
+    case "location", "resetLocation":
+      result(locationInfo())
+    case "chooseLocation":
+      // iOS 的默认目录位于“文件”App 的夜深文件夹。自选持久目录需要额外的
+      // security-scoped bookmark，当前入口不提供一个看似可用但会失效的按钮。
+      result(nil)
+    case "save":
+      guard let arguments = call.arguments as? [String: Any],
+            let rawFiles = arguments["files"] as? [[String: Any]] else {
+        result(FlutterError(
+          code: "invalid_source",
+          message: "没有要保存的文件。",
+          details: nil
+        ))
+        return
+      }
+      DispatchQueue.global(qos: .userInitiated).async {
+        let response = self.saveAll(rawFiles)
+        DispatchQueue.main.async { result(response) }
+      }
+    case "latestBackup":
+      DispatchQueue.global(qos: .userInitiated).async {
+        do {
+          let path = try self.latestBackupPath()
+          DispatchQueue.main.async { result(path) }
+        } catch {
+          DispatchQueue.main.async {
+            result(FlutterError(
+              code: "storage_error",
+              message: "无法读取默认导出目录。",
+              details: nil
+            ))
+          }
+        }
+      }
+    default:
+      result(FlutterMethodNotImplemented)
+    }
+  }
+
+  private func locationInfo() -> [String: Any] {
+    [
+      "label": "文件 App/夜深/导出",
+      "custom": false,
+      "canChoose": false
+    ]
+  }
+
+  private func saveAll(_ rawFiles: [[String: Any]]) -> [String: Any] {
+    var saved = 0
+    var failed = false
+    for raw in rawFiles {
+      do {
+        try saveOne(raw)
+        saved += 1
+      } catch {
+        failed = true
+        break
+      }
+    }
+    return [
+      "savedCount": saved,
+      "fileCount": rawFiles.count,
+      "failed": failed
+    ]
+  }
+
+  private func saveOne(_ raw: [String: Any]) throws {
+    guard let rawPath = raw["path"] as? String else {
+      throw ExportStorageError.invalidSource
+    }
+    let source = URL(fileURLWithPath: rawPath).resolvingSymlinksInPath()
+    let temporaryRoot = FileManager.default.temporaryDirectory
+      .resolvingSymlinksInPath()
+    let prefix = temporaryRoot.path.hasSuffix("/")
+      ? temporaryRoot.path
+      : temporaryRoot.path + "/"
+    guard source.path.hasPrefix(prefix) else {
+      throw ExportStorageError.invalidSource
+    }
+    guard FileManager.default.fileExists(atPath: source.path) else {
+      throw ExportStorageError.invalidSource
+    }
+
+    let directory = try exportDirectory()
+    let rawName = raw["fileName"] as? String ?? source.lastPathComponent
+    let fileName = sanitizedFileName(rawName)
+    let destination = directory.appendingPathComponent(fileName)
+    if FileManager.default.fileExists(atPath: destination.path) {
+      try FileManager.default.removeItem(at: destination)
+    }
+    try FileManager.default.copyItem(at: source, to: destination)
+  }
+
+  private func latestBackupPath() throws -> String? {
+    let directory = try exportDirectory()
+    let files = try FileManager.default.contentsOfDirectory(
+      at: directory,
+      includingPropertiesForKeys: [.contentModificationDateKey],
+      options: [.skipsHiddenFiles]
+    )
+    let latest = files
+      .filter {
+        let ext = $0.pathExtension.lowercased()
+        return ext == "zip" || ext == "json"
+      }
+      .max { lhs, rhs in
+        let left = (try? lhs.resourceValues(
+          forKeys: [.contentModificationDateKey]
+        ).contentModificationDate) ?? .distantPast
+        let right = (try? rhs.resourceValues(
+          forKeys: [.contentModificationDateKey]
+        ).contentModificationDate) ?? .distantPast
+        return left < right
+      }
+    return latest?.path
+  }
+
+  private func exportDirectory() throws -> URL {
+    guard let documents = FileManager.default.urls(
+      for: .documentDirectory,
+      in: .userDomainMask
+    ).first else {
+      throw ExportStorageError.directoryUnavailable
+    }
+    let directory = documents.appendingPathComponent("导出", isDirectory: true)
+    try FileManager.default.createDirectory(
+      at: directory,
+      withIntermediateDirectories: true
+    )
+    return directory
+  }
+
+  private func sanitizedFileName(_ raw: String) -> String {
+    var invalid = CharacterSet(charactersIn: "/\\:*?\"<>|")
+    invalid.formUnion(.controlCharacters)
+    let cleaned = raw.components(separatedBy: invalid).joined(separator: "_")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    return String(cleaned.prefix(200)).isEmpty ? "夜深导出文件" : String(cleaned.prefix(200))
+  }
+}
+
+private enum ExportStorageError: Error {
+  case invalidSource
+  case directoryUnavailable
 }
 
 private final class CompassStreamHandler: NSObject, FlutterStreamHandler {

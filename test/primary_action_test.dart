@@ -144,6 +144,27 @@ void main() {
   });
 
   group('启用态', () {
+    testWidgets('尾部动作只走自己的回调', (tester) async {
+      var primary = 0;
+      var trailing = 0;
+      await tester.pumpWidget(
+        host(
+          PrimaryAction(
+            label: '读取备份',
+            onTap: () => primary++,
+            trailing: const Text('换一份'),
+            onTrailingTap: () => trailing++,
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('换一份'));
+      await tester.pump();
+
+      expect(trailing, 1);
+      expect(primary, 0, reason: '尾部操作不能同时触发主按钮');
+    });
+
     testWidgets('onTap 非空时 onBlockedTap 让位', (tester) async {
       var taps = 0;
       var blocked = 0;

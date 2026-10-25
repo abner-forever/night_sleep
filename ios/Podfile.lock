@@ -20,8 +20,6 @@ PODS:
     - Flutter
   - record_ios (2.0.0):
     - Flutter
-  - share_plus (0.0.1):
-    - Flutter
   - sqlite3 (3.52.0):
     - sqlite3/common (= 3.52.0)
   - sqlite3/common (3.52.0)
@@ -86,7 +84,6 @@ DEPENDENCIES:
   - just_audio (from `.symlinks/plugins/just_audio/darwin`)
   - package_info_plus (from `.symlinks/plugins/package_info_plus/ios`)
   - record_ios (from `.symlinks/plugins/record_ios/ios`)
-  - share_plus (from `.symlinks/plugins/share_plus/ios`)
   - sqlite3_flutter_libs (from `.symlinks/plugins/sqlite3_flutter_libs/darwin`)
   - tflite_flutter (from `.symlinks/plugins/tflite_flutter/ios`)
   - url_launcher_ios (from `.symlinks/plugins/url_launcher_ios/ios`)
@@ -119,8 +116,6 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/package_info_plus/ios"
   record_ios:
     :path: ".symlinks/plugins/record_ios/ios"
-  share_plus:
-    :path: ".symlinks/plugins/share_plus/ios"
   sqlite3_flutter_libs:
     :path: ".symlinks/plugins/sqlite3_flutter_libs/darwin"
   tflite_flutter:
@@ -141,7 +136,6 @@ SPEC CHECKSUMS:
   just_audio: 4e391f57b79cad2b0674030a00453ca5ce817eed
   package_info_plus: af8e2ca6888548050f16fa2f1938db7b5a5df499
   record_ios: 390a30c7caaf8b5d0fb1cb1d2fd5064b48b4520c
-  share_plus: eccd7beb7cea61271aeed1800e8ccb2b952c0c7f
   sqlite3: a51c07cf16e023d6c48abd5e5791a61a47354921
   sqlite3_flutter_libs: b3e120efe9a82017e5552a620f696589ed4f62ab
   TensorFlowLiteC: 20785a69299185a379ba9852b6625f00afd7984a

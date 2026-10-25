@@ -5,7 +5,7 @@ import '../../sleep/domain/sleep_entry.dart';
 import '../../sleep/domain/sleep_insight.dart';
 import '../../sleep/domain/sleep_stage.dart';
 
-/// 一份交给分享面板的文件。
+/// 一份等待写入本地位置的文件。
 class ExportFile {
   const ExportFile({
     required this.fileName,

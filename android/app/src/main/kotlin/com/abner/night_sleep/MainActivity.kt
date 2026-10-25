@@ -1,5 +1,6 @@
 package com.abner.night_sleep
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.core.view.WindowCompat
 import io.flutter.embedding.android.FlutterActivity
@@ -11,6 +12,7 @@ class MainActivity : FlutterActivity() {
 
     private var compassHandler: CompassStreamHandler? = null
     private var appUpdateHandler: AppUpdateHandler? = null
+    private var exportStorageHandler: ExportStorageHandler? = null
 
     /**
      * 内容铺到屏幕物理边缘（状态栏 / 导航栏背后）。
@@ -43,6 +45,12 @@ class MainActivity : FlutterActivity() {
         appUpdateHandler = updateHandler
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "night_sleep/app_update")
             .setMethodCallHandler(updateHandler)
+
+        // 默认导出目录、自定义目录授权与默认导入。
+        val storageHandler = ExportStorageHandler(this)
+        exportStorageHandler = storageHandler
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, EXPORT_STORAGE_CHANNEL)
+            .setMethodCallHandler(storageHandler)
 
         // 本工程唯一一条手写的流式通道。名字与 iOS 侧、Dart 侧三处必须一致。
         val handler = CompassStreamHandler(this)
@@ -91,6 +99,11 @@ class MainActivity : FlutterActivity() {
         super.onStop()
     }
 
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        exportStorageHandler?.onActivityResult(requestCode, resultCode, data)
+        super.onActivityResult(requestCode, resultCode, data)
+    }
+
     override fun onDestroy() {
         // 兜底反注册：引擎拆除时不一定送达 EventChannel 的 `cancel`。
         // `dispose()` 是幂等的，正常路径下这里是空操作。
@@ -98,11 +111,14 @@ class MainActivity : FlutterActivity() {
         compassHandler = null
         appUpdateHandler?.dispose()
         appUpdateHandler = null
+        exportStorageHandler?.dispose()
+        exportStorageHandler = null
         super.onDestroy()
     }
 
     private companion object {
         const val COMPASS_CHANNEL = "night_sleep/compass"
         const val RECORDING_SERVICE_CHANNEL = "night_sleep/recording_service"
+        const val EXPORT_STORAGE_CHANNEL = "night_sleep/export_storage"
     }
 }

@@ -447,7 +447,7 @@ void main() {
 
     final content = SleepExporter.json([withAudio], now: now).single.content;
 
-    // 音频文件本身不进导出，路径留着只会悬空；而导出是要分享出去的。
+    // 音频文件本身不进导出，路径留着只会悬空；而导出文件会离开应用。
     expect(content, isNot(contains('localUri')));
     expect(content, isNot(contains('/var/mobile')));
     expect(content, contains('"hasLocalAudio": true'));

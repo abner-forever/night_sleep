@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sleep/core/theme/app_theme.dart';
 import 'package:night_sleep/core/database/app_database.dart' show AppDatabase;
 import 'package:night_sleep/core/theme/app_tokens.dart';
-import 'package:night_sleep/features/settings/data/export_sharer.dart';
+import 'package:night_sleep/features/settings/data/export_storage.dart';
 import 'package:night_sleep/features/settings/data/sleep_backup_service.dart';
 import 'package:night_sleep/features/settings/domain/sleep_export.dart';
 import 'package:night_sleep/features/settings/presentation/export_page.dart';
@@ -19,24 +19,57 @@ import 'package:night_sleep/features/sleep/domain/sleep_stage.dart';
 
 /// 导出页的 widget 测试。
 ///
-/// 分享走的是平台通道，在 FakeAsync 下会挂死，所以这里喂一个假的 [ExportSharer]，
-/// 只断言「交出去的内容对不对」。
-class _FakeSharer implements ExportSharer {
-  _FakeSharer({this.outcome = ShareOutcome.shared});
+/// 目录和保存都走平台通道，在 FakeAsync 下会挂死，所以这里喂一个假的
+/// [ExportStorage]，只断言页面交出去的内容与目录变化。
+class _FakeStorage implements ExportStorage {
+  _FakeStorage({
+    this.result = const ExportSaveResult(savedCount: 1, fileCount: 1),
+    this.chosen,
+  });
 
-  final ShareOutcome outcome;
+  ExportSaveResult result;
+  ExportLocation current = const ExportLocation(
+    label: '下载/夜深',
+    custom: false,
+    canChoose: true,
+  );
+  ExportLocation? chosen;
   List<ExportFile>? received;
-  String? subject;
+  int resets = 0;
 
   @override
-  Future<ShareOutcome> share({
-    required List<ExportFile> files,
-    required String subject,
-  }) async {
+  Future<ExportSaveResult> save(List<ExportFile> files) async {
     received = files;
-    this.subject = subject;
-    return outcome;
+    return ExportSaveResult(
+      savedCount: result.savedCount,
+      fileCount: files.length,
+      failed: result.failed,
+    );
   }
+
+  @override
+  Future<ExportLocation> location() async => current;
+
+  @override
+  Future<ExportLocation?> chooseLocation() async {
+    final value = chosen;
+    if (value != null) current = value;
+    return value;
+  }
+
+  @override
+  Future<ExportLocation> resetLocation() async {
+    resets++;
+    current = const ExportLocation(
+      label: '下载/夜深',
+      custom: false,
+      canChoose: true,
+    );
+    return current;
+  }
+
+  @override
+  Future<String?> latestBackupPath() async => null;
 }
 
 class _FakeBackupService extends SleepBackupService {
@@ -89,7 +122,7 @@ void main() {
   /// 这里补 Scaffold 就等于把背景和 Material 白送给它，测试会全绿而真机是黑底。
   Future<void> pumpRoute(
     WidgetTester tester, {
-    required ExportSharer sharer,
+    required ExportStorage storage,
     SleepBackupService? backupService,
     List<SleepEntry> entries = const [],
 
@@ -107,7 +140,7 @@ void main() {
             if (readError) throw StateError('数据库坏了');
             return entries;
           }),
-          exportSharerProvider.overrideWithValue(sharer),
+          exportStorageProvider.overrideWithValue(storage),
           if (backupService != null)
             sleepBackupServiceProvider.overrideWithValue(backupService),
         ],
@@ -121,8 +154,8 @@ void main() {
   }
 
   testWidgets('没有真实记录时两个动作禁用并说明原因', (tester) async {
-    final sharer = _FakeSharer();
-    await pumpRoute(tester, sharer: sharer, entries: [
+    final storage = _FakeStorage();
+    await pumpRoute(tester, storage: storage, entries: [
       entry(id: 'd1', source: 'demo'),
       entry(id: 'd2', source: 'demo'),
     ]);
@@ -141,11 +174,11 @@ void main() {
 
     await tester.tap(find.text('导出 CSV'));
     await tester.pumpAndSettle();
-    expect(sharer.received, isNull, reason: '禁用的动作不该调用分享层');
+    expect(storage.received, isNull, reason: '禁用的动作不该调用保存层');
   });
 
   testWidgets('预览表格与两个导出动作一起禁用并置灰', (tester) async {
-    await pumpRoute(tester, sharer: _FakeSharer(), entries: [
+    await pumpRoute(tester, storage: _FakeStorage(), entries: [
       entry(id: 'd1', source: 'demo'),
     ]);
 
@@ -159,7 +192,7 @@ void main() {
   });
 
   testWidgets('有真实记录时预览行是正常色', (tester) async {
-    await pumpRoute(tester, sharer: _FakeSharer(), entries: [entry(id: 'a')]);
+    await pumpRoute(tester, storage: _FakeStorage(), entries: [entry(id: 'a')]);
 
     final preview = find.text('预览表格');
     expect(
@@ -169,7 +202,7 @@ void main() {
   });
 
   testWidgets('读不到记录时说读不到，不说「暂无可导出」', (tester) async {
-    await pumpRoute(tester, sharer: _FakeSharer(), readError: true);
+    await pumpRoute(tester, storage: _FakeStorage(), readError: true);
 
     expect(find.text('无法读取记录'), findsOneWidget);
     expect(find.text('从备份恢复'), findsOneWidget);
@@ -183,7 +216,7 @@ void main() {
   testWidgets('条数统计只数真实记录', (tester) async {
     await pumpRoute(
       tester,
-      sharer: _FakeSharer(),
+      storage: _FakeStorage(),
       entries: [
         entry(id: 'a', stages: 3),
         entry(id: 'b', stages: 1),
@@ -198,17 +231,23 @@ void main() {
   });
 
   testWidgets('点导出 CSV 交出两张表', (tester) async {
-    final sharer = _FakeSharer();
-    await pumpRoute(tester,
-        sharer: sharer, entries: [entry(id: 'a', stages: 2)]);
+    final storage = _FakeStorage(
+      result: const ExportSaveResult(savedCount: 2, fileCount: 2),
+    );
+    await pumpRoute(
+      tester,
+      storage: storage,
+      entries: [entry(id: 'a', stages: 2)],
+    );
 
     await tester.tap(find.text('导出 CSV'));
     await tester.pumpAndSettle();
 
-    expect(sharer.received, hasLength(2));
-    expect(sharer.received!.first.fileName, startsWith('夜深-睡眠记录-'));
-    expect(sharer.received!.last.fileName, startsWith('夜深-睡眠阶段-'));
-    expect(sharer.received!.first.content, contains('a'));
+    expect(storage.received, hasLength(2));
+    expect(storage.received!.first.fileName, startsWith('夜深-睡眠记录-'));
+    expect(storage.received!.last.fileName, startsWith('夜深-睡眠阶段-'));
+    expect(storage.received!.first.content, contains('a'));
+    expect(find.text('已保存 2 个文件到下载/夜深。'), findsOneWidget);
     // 这一页没有演示记录，就不该出现「已排除」那一行。
     expect(find.textContaining('已排除'), findsNothing);
   });
@@ -217,39 +256,48 @@ void main() {
     final database = AppDatabase(NativeDatabase.memory());
     addTearDown(database.close);
     final backup = _FakeBackupService(database);
-    final sharer = _FakeSharer();
+    final storage = _FakeStorage();
     await pumpRoute(tester,
-        sharer: sharer, backupService: backup, entries: [entry(id: 'a')]);
+        storage: storage, backupService: backup, entries: [entry(id: 'a')]);
     await tester.tap(find.text('导出完整备份（含录音）'));
     await tester.pumpAndSettle();
     expect(backup.received!.single.id, 'a');
-    expect(sharer.received!.single.mimeType, 'application/zip');
-    expect(sharer.received!.single.localPath, '/temp/完整备份.zip');
-    expect(find.text('1 段音频文件已缺失，备份中保留了对应的声音事件。'), findsOneWidget);
+    expect(storage.received!.single.mimeType, 'application/zip');
+    expect(storage.received!.single.localPath, '/temp/完整备份.zip');
+    expect(
+      find.textContaining('1 段音频文件已缺失，备份中保留了对应的声音事件。'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('点导出 JSON 交出一份完整存档', (tester) async {
-    final sharer = _FakeSharer();
-    await pumpRoute(tester, sharer: sharer, entries: [entry(id: 'a')]);
+    final storage = _FakeStorage();
+    await pumpRoute(tester, storage: storage, entries: [entry(id: 'a')]);
 
     await tester.tap(find.text('导出 JSON'));
     await tester.pumpAndSettle();
 
-    expect(sharer.received, hasLength(1));
-    expect(sharer.received!.single.fileName, startsWith('夜深-睡眠数据-'));
-    expect(sharer.received!.single.content, contains('night-sleep-export'));
-    expect(sharer.subject, '夜深睡眠数据导出');
+    expect(storage.received, hasLength(1));
+    expect(storage.received!.single.fileName, startsWith('夜深-睡眠数据-'));
+    expect(storage.received!.single.content, contains('night-sleep-export'));
+    expect(find.textContaining('已保存到下载/夜深。'), findsOneWidget);
   });
 
-  testWidgets('分享失败如实报错，且提示留在页内', (tester) async {
-    final sharer = _FakeSharer(outcome: ShareOutcome.failed);
-    await pumpRoute(tester, sharer: sharer, entries: [entry(id: 'a')]);
+  testWidgets('保存失败如实报错，且提示留在页内', (tester) async {
+    final storage = _FakeStorage(
+      result: const ExportSaveResult(
+        savedCount: 0,
+        fileCount: 1,
+        failed: true,
+      ),
+    );
+    await pumpRoute(tester, storage: storage, entries: [entry(id: 'a')]);
 
     await tester.tap(find.text('导出 JSON'));
     await tester.pumpAndSettle();
 
     // 反馈必须是页内文案：全局 toast 挂在 AppScaffold，会被二级页整个盖住。
-    final error = find.text('导出失败，文件没有交出去。');
+    final error = find.text('导出失败，文件没有保存。');
     expect(error, findsOneWidget, reason: '失败必须有页内可见的反馈');
     expect(
       tester.widget<Text>(error).style?.color,
@@ -258,16 +306,41 @@ void main() {
     );
   });
 
-  testWidgets('用户取消分享面板不算失败，不报错', (tester) async {
-    final sharer = _FakeSharer(outcome: ShareOutcome.dismissed);
-    await pumpRoute(tester, sharer: sharer, entries: [entry(id: 'a')]);
+  testWidgets('CSV 第二个文件写入失败时如实说明只存了一个', (tester) async {
+    final storage = _FakeStorage(
+      result: const ExportSaveResult(
+        savedCount: 1,
+        fileCount: 2,
+        failed: true,
+      ),
+    );
+    await pumpRoute(tester, storage: storage, entries: [entry(id: 'a')]);
 
-    await tester.tap(find.text('导出 JSON'));
+    await tester.tap(find.text('导出 CSV'));
     await tester.pumpAndSettle();
 
-    // 正向锚点：先证明这一次点击真的走到了分享层。否则「没有提示」可以因为
-    // 点击根本没落到按钮上而空转通过。
-    expect(sharer.received, isNotNull);
-    expect(find.text('导出失败，文件没有交出去。'), findsNothing);
+    expect(find.text('已保存 1 个文件，其余文件保存失败。'), findsOneWidget);
+  });
+
+  testWidgets('显示默认导出位置，并可更换和恢复默认', (tester) async {
+    const custom = ExportLocation(
+      label: '自选文件夹：备份',
+      custom: true,
+      canChoose: true,
+    );
+    final storage = _FakeStorage(chosen: custom);
+    await pumpRoute(tester, storage: storage, entries: [entry(id: 'a')]);
+
+    expect(find.text('下载/夜深'), findsOneWidget);
+    await tester.tap(find.text('下载/夜深'));
+    await tester.pumpAndSettle();
+    expect(find.text('自选文件夹：备份'), findsOneWidget);
+    expect(find.text('恢复默认位置'), findsOneWidget);
+
+    await tester.tap(find.text('恢复默认位置'));
+    await tester.pumpAndSettle();
+    expect(find.text('下载/夜深'), findsOneWidget);
+    expect(find.text('恢复默认位置'), findsNothing);
+    expect(storage.resets, 1);
   });
 }

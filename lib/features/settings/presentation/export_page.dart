@@ -16,7 +16,7 @@ import '../../sleep/data/clip_pruning.dart';
 import '../../sleep/data/clip_store.dart';
 import '../../sleep/data/sleep_repository.dart';
 import '../../sleep/domain/sleep_entry.dart';
-import '../data/export_sharer.dart';
+import '../data/export_storage.dart';
 import '../data/sleep_backup_service.dart';
 import '../domain/sleep_export.dart';
 
@@ -37,9 +37,79 @@ class _ExportPageState extends ConsumerState<ExportPage> {
 
   /// 最近一次导出失败的原因，显示在页内。全局 toast 挂在 `AppScaffold`，而这一页
   /// push 在它之上，提示条会被整个盖住；失败反馈必须留在本页，否则界面只会表现
-  /// 为「点了没反应」。取消分享是正常操作，不算失败，不设置它。
+  /// 为「点了没反应」。
   String? _error;
   String? _notice;
+  ExportLocation? _location;
+  String? _locationError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLocation();
+  }
+
+  Future<void> _loadLocation() async {
+    try {
+      final location = await ref.read(exportStorageProvider).location();
+      if (mounted) {
+        setState(() {
+          _location = location;
+          _locationError = null;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _locationError = '无法读取导出位置。');
+      }
+    }
+  }
+
+  Future<void> _chooseLocation() async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+      _notice = null;
+      _locationError = null;
+    });
+    try {
+      final location = await ref.read(exportStorageProvider).chooseLocation();
+      if (!mounted) return;
+      if (location != null) {
+        setState(() {
+          _location = location;
+          _notice = '导出位置已更新。';
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _locationError = '无法打开目录选择器，请稍后再试。');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _resetLocation() async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+      _notice = null;
+      _locationError = null;
+    });
+    try {
+      final location = await ref.read(exportStorageProvider).resetLocation();
+      if (!mounted) return;
+      setState(() {
+        _location = location;
+        _notice = '已恢复默认导出位置。';
+      });
+    } catch (_) {
+      if (mounted) setState(() => _locationError = '无法恢复默认导出位置。');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   Future<void> _confirmDeleteAll() async {
     if (_busy) return;
@@ -103,16 +173,31 @@ class _ExportPageState extends ConsumerState<ExportPage> {
             : SleepExporter.csv(all, now: DateTime.now());
       }
       if (!mounted) return;
-      final outcome = await ref.read(exportSharerProvider).share(
-            files: files,
-            subject: '夜深睡眠数据导出',
-          );
+      final outcome = await ref.read(exportStorageProvider).save(files);
       if (!mounted) return;
       setState(() {
-        _error = outcome == ShareOutcome.failed ? '导出失败，文件没有交出去。' : null;
-        if (asBackup && outcome == ShareOutcome.shared && missing > 0) {
-          _notice = '$missing 段音频文件已缺失，备份中保留了对应的声音事件。';
+        final notices = <String>[];
+        if (outcome.failed) {
+          _error = outcome.savedCount == 0
+              ? '导出失败，文件没有保存。'
+              : '已保存 ${outcome.savedCount} 个文件，其余文件保存失败。';
+        } else {
+          _error = null;
+          if (outcome.complete) {
+            notices.add(outcome.fileCount == 1
+                ? '已保存到${_location?.label ?? '应用文件目录'}。'
+                : '已保存 ${outcome.fileCount} 个文件到'
+                    '${_location?.label ?? '应用文件目录'}。');
+          } else if (outcome.savedCount > 0) {
+            notices.add(
+              '已保存 ${outcome.savedCount} 个文件，其余文件未保存。',
+            );
+          }
         }
+        if (asBackup && outcome.savedCount > 0 && missing > 0) {
+          notices.add('$missing 段音频文件已缺失，备份中保留了对应的声音事件。');
+        }
+        _notice = notices.isEmpty ? null : notices.join(' ');
       });
     } catch (_) {
       if (mounted) setState(() => _error = '导出失败，无法生成备份文件。');
@@ -226,6 +311,29 @@ class _ExportPageState extends ConsumerState<ExportPage> {
 
     return _shell(
       [
+        const SectionHeader('导出位置'),
+        IosListGroup(children: [
+          IosListItem(
+            onTap:
+                _location?.canChoose == true && !_busy ? _chooseLocation : null,
+            child: _Action(
+              enabled: _location?.canChoose == true && !_busy,
+              title: '默认目录',
+              subtitle: _location?.label ?? _locationError ?? '正在读取…',
+              showChevron: _location?.canChoose == true,
+            ),
+          ),
+          if (_location?.custom == true)
+            IosListItem(
+              onTap: _busy ? null : _resetLocation,
+              child: _Action(
+                enabled: !_busy,
+                title: '恢复默认位置',
+                subtitle: '改回下载/夜深或当前平台默认目录',
+              ),
+            ),
+        ]),
+        const SizedBox(height: 22),
         const SectionHeader('导出数据'),
         const SizedBox(height: 12),
         GlassSurface(
@@ -338,7 +446,7 @@ class _ExportPageState extends ConsumerState<ExportPage> {
         ),
         const SizedBox(height: 16),
         Text(
-          '文件通过系统分享面板交出，存到哪里、发给谁由你决定。'
+          '导出与默认导入共用上面的目录；每次导出会直接写入该目录，应用不会自行上传。'
           '完整备份含私人录音，请妥善保管。已清理的录音无法补回；进行中的睡眠请先结束再备份。',
           style: TextStyle(fontSize: 12, height: 1.5, color: tokens.textMuted),
         ),
@@ -388,11 +496,13 @@ class _Action extends StatelessWidget {
     required this.enabled,
     required this.title,
     required this.subtitle,
+    this.showChevron = true,
   });
 
   final bool enabled;
   final String title;
   final String subtitle;
+  final bool showChevron;
 
   @override
   Widget build(BuildContext context) {
@@ -420,11 +530,12 @@ class _Action extends StatelessWidget {
             ],
           ),
         ),
-        AppIcons.chevronRight(
-          size: 18,
-          color: enabled ? tokens.textMuted : tokens.borderStrong,
-          strokeWidth: 2,
-        ),
+        if (showChevron)
+          AppIcons.chevronRight(
+            size: 18,
+            color: enabled ? tokens.textMuted : tokens.borderStrong,
+            strokeWidth: 2,
+          ),
       ],
     );
   }

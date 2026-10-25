@@ -235,6 +235,8 @@ class PrimaryAction extends StatelessWidget {
     required this.label,
     this.subtitle,
     this.trailing,
+    this.onTrailingTap,
+    this.trailingSemanticLabel,
     this.onTap,
     this.onBlockedTap,
     this.leading,
@@ -244,6 +246,8 @@ class PrimaryAction extends StatelessWidget {
   final String label;
   final String? subtitle;
   final Widget? trailing;
+  final VoidCallback? onTrailingTap;
+  final String? trailingSemanticLabel;
   final Widget? leading;
 
   /// 启用态：点击就执行它。
@@ -316,7 +320,18 @@ class PrimaryAction extends StatelessWidget {
                         ],
                       ),
                     ),
-                    if (trailing != null) trailing!,
+                    if (trailing != null)
+                      Semantics(
+                        button: onTrailingTap != null,
+                        label: trailingSemanticLabel,
+                        child: GestureDetector(
+                          behavior: onTrailingTap == null
+                              ? HitTestBehavior.deferToChild
+                              : HitTestBehavior.opaque,
+                          onTap: enabled ? onTrailingTap : null,
+                          child: trailing!,
+                        ),
+                      ),
                   ],
                 ),
               ),

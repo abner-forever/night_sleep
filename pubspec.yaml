@@ -27,7 +27,6 @@ dependencies:
   # 基于正则的插件静态检查认出来并报「Future versions of Flutter will fail to build」；
   # 5.1.1 改成 pluginManager.apply(...) 绕开该检测。别往回降。
   flutter_timezone: ^5.1.1
-  share_plus: ^13.3.0
   archive: ^4.0.7
   file_selector: ^1.1.0
   package_info_plus: ^10.2.1

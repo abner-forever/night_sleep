@@ -6,6 +6,7 @@ import '../../../core/widgets/app_basics.dart';
 import '../../../core/widgets/glass_surface.dart';
 import '../../../core/widgets/subpage.dart';
 import '../../sleep/data/sleep_repository.dart';
+import '../data/export_storage.dart';
 import '../data/sleep_backup_service.dart';
 
 class BackupRestorePage extends ConsumerStatefulWidget {
@@ -21,6 +22,22 @@ class _BackupRestorePageState extends ConsumerState<BackupRestorePage> {
   bool _restoring = false;
   String? _error;
   String? _result;
+  ExportLocation? _location;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLocation();
+  }
+
+  Future<void> _loadLocation() async {
+    try {
+      final location = await ref.read(exportStorageProvider).location();
+      if (mounted) setState(() => _location = location);
+    } catch (_) {
+      if (mounted) setState(() => _error = '无法读取默认备份位置。');
+    }
+  }
 
   @override
   void dispose() {
@@ -38,16 +55,7 @@ class _BackupRestorePageState extends ConsumerState<BackupRestorePage> {
     try {
       final file = await ref.read(backupFilePickerProvider).pick();
       if (file == null || !mounted) return;
-      final previous = _prepared;
-      setState(() => _prepared = null);
-      await previous?.dispose();
-      if (!mounted) return;
-      final prepared = await ref.read(sleepBackupServiceProvider).prepare(file);
-      if (!mounted) {
-        await prepared.dispose();
-        return;
-      }
-      setState(() => _prepared = prepared);
+      await _prepare(file);
     } on FormatException catch (error) {
       if (mounted) setState(() => _error = error.message);
     } catch (_) {
@@ -55,6 +63,43 @@ class _BackupRestorePageState extends ConsumerState<BackupRestorePage> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _chooseDefault() async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+      _result = null;
+    });
+    try {
+      final file = await ref.read(exportStorageProvider).latestBackupPath();
+      if (!mounted) return;
+      if (file == null) {
+        setState(() => _error = '默认位置还没有可导入的 ZIP 或 JSON 备份。');
+        return;
+      }
+      await _prepare(file);
+    } on FormatException catch (error) {
+      if (mounted) setState(() => _error = error.message);
+    } catch (_) {
+      if (mounted) setState(() => _error = '无法读取默认位置，请手动选择备份文件。');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _prepare(String file) async {
+    final previous = _prepared;
+    setState(() => _prepared = null);
+    await previous?.dispose();
+    if (!mounted) return;
+    final prepared = await ref.read(sleepBackupServiceProvider).prepare(file);
+    if (!mounted) {
+      await prepared.dispose();
+      return;
+    }
+    setState(() => _prepared = prepared);
   }
 
   Future<void> _restore() async {
@@ -110,8 +155,8 @@ class _BackupRestorePageState extends ConsumerState<BackupRestorePage> {
                         color: tokens.textPrimary)),
                 const SizedBox(height: 12),
                 Text(
-                  '支持含录音的 ZIP 完整备份，以及以前导出的 JSON 存档。'
-                  'CSV 用于表格查看，不支持恢复。',
+                  '默认读取上面导出目录中最新的 ZIP 完整备份或 JSON 存档，'
+                  '需要时也可以换一份。CSV 用于表格查看，不支持恢复。',
                   style: TextStyle(
                       fontSize: 13, height: 1.6, color: tokens.textSecondary),
                 ),
@@ -122,10 +167,37 @@ class _BackupRestorePageState extends ConsumerState<BackupRestorePage> {
                   style: TextStyle(
                       fontSize: 12, height: 1.6, color: tokens.textMuted),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
                 PrimaryAction(
-                    label: _busy ? '正在处理…' : '选择备份文件',
-                    onTap: _busy ? null : _choose),
+                  label: _busy ? '正在处理…' : '读取备份',
+                  subtitle: _location?.label ?? '正在读取默认目录…',
+                  onTap: _busy ? null : _chooseDefault,
+                  trailing: Container(
+                    constraints: const BoxConstraints(
+                      minWidth: 68,
+                      minHeight: 40,
+                    ),
+                    alignment: Alignment.center,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '换一份',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: _busy
+                            ? Colors.white.withValues(alpha: 0.5)
+                            : Colors.white,
+                      ),
+                    ),
+                  ),
+                  onTrailingTap: _choose,
+                  trailingSemanticLabel: '手动选择其他备份文件',
+                ),
               ],
             ),
           ),
