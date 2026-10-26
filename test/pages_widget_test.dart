@@ -23,6 +23,7 @@ import 'package:night_sleep/core/widgets/ios_controls.dart';
 import 'package:night_sleep/core/widgets/subpage.dart';
 import 'package:night_sleep/core/widgets/top_fade.dart';
 import 'package:night_sleep/features/home/presentation/home_page.dart';
+import 'package:night_sleep/features/home/data/device_location.dart';
 import 'package:night_sleep/features/home/data/weather_service.dart';
 import 'package:night_sleep/features/home/domain/weather_snapshot.dart';
 import 'package:night_sleep/features/compass/presentation/compass_page.dart';
@@ -98,6 +99,26 @@ SleepEntry _nightDaysAgo(int daysAgo) {
   );
 }
 
+/// 假定位，避免 widget 测试真去碰平台通道。
+///
+/// 位置解析本身的行为在 `test/weather_location_test.dart` 里测；这里只关心
+/// **首页在拿不到位置时给出了什么出路**。
+class _FakeDeviceLocation implements DeviceLocation {
+  _FakeDeviceLocation(this.result);
+
+  final DeviceLocationResult result;
+
+  @override
+  Future<DeviceLocationResult> current({bool interactive = false}) async =>
+      result;
+
+  @override
+  Future<void> openAppSettings() async {}
+
+  @override
+  Future<void> openLocationSettings() async {}
+}
+
 void main() {
   late AppDatabase database;
 
@@ -165,6 +186,8 @@ void main() {
     SleepSession? activeSession,
     DateTime? clock,
     WeatherSnapshot? weather,
+    // 传了就模拟「天气请求失败」，用来验证卡片在拿不到天气时的出路。
+    Object? weatherError,
     List<Override> overrides = const [],
   }) async {
     tester.view.physicalSize = surface;
@@ -182,7 +205,10 @@ void main() {
           // 会话也走 provider 覆盖：真订阅 `activeSessionWatchProvider` 会留下
           // pending timer（见文件头的说明）。默认 null = 没有会话在跑。
           activeSessionProvider.overrideWith((ref) => activeSession),
-          weatherProvider.overrideWith((ref) async => weather),
+          weatherProvider.overrideWith((ref) async {
+            if (weatherError != null) throw weatherError;
+            return weather;
+          }),
           // 冻住「现在」，好让「已睡 3h 42m」这类读数与跑测试的日期无关。
           if (clock != null) homeNowProvider.overrideWithValue(() => clock),
           ...overrides,
@@ -204,6 +230,7 @@ void main() {
     SleepSession? activeSession,
     DateTime? clock,
     WeatherSnapshot? weather,
+    Object? weatherError,
     List<Override> overrides = const [],
   }) {
     return pumpWithOverrides(
@@ -215,6 +242,7 @@ void main() {
       activeSession: activeSession,
       clock: clock,
       weather: weather,
+      weatherError: weatherError,
       overrides: overrides,
     );
   }
@@ -369,6 +397,94 @@ void main() {
       expect(find.text('↑ 27°'), findsOneWidget);
       expect(find.text('↓ 19°'), findsOneWidget);
       expect(find.text('湿度 68%'), findsOneWidget);
+    });
+
+    testWidgets('天气可用时给出「今晚怎么睡」的结论，并能在详情里开始入睡', (tester) async {
+      var started = 0;
+      await pumpPage(
+        tester,
+        home(onStartSleep: () => started++),
+        entries: await demoEntries(),
+        clock: DateTime(2026, 10, 25, 21, 8),
+        surface: const Size(430, 2600),
+        weather: const WeatherSnapshot(
+          city: '上海',
+          temperature: 24.4,
+          temperatureMax: 27,
+          temperatureMin: 19,
+          weatherCode: 1,
+          weatherText: '多云',
+          weatherEmoji: '⛅',
+          isDay: false,
+          windspeed: 12,
+          humidity: 68,
+        ),
+      );
+
+      // 19° 这一档：不用开空调、中等厚度被子、湿度 68% 睡前除湿。
+      expect(find.byKey(const ValueKey('home-comfort')), findsOneWidget);
+      expect(find.text('今晚怎么睡'), findsOneWidget);
+      expect(find.text('不用开空调，盖中等厚度的被子'), findsOneWidget);
+      expect(find.text('中等厚度，4–5 斤'), findsOneWidget);
+      expect(find.text('睡前除湿 1 小时'), findsOneWidget);
+
+      final card = find.byKey(const ValueKey('home-comfort'));
+      await tester.ensureVisible(card);
+      await tester.tap(card);
+      await tester.pumpAndSettle();
+
+      // 详情里每条都带依据，底部那颗按钮真的接到开始入睡。
+      expect(find.text('被子 · 中等厚度，4–5 斤'), findsOneWidget);
+      expect(find.textContaining('2–3 斤的薄被'), findsNothing);
+      expect(find.textContaining('4–5 斤的中等厚度被子刚好'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('comfort-start-sleep')));
+      await tester.pumpAndSettle();
+
+      expect(started, 1);
+      expect(find.byKey(const ValueKey('comfort-start-sleep')), findsNothing);
+    });
+
+    testWidgets('天气不可用时不出现「今晚怎么睡」，也不留占位', (tester) async {
+      await pumpPage(
+        tester,
+        home(),
+        entries: await demoEntries(),
+        clock: DateTime(2026, 10, 25, 21, 8),
+        surface: const Size(430, 2600),
+        weatherError: const WeatherServiceException(503),
+      );
+
+      // 没有天气就没有建议：这里既不该有卡片，也不该有一句「暂无建议」。
+      expect(find.byKey(const ValueKey('home-comfort')), findsNothing);
+      expect(find.text('今晚怎么睡'), findsNothing);
+    });
+
+    testWidgets('天气失败且没有位置时，卡片给出「使用我的位置」入口', (tester) async {
+      final location = _FakeDeviceLocation(
+        const DeviceLocationMiss(DeviceLocationFailure.permissionDeniedForever),
+      );
+      await pumpPage(
+        tester,
+        home(),
+        entries: await demoEntries(),
+        clock: DateTime(2026, 10, 25, 21, 8),
+        surface: const Size(430, 932),
+        weatherError: const WeatherServiceException(503),
+        overrides: [deviceLocationProvider.overrideWithValue(location)],
+      );
+
+      // 没有位置时不能只说「天气暂不可用」——那句之后用户无事可做。
+      expect(find.byKey(const ValueKey('home-weather')), findsOneWidget);
+      expect(find.text('位置未知'), findsOneWidget);
+      expect(find.text('使用我的位置'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('home-weather-locate')));
+      await tester.pumpAndSettle();
+
+      // 权限被永久拒绝时只能去设置；写成「重试」等于给一个永远点不好的按钮。
+      expect(find.text('定位权限已关闭'), findsOneWidget);
+      expect(find.text('去设置'), findsOneWidget);
     });
 
     testWidgets('宽屏顶部同样显示时间和天气', (tester) async {
@@ -1563,6 +1679,9 @@ void main() {
                   ),
                 ]),
             activeSessionProvider.overrideWith((ref) => null),
+            // 这一页要真外壳，首页会跟着建起来。天气走 provider 覆盖：
+            // 真 provider 会去碰定位插件与真实网络，widget 测试里一律隔离。
+            weatherProvider.overrideWith((ref) async => null),
           ],
           child: const NightSleepApp(),
         ),
@@ -1817,6 +1936,10 @@ void main() {
             // 首页即使走错误分支也会 `ref.watch(activeSessionProvider)`，不覆盖
             // 它会真订阅 drift 的流，在测试拆树时留下 pending timer。
             activeSessionProvider.overrideWith((ref) => null),
+            // 同理，`HomePage.build` 在 `entries.when` **之前**就 watch 了天气。
+            // 不覆盖的话真 provider 会去调定位插件，而测试里那条通道永远不回复，
+            // 于是一个 8 秒的超时定时器会挂到用例结束之后。
+            weatherProvider.overrideWith((ref) async => null),
           ],
           child:
               MaterialApp(theme: AppTheme.light(), home: Scaffold(body: page)),

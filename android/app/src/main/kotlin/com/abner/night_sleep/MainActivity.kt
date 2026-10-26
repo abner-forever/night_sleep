@@ -41,6 +41,12 @@ class MainActivity : FlutterActivity() {
         // 编译期与运行期都不会有任何提示，只有功能悄悄不工作。
         super.configureFlutterEngine(flutterEngine)
 
+        // 城市级定位。**必须走原生**：geolocator 在 Android 上固定优先 GPS
+        // provider，室内拿不到任何 fix（实测小米 9 全部路径超时），而
+        // network provider 百毫秒级就能给出基站/WiFi 位置。取舍见 handler 注释。
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, NETWORK_LOCATION_CHANNEL)
+            .setMethodCallHandler(NetworkLocationHandler(applicationContext))
+
         val updateHandler = AppUpdateHandler(this)
         appUpdateHandler = updateHandler
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "night_sleep/app_update")
@@ -120,5 +126,6 @@ class MainActivity : FlutterActivity() {
         const val COMPASS_CHANNEL = "night_sleep/compass"
         const val RECORDING_SERVICE_CHANNEL = "night_sleep/recording_service"
         const val EXPORT_STORAGE_CHANNEL = "night_sleep/export_storage"
+        const val NETWORK_LOCATION_CHANNEL = "night_sleep/network_location"
     }
 }

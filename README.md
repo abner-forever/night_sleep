@@ -177,17 +177,62 @@ npm run dev
 
 服务接口为 `GET /api/weather?location=上海`，Swagger 位于 `http://localhost:8080/api/docs`。
 城市无法解析时返回 404，上游不可用或配置缺失时返回 503，不返回占位天气。
-未传城市时，服务会使用 `WEATHER_DEFAULT_LOCATION`，或用公网请求 IP 做城市级定位；
-只发送网络位置给定位/天气服务商，不发送睡眠记录、备注或音频。
+未传位置时，服务会使用 `WEATHER_DEFAULT_LOCATION`，或用公网请求 IP 做城市级定位；
+App 只把两位小数的经纬度（或城市名）发给自家服务端，不发送睡眠记录、备注或音频。
 服务也可通过 `wrangler.jsonc` 部署到 Cloudflare Worker；Cloudflare 项目必须选择 Worker，
 不能使用静态 Pages 部署，密钥在 Variables and Secrets 中配置。
 
-真机或独立服务可覆盖接口基址，也可指定城市避免服务端按 IP 解析：
+#### 天气的位置从哪来
+
+首页天气按下面的顺序取位置，前一条有值就不看后面的：
+
+1. 用户在天气卡片上点「使用我的位置」后拿到的坐标；
+2. `--dart-define=WEATHER_LOCATION` 指定的城市（联调时想固定看某个城市就用它）；
+3. 设备**已经授权过**定位时的静默取值（只查权限，不弹框）；
+4. 什么都不带，由服务端按请求 IP 兜底——**仅桌面端**。移动端（Android/iOS）拿不到
+   位置时不会发请求，卡片显示「位置未知 / 使用我的位置」：国内宽带与移动网络的 IP
+   归属地经常不在所在城市（深圳的出口登记成广州是典型），显示一个错到邻市的天气，
+   比如实说「没有位置」糟糕得多。
+
+坐标以 `location=经度,纬度` 发出去（两位小数，约 1 km），服务端再用和风 GeoAPI 的坐标反查
+换成城市名——**App 里没有地图 SDK，也不做逆地理编码**，所以不会出现「先猜个城市名再传」那种错位。
+
+**定位权限只在用户点「使用我的位置」时申请，启动时不弹。** 只申请「大致位置」
+（`ACCESS_COARSE_LOCATION`，iOS 侧是 `NSLocationWhenInUseUsageDescription`）：城市级天气
+不需要精确到楼栋。拒绝、永久拒绝、系统定位总开关关着、定位超时这四种情况，卡片给的出路不同
+（重试 / 去设置），不会一律写成「稍后重试」。
+
+Android 上**不用 `geolocator` 取坐标**，而是自己问系统的 network provider。原因是 geolocator 把
+provider 固定选成 GPS（`LocationManagerClient.determineProvider()` 的顺序是
+`passive → fused(API 31+) → GPS → NETWORK`），只要 GPS provider 处于「可用」状态就永远轮不到
+network，而「可用」不代表「有信号」——室内它一个 fix 都给不出来。小米 9（Android 11 / MIUI 12.5）
+实测：融合定位、LocationManager low/medium/best、位置流四条路径全部超时（15–20 秒，请求还被系统
+标成 `ACCURACY_BLOCK`），而同一台机器直接问 network provider **67ms** 就拿到刚采到的坐标
+（基站/WiFi，精度约 2 km）。原生实现见
+`android/app/src/main/kotlin/com/abner/night_sleep/NetworkLocationHandler.kt`。
+
+取坐标按四档兜底，共用一份时间预算（交互 12 秒 / 静默 5 秒）：network provider（Android）→
+15 分钟内的已知位置 → 实时定位 → 2 小时内的已知位置。最后这一档放得更宽是有意的：两小时前的
+坐标对「今天多少度」仍然成立，比「没有位置」有用。
+
+#### 今晚怎么睡
+
+首页把天气翻译成三条可执行建议：盖什么被子、开不开空调、空气怎么处理。判据是**今夜最低温**
+（取预报最低与此刻温度的较小值）而不是此刻温度——睡眠发生在夜里，按此刻 30° 定被子会给出
+相反的结论。湿度只在天气真的带了 `humidity` 时才参与判断，缺失时只给被子与空调两条，并在详情里
+写明原因，不拿默认值顶上。风力、降水与雾决定开窗还是关窗，这条说明并进空调建议里，避免出现
+「开着空调」和「整夜开窗」互相打架的两条。
+
+规则是纯函数，在 `lib/features/home/domain/sleep_comfort.dart`，分档表见
+[`docs/sleep-comfort-plan.md`](docs/sleep-comfort-plan.md) §3.2；界面在
+`lib/features/home/presentation/widgets/tonight_comfort.dart`。天气拿不到时整张卡不出现，不画占位。
+建议按城市级预报推算，不是卧室实测；它不预测睡眠质量，也不改任何睡眠记录。
+
+真机或独立服务可覆盖接口基址：
 
 ```bash
 flutter run -d <设备ID> \
-  --dart-define=WEATHER_API_BASE_URL=http://192.168.1.10:8080/api \
-  --dart-define=WEATHER_LOCATION=上海
+  --dart-define=WEATHER_API_BASE_URL=http://192.168.1.10:8080/api
 ```
 
 Android 真机本地调试优先使用 USB 反向映射，不依赖手机和电脑处于同一 Wi-Fi，也不会被电脑防火墙或
@@ -196,13 +241,12 @@ VPN 影响。每次重新连接设备后执行：
 ```bash
 adb reverse tcp:8080 tcp:8080
 flutter run -d <设备ID> \
-  --dart-define=WEATHER_API_BASE_URL=http://127.0.0.1:8080/api \
-  --dart-define=WEATHER_LOCATION=上海
+  --dart-define=WEATHER_API_BASE_URL=http://127.0.0.1:8080/api
 ```
 
 `--dart-define` 是编译期参数，修改后必须完整停止并重新执行 `flutter run`；热重载不会更新接口地址。
-本地请求的 IP 是私有地址，服务端无法据此定位城市，因此真机本地调试需要同时传
-`WEATHER_LOCATION`，或在 `server/.env` 中设置 `WEATHER_DEFAULT_LOCATION`。
+本地请求的 IP 是私有地址，服务端无法据此定位城市，所以真机本地调试要么在卡片上点一次
+「使用我的位置」，要么传 `WEATHER_LOCATION`，或在 `server/.env` 中设置 `WEATHER_DEFAULT_LOCATION`。
 
 Android 发布工作流按分支注入 `APP_RELEASE_CHANNEL`，App 自动选择 Beta 或正式天气服务。
 本地 debug 仍默认连接本机服务。需要临时切换其他服务时，可用

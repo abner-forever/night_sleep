@@ -155,6 +155,14 @@ class SettingsPage extends ConsumerWidget {
               subtitle: '备份、恢复与本地数据管理',
               onTap: () => context.go('/settings/export'),
             ),
+            _NavRow(
+              background: tokens.accentViolet.withValues(alpha: 0.13),
+              icon: AppIcons.clock(
+                  size: 18, color: tokens.accentViolet, strokeWidth: 1.8),
+              title: '运行日志',
+              subtitle: '查看与导出埋点数据',
+              onTap: () => context.go('/settings/event-log'),
+            ),
             // 「关于」上方的最后一行。清的是**可再生成的临时文件**，不碰记录、
             // 录音与密钥——那三样各自有去处，见 `app_cache.dart` 的说明。
             const _ClearCacheRow(),

@@ -11,6 +11,18 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
 
+    <!-- 首页天气按设备位置取城市。
+         **只有 COARSE，没有 FINE**：城市级天气不需要精确到楼栋，Android 12+ 让用户
+         选「大致位置」本来就是更合理的默认；申请精确定位只会多一次被拒的机会。
+         这条是**运行时权限**，会弹系统框——所以只在用户主动点天气卡片上的
+         「使用我的位置」时才请求（`lib/features/home/data/weather_location.dart`），
+         启动时不弹，遵守规格 §7「权限在用户启用对应功能时申请」。
+
+         **必须写在 main 里**：geolocator 的 manifest 只有前台定位 service，不带这两条
+         （已核对 14.1.2 的插件源码）。漏了的后果是 `checkPermission()` 永远返回
+         denied，而界面上看起来只是「用户没授权」——很难查。 -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+
     <!-- 设备重启后重排就寝 / 起床提醒。
          **应用必须自己声明这一条**：flutter_local_notifications 22.3.1 的 manifest 里没有它
          （`POST_NOTIFICATIONS` 与 `VIBRATE` 有，那两条靠合并进来，下面不重复声明）。

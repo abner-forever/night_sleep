@@ -22,10 +22,12 @@ import '../../sleep/presentation/sheets/detail_sheet.dart';
 import '../../sleep/presentation/widgets/stage_chart.dart';
 import '../../sleep/presentation/widgets/sleep_summary.dart';
 import '../../sleep/presentation/widgets/stage_style.dart';
+import '../data/weather_location.dart';
 import '../data/weather_service.dart';
 import '../domain/home_insight.dart';
 import '../domain/weather_snapshot.dart';
 import 'widgets/sleep_hero.dart';
+import 'widgets/tonight_comfort.dart';
 
 /// 「现在」的读取接缝。
 ///
@@ -235,6 +237,18 @@ class _HomeContent extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (insight != null) ...[insight, const SizedBox(height: 17)],
+        // 天气拿不到时这张卡整张不出现：没有天气就没有建议，不画占位卡。
+        // 它排在「开始入睡」之前——建议要贴着它促成的那件事。
+        if (weather.valueOrNull case final snapshot?) ...[
+          TonightComfortCard(
+            weather: snapshot,
+            actionLabel: session == null ? '开始入睡' : '返回睡眠中',
+            onAction: session == null
+                ? onStartSleep
+                : () => context.push('/sleep/session'),
+          ),
+          const SizedBox(height: 17),
+        ],
         if (session != null)
           _ActiveSessionCard(session: session!, now: now)
         else
@@ -474,15 +488,18 @@ class _HomeContent extends StatelessWidget {
     );
 
     if (wide) {
+      // 比例从 3:6 收成 2:3：品牌段少占一点，时间与天气更早开始，横屏下的
+      // 观感是「两个内容块」而不是「三段各自漂浮」。宽度必须保持弹性——
+      // 768~850dp 的横屏放不下固定宽的时间+天气组合（实测会溢出 90+px）。
       return ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 96),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Expanded(flex: 3, child: brand),
-            const SizedBox(width: 28),
-            Expanded(flex: 6, child: clockAndWeather),
-            const SizedBox(width: 20),
+            Expanded(flex: 2, child: brand),
+            const SizedBox(width: 24),
+            Expanded(flex: 3, child: clockAndWeather),
+            const SizedBox(width: 18),
             calendarAction,
           ],
         ),
@@ -701,7 +718,6 @@ class _HomeClockState extends State<_HomeClock> {
             time: '$hour:$minute',
             date: date,
             weekday: weekday,
-            wide: widget.wide,
             primary: primary,
             muted: muted,
           );
@@ -725,13 +741,14 @@ class _HomeClockState extends State<_HomeClock> {
           return Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              // 46px 的「23:49」约 150 宽；宽屏稍留余量，避免 FittedBox 缩字。
               SizedBox(
-                width: widget.wide ? 144 : 132,
+                width: widget.wide ? 162 : 132,
                 child: timeReadout,
               ),
               Container(
                 width: 1,
-                height: widget.wide ? 58 : 64,
+                height: 64,
                 margin: const EdgeInsets.symmetric(horizontal: 14),
                 color: onImage
                     ? Colors.white.withValues(alpha: 0.20)
@@ -751,7 +768,6 @@ class _HomeTimeReadout extends StatelessWidget {
     required this.time,
     required this.date,
     required this.weekday,
-    required this.wide,
     required this.primary,
     required this.muted,
   });
@@ -759,35 +775,28 @@ class _HomeTimeReadout extends StatelessWidget {
   final String time;
   final String date;
   final String weekday;
-  final bool wide;
   final Color primary;
   final Color muted;
 
   @override
   Widget build(BuildContext context) {
+    // 时间块从「此刻」标签起头，删掉标签后它比右侧天气卡矮一截，靠外层
+    // Row 的 center 对齐居中——上下留白自然相等，不需要额外补 padding。
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '此刻',
-          style: TextStyle(
-            fontSize: 9,
-            fontWeight: FontWeight.w600,
-            color: muted,
-            letterSpacing: 2.4,
-          ),
-        ),
-        const SizedBox(height: 4),
         FittedBox(
           fit: BoxFit.scaleDown,
           alignment: Alignment.centerLeft,
           child: Text(
             time,
             maxLines: 1,
+            // 宽屏不缩字号：时间是一屏里最大的数字，缩到 40 反而比竖屏小，
+            // 与旁边的天气卡拉不开层级。
             style: AppTheme.num(
               context,
-              size: wide ? 40 : 46,
+              size: 46,
               weight: FontWeight.w500,
               color: primary,
               letterSpacing: -1.8,
@@ -830,7 +839,7 @@ class _HomeTimeReadout extends StatelessWidget {
   }
 }
 
-class _HomeWeather extends StatelessWidget {
+class _HomeWeather extends ConsumerWidget {
   const _HomeWeather({
     required this.weather,
     required this.wide,
@@ -840,11 +849,12 @@ class _HomeWeather extends StatelessWidget {
   final bool wide;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final tokens = AppTokens.of(context);
     final onImage = !wide;
     final primary = onImage ? Colors.white : tokens.textPrimary;
     final muted = onImage ? const Color(0xAFFFFFFF) : tokens.textMuted;
+    final location = ref.watch(weatherLocationProvider);
 
     return weather.when(
       loading: () => _WeatherSurface(
@@ -871,27 +881,15 @@ class _HomeWeather extends StatelessWidget {
           ],
         ),
       ),
-      error: (error, stack) => _WeatherSurface(
+      error: (error, stack) => _WeatherUnavailable(
         onImage: onImage,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '天气暂不可用',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: primary,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '稍后自动重试',
-              style: TextStyle(fontSize: 10, color: muted),
-            ),
-          ],
-        ),
+        location: location,
+        onLocate: () =>
+            ref.read(weatherLocationProvider.notifier).requestPermission(),
+        onOpenAppSettings: () =>
+            ref.read(weatherLocationProvider.notifier).openAppSettings(),
+        onOpenLocationSettings: () =>
+            ref.read(weatherLocationProvider.notifier).openLocationSettings(),
       ),
       data: (snapshot) {
         if (snapshot == null) return const SizedBox.shrink();
@@ -987,6 +985,164 @@ class _HomeWeather extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// 天气没出来时卡片显示什么。
+///
+/// 要分开的两种情况：**有位置、只是请求失败**（那是网络或服务端的锅，用户没有
+/// 任何可做的事，只能说「稍后自动重试」），和**根本没有位置**（这里必须给一条
+/// 出路，否则那张卡片就是一个永远点不动的死物）。
+///
+/// 失败原因不同，出路也不同：能再问的给「重试」，被永久拒绝或系统定位关着的
+/// 只能去设置。把三种都写成「稍后自动重试」，等于让用户一直点一个不会好的按钮。
+class _WeatherUnavailable extends StatelessWidget {
+  const _WeatherUnavailable({
+    required this.onImage,
+    required this.location,
+    required this.onLocate,
+    required this.onOpenAppSettings,
+    required this.onOpenLocationSettings,
+  });
+
+  final bool onImage;
+  final WeatherLocationState location;
+  final VoidCallback onLocate;
+  final VoidCallback onOpenAppSettings;
+  final VoidCallback onOpenLocationSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppTokens.of(context);
+    final primary = onImage ? Colors.white : tokens.textPrimary;
+    final muted = onImage ? const Color(0xAFFFFFFF) : tokens.textMuted;
+
+    if (location.status == WeatherLocationStatus.locating) {
+      return _WeatherSurface(
+        onImage: onImage,
+        child: Row(
+          children: [
+            SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 1.5,
+                color: muted,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              '正在获取位置',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: primary,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final (String title, String? action, VoidCallback? onTap) =
+        switch (location.status) {
+      WeatherLocationStatus.idle => ('位置未知', '使用我的位置', onLocate),
+      WeatherLocationStatus.permissionDenied => ('未获得定位权限', '重试', onLocate),
+      WeatherLocationStatus.permissionDeniedForever => (
+          '定位权限已关闭',
+          '去设置',
+          onOpenAppSettings,
+        ),
+      WeatherLocationStatus.serviceDisabled => (
+          '系统定位未开启',
+          '去设置',
+          onOpenLocationSettings,
+        ),
+      WeatherLocationStatus.unavailable => ('无法获取位置', '重试', onLocate),
+      _ => ('天气暂不可用', null, null),
+    };
+
+    return _WeatherSurface(
+      onImage: onImage,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: primary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          if (action != null && onTap != null)
+            _LocationAction(label: action, onTap: onTap, onImage: onImage)
+          else
+            Text(
+              '稍后自动重试',
+              style: TextStyle(fontSize: 10, color: muted),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 「使用我的位置 / 重试 / 去设置」那颗小胶囊。
+///
+/// 做成按钮而不是把整张卡变成可点区域：卡片平时是纯展示，一旦整块可点，
+/// 用户会以为点它能看到更详细的天气，结果弹出一个权限框。
+class _LocationAction extends StatelessWidget {
+  const _LocationAction({
+    required this.label,
+    required this.onTap,
+    required this.onImage,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+  final bool onImage;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppTokens.of(context);
+    final foreground = onImage ? Colors.white : tokens.accent;
+
+    return Pressable(
+      key: const ValueKey('home-weather-locate'),
+      onTap: onTap,
+      semanticLabel: label,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 5, 8, 5),
+        decoration: BoxDecoration(
+          color: onImage
+              ? Colors.white.withValues(alpha: 0.14)
+              : tokens.accentSoft,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color:
+                onImage ? Colors.white.withValues(alpha: 0.22) : tokens.border,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: foreground,
+              ),
+            ),
+            const SizedBox(width: 2),
+            AppIcons.chevronRight(size: 13, color: foreground),
+          ],
+        ),
+      ),
     );
   }
 }

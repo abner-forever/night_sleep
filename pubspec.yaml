@@ -29,6 +29,11 @@ dependencies:
   flutter_timezone: ^5.1.1
   archive: ^4.0.7
   file_selector: ^1.1.0
+  # 首页天气按设备位置取城市。**位置权限要应用自己声明**：geolocator 的
+  # Android 清单里只有前台定位 service，不带 ACCESS_COARSE_LOCATION /
+  # ACCESS_FINE_LOCATION（已核对插件源码），漏了就是运行时永远返回 denied。
+  # 本工程只声明 COARSE —— 城市级天气不需要精确到楼栋。
+  geolocator: ^14.1.2
   package_info_plus: ^10.2.1
   flutter_secure_storage: ^11.2.0
   record: ^7.1.1

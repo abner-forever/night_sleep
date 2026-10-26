@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../core/database/app_database.dart';
 import '../core/platform/system_bars.dart';
+import '../core/telemetry/event_log.dart';
 import '../core/theme/app_theme.dart';
 import '../core/theme/app_tokens.dart';
 import '../core/widgets/atmosphere.dart';
@@ -25,6 +26,7 @@ import '../features/settings/presentation/privacy_policy_page.dart';
 import '../features/settings/presentation/demo_data_page.dart';
 import '../features/settings/presentation/export_page.dart';
 import '../features/settings/presentation/backup_restore_page.dart';
+import '../features/settings/presentation/event_log_page.dart';
 import '../features/settings/presentation/export_preview_page.dart';
 import '../features/settings/data/insight_credentials.dart';
 import '../features/settings/presentation/insight_config_page.dart';
@@ -88,6 +90,12 @@ final _router = GoRouter(
         GoRoute(
           path: 'settings/export',
           builder: (context, state) => const ExportPage(),
+        ),
+        // 运行日志（埋点）的查看与导出。埋点本身写在本机支持目录，
+        // 由 `event_log.dart` 负责；这里只管导航。
+        GoRoute(
+          path: 'settings/event-log',
+          builder: (context, state) => const EventLogPage(),
         ),
         GoRoute(
           path: 'settings/restore',
@@ -237,6 +245,10 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
     // 设置页需要好几步操作，来得及；就算来不及，`load()` 也不会覆盖已输入的值。
     unawaited(ref.read(insightApiKeyProvider.notifier).load());
 
+    // 埋点：冷启动一次。放在开屏收尾里而不是 `main()`，是为了不把写盘
+    // （哪怕很小）塞回首帧前的关键路径。
+    ref.read(eventLogProvider).track('app_start');
+
     // 冷启动对账：会话可能是**重启之前**开的（`active_sessions` 那一行跨重启存活），
     // 而进程一被杀，录音早就跟着停了。这里按开关与白噪音重新对齐一次——不这么做的话，
     // 用户重启一次 App，剩下的半夜就再也不会被录。
@@ -285,10 +297,13 @@ class _AppScaffoldState extends ConsumerState<AppScaffold> {
 
   void _selectTab(AppTab tab) {
     if (tab == ref.read(activeTabProvider)) return;
+    // 埋点：切页是最基础的路径信号。track 是 fire-and-forget，不挡切换。
+    ref.read(eventLogProvider).track('tab_select', {'to': tab.name});
     ref.read(activeTabProvider.notifier).state = tab;
   }
 
   void _openNoiseSheet() {
+    ref.read(eventLogProvider).track('noise_open');
     showNoiseSheet(context);
   }
 

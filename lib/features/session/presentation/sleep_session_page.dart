@@ -16,6 +16,7 @@ import '../../../core/database/app_database.dart';
 import '../../../core/platform/haptics.dart';
 import '../../../core/platform/reminders.dart';
 import '../../../core/platform/system_bars.dart';
+import '../../../core/telemetry/event_log.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_basics.dart';
@@ -359,6 +360,13 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage>
     // 把一次「用户自己退出去」变成一条未处理异常。
     if (!mounted) return;
 
+    // 埋点：会话真正写库成功才算「开始」，只进页面不算。
+    ref.read(eventLogProvider).track('session_start', {
+      'scene': _draftScene.id,
+      'alarm': _draftAlarm,
+      'noise': noise.activeId,
+    });
+
     // 会话行已经写下去了，现在才轮到录音。**顺序不能反**：录音控制器要先能读到
     // 那一行（它据此判断「有没有会话」，以及有没有白噪音挡着），才谈得上开始录。
     // 正在试听的白噪音照样会挡住录音——这一条由控制器自己按 `isPlaying` 判断。
@@ -447,6 +455,9 @@ class _SleepSessionPageState extends ConsumerState<SleepSessionPage>
       ref.read(toastProvider.notifier).show('保存失败：$error');
       return;
     }
+
+    // 埋点：记录落库成功才算「结束」，丢弃与越界拒绝不算。
+    ref.read(eventLogProvider).track('session_finish', {'recordId': recordId});
 
     // 把这一晚的片段交给自动分析。**不 await**：读磁盘、跑模型，一晚几十上百段
     // 可能要好几秒，不能让它拦着页面收尾。分析完会写回 `sound_clips`，而
