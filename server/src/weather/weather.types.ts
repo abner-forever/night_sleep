@@ -17,9 +17,27 @@ export interface WeatherData {
 
 export interface WeatherQuery {
   clientIp: string;
+  /**
+   * Cloudflare 边缘给出的请求位置。有坐标时优先于按 IP 查第三方库：
+   * 少一次外网请求，也不会把用户 IP 交给外部服务。
+   */
+  clientGeo?: ClientGeo;
   location?: string;
   adm?: string;
   date?: string;
+}
+
+export interface ClientGeo {
+  latitude?: number;
+  longitude?: number;
+  city?: string;
+}
+
+/** 已经通过范围校验的坐标（可跨 Cloudflare 头部、默认城市等来源）。 */
+export interface ResolvedCoordinates {
+  latitude: number;
+  longitude: number;
+  city?: string;
 }
 
 export interface ResolvedLocation {
@@ -64,6 +82,8 @@ export interface QWeatherDailyResponse {
 
 export interface IpLocationResponse {
   success?: boolean;
+  /** success 为 false 时上游给出的原因（限流、保留地址等）。 */
+  message?: string;
   city?: string;
   latitude?: number;
   longitude?: number;

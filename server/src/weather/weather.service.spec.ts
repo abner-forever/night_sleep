@@ -241,6 +241,133 @@ describe('WeatherService', () => {
       service.getWeather({ clientIp: '127.0.0.1', location: '上海' }),
     ).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
+
+  it('配置报错只说缺哪个变量，不回显任何值', async () => {
+    const service = createService(
+      {
+        QWEATHER_API_HOST: 'example.qweatherapi.com',
+        QWEATHER_PRIVATE_KEY: privateKeyPem,
+      },
+      httpGet,
+    );
+
+    const error = await service
+      .getWeather({ clientIp: '127.0.0.1', location: '上海' })
+      .catch((thrown: unknown) => thrown);
+
+    expect(error).toBeInstanceOf(ServiceUnavailableException);
+    const message = (error as ServiceUnavailableException).message;
+    expect(message).toContain('QWEATHER_KEY_ID');
+    expect(message).toContain('QWEATHER_DEVELOPER_ID');
+    expect(message).toContain('QWEATHER_PROJECT_ID');
+    expect(message).not.toContain('example.qweatherapi.com');
+    expect(message).not.toContain('PRIVATE KEY');
+  });
+
+  it('优先用边缘给出的坐标换城市，不再请求第三方 IP 库', async () => {
+    const today = todayInShanghai();
+    httpGet.mockImplementation(async (url: string) => {
+      if (url.includes('/geo/v2/city/lookup')) {
+        expect(String(url)).toContain('location=120.16%2C30.29');
+        return {
+          code: '200',
+          location: [{ name: '杭州', lat: '30.29', lon: '120.16' }],
+        };
+      }
+      if (url.includes('/v7/weather/now')) {
+        return { code: '200', now: { temp: '21', icon: '101', windSpeed: '9' } };
+      }
+      if (url.includes('/v7/weather/3d')) {
+        return {
+          code: '200',
+          daily: [
+            {
+              fxDate: today,
+              tempMax: '25',
+              tempMin: '17',
+              iconDay: '101',
+              windSpeedDay: '10',
+            },
+          ],
+        };
+      }
+      throw new Error(`unexpected URL: ${url}`);
+    });
+
+    const result = await createService(configValues, httpGet).getWeather({
+      clientIp: '203.0.113.8',
+      clientGeo: { latitude: 30.2936, longitude: 120.1614, city: 'Hangzhou' },
+    });
+
+    expect(result.city).toBe('杭州');
+    expect(httpGet.mock.calls.some(([url]) => String(url).startsWith('https://ipwho.is'))).toBe(
+      false,
+    );
+  });
+
+  it('边缘坐标查不到中国城市时退回按请求 IP 定位', async () => {
+    const today = todayInShanghai();
+    httpGet.mockImplementation(async (url: string) => {
+      if (url.includes('/geo/v2/city/lookup')) {
+        // 境外出口的坐标被 `range: 'cn'` 过滤掉，和风返回 404。
+        return { code: '404' };
+      }
+      if (url.startsWith('https://ipwho.is/203.0.113.8')) {
+        return { success: true, city: '深圳', latitude: 22.54, longitude: 114.06 };
+      }
+      if (url.includes('/v7/weather/now')) {
+        return { code: '200', now: { temp: '26', icon: '104', windSpeed: '11' } };
+      }
+      if (url.includes('/v7/weather/3d')) {
+        return {
+          code: '200',
+          daily: [
+            {
+              fxDate: today,
+              tempMax: '29',
+              tempMin: '22',
+              iconDay: '104',
+              windSpeedDay: '12',
+            },
+          ],
+        };
+      }
+      throw new Error(`unexpected URL: ${url}`);
+    });
+
+    const result = await createService(configValues, httpGet).getWeather({
+      clientIp: '203.0.113.8',
+      clientGeo: { latitude: 51.51, longitude: -0.13 },
+    });
+
+    expect(result.city).toBe('深圳');
+  });
+
+  it('第三方 IP 库返回 success=false 时抛服务不可用', async () => {
+    httpGet.mockImplementation(async (url: string) => {
+      if (url.startsWith('https://ipwho.is/')) {
+        return { success: false, message: 'Rate limit exceeded' };
+      }
+      throw new Error(`unexpected URL: ${url}`);
+    });
+
+    await expect(
+      createService(configValues, httpGet).getWeather({ clientIp: '203.0.113.8' }),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+
+  it('第三方 IP 库查不到城市时抛服务不可用', async () => {
+    httpGet.mockImplementation(async (url: string) => {
+      if (url.startsWith('https://ipwho.is/')) {
+        return { success: true, latitude: 22.54, longitude: 114.06 };
+      }
+      throw new Error(`unexpected URL: ${url}`);
+    });
+
+    await expect(
+      createService(configValues, httpGet).getWeather({ clientIp: '203.0.113.8' }),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
 });
 
 function createService(values: Record<string, string>, get: jest.Mock): WeatherService {

@@ -10,8 +10,15 @@ import {
 import { Request } from 'express';
 import { WeatherQueryDto } from './dto/weather-query.dto';
 import { WeatherApiResponseDto } from './dto/weather-response.dto';
+import {
+  GEO_CITY_HEADER,
+  GEO_LATITUDE_HEADER,
+  GEO_LONGITUDE_HEADER,
+  decodeGeoCity,
+  parseGeoCoordinate,
+} from './geo-headers';
+import { ClientGeo, WeatherData } from './weather.types';
 import { WeatherService } from './weather.service';
-import { WeatherData } from './weather.types';
 
 @ApiTags('weather')
 @Controller('weather')
@@ -34,6 +41,7 @@ export class WeatherController {
   getWeather(@Req() request: Request, @Query() query: WeatherQueryDto): Promise<WeatherData> {
     return this.weatherService.getWeather({
       clientIp: resolveClientIp(request),
+      clientGeo: resolveClientGeo(request),
       location: query.location,
       adm: query.adm,
       date: query.date,
@@ -47,4 +55,19 @@ function resolveClientIp(request: Request): string {
     return cloudflareIp.trim();
   }
   return request.ip || request.socket.remoteAddress || '';
+}
+
+/**
+ * Worker 入口（`src/worker.ts`）从 `request.cf` 转写的位置头。
+ * 直连 NestJS（本地开发、非 Cloudflare 部署）时不存在，返回 undefined 走 IP 定位。
+ */
+function resolveClientGeo(request: Request): ClientGeo | undefined {
+  const latitude = parseGeoCoordinate(request.headers[GEO_LATITUDE_HEADER], 90);
+  const longitude = parseGeoCoordinate(request.headers[GEO_LONGITUDE_HEADER], 180);
+  if (latitude === undefined || longitude === undefined) return undefined;
+  return {
+    latitude,
+    longitude,
+    city: decodeGeoCity(request.headers[GEO_CITY_HEADER]),
+  };
 }

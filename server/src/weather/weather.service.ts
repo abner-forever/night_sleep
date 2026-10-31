@@ -10,9 +10,12 @@ import { ConfigService } from '@nestjs/config';
 import { createPrivateKey, sign } from 'node:crypto';
 import { isIP } from 'node:net';
 import {
+  ClientGeo,
+  IpLocationResponse,
   QWeatherDailyResponse,
   QWeatherGeoResponse,
   QWeatherNowResponse,
+  ResolvedCoordinates,
   ResolvedLocation,
   WeatherData,
   WeatherQuery,
@@ -101,12 +104,15 @@ export class WeatherService {
     const normalizedLocation = this.normalizeText(query.location);
     const normalizedAdm = this.normalizeText(query.adm);
     const clientIp = this.normalizeIp(query.clientIp);
+    const clientGeo = this.normalizeClientGeo(query.clientGeo);
     const cacheKey = [
       normalizedLocation
         ? `location:${normalizedLocation}`
         : this.config.defaultLocation
           ? `default:${this.config.defaultLocation}`
-          : `ip:${clientIp}`,
+          : clientGeo
+            ? `geo:${clientGeo.longitude.toFixed(2)},${clientGeo.latitude.toFixed(2)}`
+            : `ip:${clientIp}`,
       normalizedAdm ?? 'noadm',
       targetDate,
     ].join(':');
@@ -114,7 +120,12 @@ export class WeatherService {
     const cached = this.getCached(cacheKey);
     if (cached) return cached;
 
-    const location = await this.resolveLocation(normalizedLocation, normalizedAdm, clientIp);
+    const location = await this.resolveLocation(
+      normalizedLocation,
+      normalizedAdm,
+      clientIp,
+      clientGeo,
+    );
     const data = await this.fetchWeather(location, targetDate);
     this.setCached(cacheKey, data);
     return data;
@@ -178,11 +189,30 @@ export class WeatherService {
     location: string | undefined,
     adm: string | undefined,
     clientIp: string,
+    clientGeo: ResolvedCoordinates | undefined,
   ): Promise<ResolvedLocation> {
     if (location) return this.lookupLocation(location, adm);
     if (this.config.defaultLocation) {
       return this.lookupLocation(this.config.defaultLocation);
     }
+
+    // Cloudflare 边缘已经算好了请求位置，先拿坐标换最近城市：不依赖第三方 IP 库，
+    // 也就不会遇到「第三方限流 / 查不到」导致整个接口 503 的情况。
+    if (clientGeo) {
+      const coordinates = `${clientGeo.longitude.toFixed(2)},${clientGeo.latitude.toFixed(2)}`;
+      try {
+        return await this.lookupLocation(coordinates);
+      } catch (error: unknown) {
+        if (error instanceof NotFoundException) {
+          // 坐标落在 `range: 'cn'` 之外（境外出口 / 代理）时查不到城市，继续往下试。
+          const nearby = clientGeo.city ? `（${clientGeo.city}）` : '';
+          this.logger.warn(`边缘定位坐标 ${coordinates}${nearby} 未命中城市，退回按请求 IP 定位`);
+        } else {
+          throw error;
+        }
+      }
+    }
+
     if (!this.isPublicIp(clientIp)) {
       throw new BadRequestException('未提供城市参数，且当前请求 IP 无法用于城市级定位');
     }
@@ -221,33 +251,61 @@ export class WeatherService {
     };
   }
 
+  /**
+   * 按请求 IP 查城市。**失败原因必须进日志**：这个函数过去把「上游 429 / 上游说
+   * 查不了 / 返回里没有城市」全部折成 null，最后只剩一句「无法根据请求 IP 定位
+   * 城市」，线上根本看不出是哪一环断了。
+   */
   private async resolveIpLocation(clientIp: string): Promise<ResolvedLocation | null> {
     const url = `${this.config.ipGeolocationBaseUrl}/${encodeURIComponent(clientIp)}`;
-    try {
-      const response = await this.httpClient.get<{
-        success?: boolean;
-        city?: string;
-        latitude?: number;
-        longitude?: number;
-      }>(url, { signal: AbortSignal.timeout(this.config.timeoutMs) });
+    const describe = `IP 城市定位失败（${clientIp} @ ${this.config.ipGeolocationBaseUrl}）`;
+    let response: IpLocationResponse;
 
-      if (
-        response.success === false ||
-        !response.city ||
-        typeof response.latitude !== 'number' ||
-        typeof response.longitude !== 'number'
-      ) {
-        return null;
-      }
-      return {
-        city: response.city,
-        latitude: response.latitude,
-        longitude: response.longitude,
-      };
+    try {
+      response = await this.httpClient.get<IpLocationResponse>(url, {
+        signal: AbortSignal.timeout(this.config.timeoutMs),
+      });
     } catch (error: unknown) {
-      this.logger.warn(`IP 城市定位失败：${this.safeErrorMessage(error)}`);
+      this.logger.warn(`${describe}：请求异常 ${this.safeErrorMessage(error)}`);
       return null;
     }
+
+    if (response.success === false) {
+      this.logger.warn(`${describe}：上游返回失败，${response.message ?? '未给出原因'}`);
+      return null;
+    }
+    if (!response.city?.trim()) {
+      this.logger.warn(`${describe}：上游未返回城市名`);
+      return null;
+    }
+    if (typeof response.latitude !== 'number' || typeof response.longitude !== 'number') {
+      this.logger.warn(`${describe}：上游未返回有效坐标`);
+      return null;
+    }
+
+    return {
+      city: response.city.trim(),
+      latitude: response.latitude,
+      longitude: response.longitude,
+    };
+  }
+
+  private normalizeClientGeo(value?: ClientGeo): ResolvedCoordinates | undefined {
+    if (typeof value?.latitude !== 'number' || typeof value.longitude !== 'number') {
+      return undefined;
+    }
+    const { latitude, longitude } = value;
+    if (
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude) ||
+      Math.abs(latitude) > 90 ||
+      Math.abs(longitude) > 180 ||
+      // (0, 0) 是几内亚湾外的空点，通常代表解析失败而不是真实位置。
+      (latitude === 0 && longitude === 0)
+    ) {
+      return undefined;
+    }
+    return { latitude, longitude, city: this.normalizeText(value.city) };
   }
 
   private async requestQWeather<T>(
@@ -378,14 +436,20 @@ export class WeatherService {
   }
 
   private assertConfigured(): void {
-    if (
-      !this.config.apiHost ||
-      !this.config.privateKey ||
-      !this.config.projectId ||
-      !this.config.keyId ||
-      !this.config.developerId
-    ) {
-      throw new ServiceUnavailableException('天气服务尚未完成配置');
+    // 只报「缺哪个变量」，绝不回显值：这段文字会进响应体和日志，私钥被写进去
+    // 等于当场泄露。
+    const missing = [
+      ['QWEATHER_API_HOST', this.config.apiHost],
+      ['QWEATHER_PRIVATE_KEY', this.config.privateKey],
+      ['QWEATHER_PROJECT_ID', this.config.projectId],
+      ['QWEATHER_KEY_ID', this.config.keyId],
+      ['QWEATHER_DEVELOPER_ID', this.config.developerId],
+    ]
+      .filter(([, value]) => !value)
+      .map(([name]) => name);
+
+    if (missing.length > 0) {
+      throw new ServiceUnavailableException(`天气服务尚未完成配置：缺少 ${missing.join('、')}`);
     }
   }
 
