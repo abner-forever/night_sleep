@@ -115,6 +115,9 @@ describe('WeatherService', () => {
       ),
     ).toBe(true);
 
+    const geoCall = httpGet.mock.calls.find(([url]) => String(url).includes('/geo/v2/city/lookup'));
+    expect(new URL(String(geoCall?.[0])).searchParams.get('lang')).toBe('zh');
+
     await service.getWeather({ clientIp: '127.0.0.1', location: '上海' });
     expect(httpGet).toHaveBeenCalledTimes(3);
   });
@@ -338,6 +341,43 @@ describe('WeatherService', () => {
     const result = await createService(configValues, httpGet).getWeather({
       clientIp: '203.0.113.8',
       clientGeo: { latitude: 51.51, longitude: -0.13 },
+    });
+
+    expect(result.city).toBe('深圳');
+    expect(
+      httpGet.mock.calls.some(([url]) => String(url) === 'https://ipwho.is/203.0.113.8?lang=zh-CN'),
+    ).toBe(true);
+  });
+
+  it('自建的 IP 定位上游不追加 ipwho.is 的语言参数', async () => {
+    const today = todayInShanghai();
+    configValues.IP_GEOLOCATION_BASE_URL = 'https://ip.example.test';
+    httpGet.mockImplementation(async (url: string) => {
+      if (url === 'https://ip.example.test/203.0.113.8') {
+        return { success: true, city: '深圳', latitude: 22.54, longitude: 114.06 };
+      }
+      if (url.includes('/v7/weather/now')) {
+        return { code: '200', now: { temp: '26', icon: '104', windSpeed: '11' } };
+      }
+      if (url.includes('/v7/weather/3d')) {
+        return {
+          code: '200',
+          daily: [
+            {
+              fxDate: today,
+              tempMax: '29',
+              tempMin: '22',
+              iconDay: '104',
+              windSpeedDay: '12',
+            },
+          ],
+        };
+      }
+      throw new Error(`unexpected URL: ${url}`);
+    });
+
+    const result = await createService(configValues, httpGet).getWeather({
+      clientIp: '203.0.113.8',
     });
 
     expect(result.city).toBe('深圳');

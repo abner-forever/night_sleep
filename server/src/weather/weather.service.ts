@@ -232,6 +232,8 @@ export class WeatherService {
         ...(adm ? { adm } : {}),
         range: 'cn',
         number: '5',
+        // 不显式指定时上游按英文返回城市名（如 Guangzhou），客户端要中文。
+        lang: 'zh',
       },
       this.generateJwt(),
     );
@@ -257,7 +259,7 @@ export class WeatherService {
    * 城市」，线上根本看不出是哪一环断了。
    */
   private async resolveIpLocation(clientIp: string): Promise<ResolvedLocation | null> {
-    const url = `${this.config.ipGeolocationBaseUrl}/${encodeURIComponent(clientIp)}`;
+    const url = this.buildIpLocationUrl(clientIp);
     const describe = `IP 城市定位失败（${clientIp} @ ${this.config.ipGeolocationBaseUrl}）`;
     let response: IpLocationResponse;
 
@@ -288,6 +290,26 @@ export class WeatherService {
       latitude: response.latitude,
       longitude: response.longitude,
     };
+  }
+
+  /**
+   * ipwho.is 默认按英文返回城市名（Guangzhou），要显式带 `lang=zh-CN` 才是中文。
+   * 注意只认 `zh-CN`：传 `lang=zh` 仍返回英文。自建或其他 IP 定位上游不认识这个
+   * 参数，不能一视同仁地加。
+   */
+  private buildIpLocationUrl(clientIp: string): string {
+    const url = `${this.config.ipGeolocationBaseUrl}/${encodeURIComponent(clientIp)}`;
+    return this.isIpwhoBaseUrl() ? `${url}?lang=zh-CN` : url;
+  }
+
+  private isIpwhoBaseUrl(): boolean {
+    try {
+      const { hostname } = new URL(this.config.ipGeolocationBaseUrl);
+      return hostname === 'ipwho.is' || hostname.endsWith('.ipwho.is');
+    } catch {
+      // 配置写坏时保持原行为：请求照发，失败原因由请求异常那一路记日志。
+      return false;
+    }
   }
 
   private normalizeClientGeo(value?: ClientGeo): ResolvedCoordinates | undefined {
