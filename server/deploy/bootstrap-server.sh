@@ -4,7 +4,7 @@
 # 在 Ubuntu 24.04 上执行：
 #   sudo DEPLOY_USER=ubuntu bash deploy/bootstrap-server.sh
 #
-# 会做三件事：安装 Node.js 22 / rsync / pm2，创建 /www/server/night-sleep/{beta,prod}，
+# 会做三件事：安装 Node.js 22 / rsync / pm2，创建 /var/www/night-sleep/{beta,prod}，
 # 并把目录交给 DEPLOY_USER。重复执行是安全的。
 #
 # 宝塔面板用户请注意：如果已经用「Node 版本管理器」装过 Node 22，建议跳过本脚本的
@@ -13,7 +13,7 @@
 set -euo pipefail
 
 DEPLOY_USER="${DEPLOY_USER:-ubuntu}"
-DEPLOY_ROOT="${DEPLOY_ROOT:-/www/server/night-sleep}"
+DEPLOY_ROOT="${DEPLOY_ROOT:-/var/www/night-sleep}"
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "请用 sudo 运行：sudo DEPLOY_USER=ubuntu bash $0" >&2

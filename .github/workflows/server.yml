@@ -53,7 +53,7 @@ jobs:
           esac
           echo "target=$target" >> "$GITHUB_OUTPUT"
           echo "environment=server-$target" >> "$GITHUB_OUTPUT"
-          echo "default_path=/www/server/night-sleep/$target" >> "$GITHUB_OUTPUT"
+          echo "default_path=/var/www/night-sleep/$target" >> "$GITHUB_OUTPUT"
           echo "default_port=$default_port" >> "$GITHUB_OUTPUT"
 
   deploy:
@@ -69,7 +69,7 @@ jobs:
       SERVER_HOST: ${{ vars.SERVER_HOST }}
       SERVER_USER: ${{ vars.SERVER_USER }}
       SERVER_PORT: ${{ vars.SERVER_PORT || '22' }}
-      # 不配置时使用默认值：/www/server/night-sleep/<beta|prod>、8081/8080。
+      # 不配置时使用默认值：/var/www/night-sleep/<beta|prod>、8081/8080。
       DEPLOY_PATH: ${{ vars.DEPLOY_PATH || needs.prepare.outputs.default_path }}
       APP_PORT: ${{ vars.APP_PORT || needs.prepare.outputs.default_port }}
       NPM_REGISTRY: ${{ vars.NPM_REGISTRY }}

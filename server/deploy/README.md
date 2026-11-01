@@ -11,8 +11,8 @@ npm ci / typecheck / test / build
         │
         ├─ rsync dist、package*.json、ecosystem.config.cjs、deploy/*.sh、.env.example
         ▼
-/www/server/night-sleep/beta   ← PM2: night-sleep-beta，端口 8081
-/www/server/night-sleep/prod   ← PM2: night-sleep-prod，端口 8080
+/var/www/night-sleep/beta   ← PM2: night-sleep-beta，端口 8081
+/var/www/night-sleep/prod   ← PM2: night-sleep-prod，端口 8080
 
 域名（Nginx 反向代理）：
   https://beta.xxx.com/api  → 127.0.0.1:8081
@@ -28,12 +28,11 @@ npm ci / typecheck / test / build
 
 ### 1.1 目录与权限
 
-`/www/server` 通常是 root 所有（宝塔面板的安装目录），**只把 `night-sleep` 子目录交给部署用户**，
-不要动 `/www/server` 本身：
+`/var/www` 通常是 root 所有，**只把 `night-sleep` 子目录交给部署用户**，不要动 `/var/www` 本身：
 
 ```bash
-sudo mkdir -p /www/server/night-sleep/beta /www/server/night-sleep/prod
-sudo chown -R ubuntu:ubuntu /www/server/night-sleep
+sudo mkdir -p /var/www/night-sleep/beta /var/www/night-sleep/prod
+sudo chown -R ubuntu:ubuntu /var/www/night-sleep
 ```
 
 > 如果你用 `root` 登录部署，可以跳过 `chown`，并把 GitHub 里的 `SERVER_USER` 设为 `root`。
@@ -62,8 +61,8 @@ npm 安装 pm2，并确保**非交互式 SSH 登录**也能找到 node（部署�
 首次部署前先把配置文件建好（或者先跑一次部署，让 CI 把 `.env.example` 传上来）：
 
 ```bash
-cp /www/server/night-sleep/prod/.env.example /www/server/night-sleep/prod/.env   # 首次部署后会有模板
-nano /www/server/night-sleep/prod/.env
+cp /var/www/night-sleep/prod/.env.example /var/www/night-sleep/prod/.env   # 首次部署后会有模板
+nano /var/www/night-sleep/prod/.env
 ```
 
 必填和风天气五项：`QWEATHER_API_HOST`、`QWEATHER_PRIVATE_KEY`、`QWEATHER_PROJECT_ID`、
@@ -141,14 +140,14 @@ ssh -i night-sleep-ci ubuntu@<服务器IP> "echo connected"
 | Variable | `SERVER_HOST` | `1.2.3.4` | `1.2.3.4` |
 | Variable | `SERVER_USER` | `ubuntu` | `ubuntu` |
 | Variable | `SERVER_PORT` | `22`（可留空） | `22`（可留空） |
-| Variable | `DEPLOY_PATH` | `/www/server/night-sleep/beta` | `/www/server/night-sleep/prod` |
+| Variable | `DEPLOY_PATH` | `/var/www/night-sleep/beta` | `/var/www/night-sleep/prod` |
 | Variable | `APP_PORT` | `8081` | `8080` |
 | Variable | `NPM_REGISTRY` | `https://registry.npmmirror.com`（可选） | 同左 |
 | Secret | `SERVER_SSH_KEY` | 私钥 `night-sleep-ci` 全文 | 私钥 `night-sleep-ci` 全文 |
 
 两点说明：
 
-- `DEPLOY_PATH`、`APP_PORT` 不填也能用，工作流默认取 `/www/server/night-sleep/<环境>`
+- `DEPLOY_PATH`、`APP_PORT` 不填也能用，工作流默认取 `/var/www/night-sleep/<环境>`
   和 `8081`/`8080`；填了以你填的为准。
 - 两台服务器分别部署时，只需要把两个环境的 `SERVER_HOST` 改成各自的 IP。
 
@@ -223,7 +222,7 @@ App 的 `WEATHER_API_BASE_URL` **包含 `/api` 前缀**：
 ## 四、手动操作（在服务器上）
 
 ```bash
-cd /www/server/night-sleep/prod
+cd /var/www/night-sleep/prod
 
 # 重新部署当前目录里的构建产物（例如只改了 .env 后重启）
 APP_ENV=prod PORT=8080 bash deploy/remote-deploy.sh
@@ -239,8 +238,8 @@ pm2 restart night-sleep-prod --update-env
 
 ## 五、常见问题
 
-**`Permission denied` 写不进 `/www/server/night-sleep`**
-目录属主不是部署用户。执行 `sudo chown -R ubuntu:ubuntu /www/server/night-sleep`，
+**`Permission denied` 写不进 `/var/www/night-sleep`**
+目录属主不是部署用户。执行 `sudo chown -R ubuntu:ubuntu /var/www/night-sleep`，
 或者把 `SERVER_USER` 改成实际拥有该目录的用户。
 
 **非交互 SSH 找不到 node / pm2**
