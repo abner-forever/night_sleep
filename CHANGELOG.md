@@ -67,6 +67,10 @@ server 显式依赖 webpack 5.112.2。
 
 天气城市名默认中文：城市查询带 lang=zh，ipwho.is 定位带 lang=zh-CN（仅对它追加）。
 
+天气接口从 Cloudflare Worker 切到腾讯云服务器 IP（beta 8081 / 正式 8080），域名 foreverheart.top 就绪后再换 HTTPS；Android 与 iOS 只为这个 IP 单点放行明文 HTTP。release 包外网连通未验证。
+
+debug 构建的天气接口改为运行时探测：本机 `localhost:8080` 或模拟器 `10.0.2.2:8080` 有服务就连本地，没有就连远端测试服；`--dart-define=WEATHER_API_BASE_URL` 仍可跳过探测直接指定。真机实测（小米 9，本地未起服务）已落到测试服。
+
 ## 未发布（2026-10-24）
 
 新增睡眠日历；按新设计稿改版回顾表单、统计汇总、三页引导与助眠音效。

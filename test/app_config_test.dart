@@ -1,76 +1,40 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:night_sleep/core/config/app_config.dart';
 
 void main() {
   group('天气接口环境', () {
-    test('beta 构建使用 Preview Worker', () {
+    test('beta 构建使用测试服', () {
       expect(
-        AppConfig.resolveWeatherApiBaseUrl(
-          configuredUrl: '',
-          releaseChannel: 'beta',
-          debug: false,
-          platform: TargetPlatform.android,
-        ),
+        AppConfig.releaseWeatherApiBaseUrlFor('beta'),
         AppConfig.betaWeatherApiBaseUrl,
       );
     });
 
-    test('main 构建使用 Production Worker', () {
+    test('main 构建使用正式服', () {
       expect(
-        AppConfig.resolveWeatherApiBaseUrl(
-          configuredUrl: '',
-          releaseChannel: 'main',
-          debug: false,
-          platform: TargetPlatform.iOS,
-        ),
+        AppConfig.releaseWeatherApiBaseUrlFor('main'),
         AppConfig.productionWeatherApiBaseUrl,
       );
     });
 
-    test('debug 构建继续使用本机服务', () {
+    test('分支名两端空白不影响判定', () {
       expect(
-        AppConfig.resolveWeatherApiBaseUrl(
-          configuredUrl: '',
-          releaseChannel: 'beta',
-          debug: true,
-          platform: TargetPlatform.android,
-        ),
-        'http://10.0.2.2:8080/api',
-      );
-      expect(
-        AppConfig.resolveWeatherApiBaseUrl(
-          configuredUrl: '',
-          releaseChannel: 'main',
-          debug: true,
-          platform: TargetPlatform.iOS,
-        ),
-        'http://localhost:8080/api',
-      );
-    });
-
-    test('显式配置覆盖分支默认值', () {
-      expect(
-        AppConfig.resolveWeatherApiBaseUrl(
-          configuredUrl: ' https://api.example.com/api ',
-          releaseChannel: 'beta',
-          debug: false,
-          platform: TargetPlatform.android,
-        ),
-        'https://api.example.com/api',
+        AppConfig.releaseWeatherApiBaseUrlFor(' beta\n'),
+        AppConfig.betaWeatherApiBaseUrl,
       );
     });
 
     test('未知发布分支不启用天气请求', () {
-      expect(
-        AppConfig.resolveWeatherApiBaseUrl(
-          configuredUrl: '',
-          releaseChannel: '',
-          debug: false,
-          platform: TargetPlatform.android,
-        ),
-        '',
-      );
+      expect(AppConfig.releaseWeatherApiBaseUrlFor(''), '');
+      expect(AppConfig.releaseWeatherApiBaseUrlFor('feature/x'), '');
+    });
+
+    test('本地探测候选先本机、后模拟器映射', () {
+      // 顺序即优先级：回环先答应就不必等 10.0.2.2 那个 800ms 超时。
+      expect(AppConfig.debugLocalWeatherApiBaseUrls, [
+        'http://localhost:8080/api',
+        'http://10.0.2.2:8080/api',
+      ]);
     });
   });
 }

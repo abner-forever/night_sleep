@@ -43,6 +43,13 @@
 				<key>NSExceptionAllowsInsecureHTTPLoads</key>
 				<true/>
 			</dict>
+			<!-- 过渡态：域名 foreverheart.top 解析就绪前，天气接口直连腾讯云服务器 IP
+			     （见 lib/core/config/app_config.dart）。域名上线后删掉这一条。 -->
+			<key>110.40.226.136</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
 		</dict>
 	</dict>
 	<key>NSMotionUsageDescription</key>

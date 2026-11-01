@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:night_sleep/core/config/app_config.dart';
 import 'package:night_sleep/core/telemetry/event_log.dart';
 import 'package:night_sleep/features/home/data/device_location.dart';
 import 'package:night_sleep/features/home/data/weather_service.dart';
@@ -200,5 +201,57 @@ void main() {
     await container.read(weatherProvider.future);
 
     expect(log.events, isEmpty);
+  });
+
+  group('接口基址解析', () {
+    test('显式配置优先于一切，连本地都不探', () async {
+      var probed = false;
+      final url = await resolveWeatherApiBaseUrl(
+        configuredUrl: ' https://api.example.com/api ',
+        releaseChannel: 'beta',
+        debug: true,
+        probe: (_) async {
+          probed = true;
+          return true;
+        },
+      );
+      expect(url, 'https://api.example.com/api');
+      expect(probed, isFalse);
+    });
+
+    test('debug 下本地服务在跑就用本地', () async {
+      final url = await resolveWeatherApiBaseUrl(
+        configuredUrl: '',
+        releaseChannel: 'beta',
+        debug: true,
+        probe: (baseUrl) async => baseUrl == 'http://10.0.2.2:8080/api',
+      );
+      expect(url, 'http://10.0.2.2:8080/api');
+    });
+
+    test('debug 下本地没起服务就回落远端测试服', () async {
+      final url = await resolveWeatherApiBaseUrl(
+        configuredUrl: '',
+        releaseChannel: 'main',
+        debug: true,
+        probe: (_) async => false,
+      );
+      expect(url, AppConfig.betaWeatherApiBaseUrl);
+    });
+
+    test('发布构建不探测本机，按分支取远端', () async {
+      var probed = false;
+      final url = await resolveWeatherApiBaseUrl(
+        configuredUrl: '',
+        releaseChannel: 'main',
+        debug: false,
+        probe: (_) async {
+          probed = true;
+          return true;
+        },
+      );
+      expect(url, AppConfig.productionWeatherApiBaseUrl);
+      expect(probed, isFalse);
+    });
   });
 }

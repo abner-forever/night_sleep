@@ -160,10 +160,14 @@ flutter run -d <设备ID> --dart-define=DEMO_DATA=true     # 强制开启
 flutter build apk --dart-define=DEMO_DATA=false    # 发布构建强制关闭
 ```
 
-**天气服务**在 debug 中默认连接本机 NestJS 服务（源码见 [`server/`](server/README.md)）：
+**天气服务**在 debug 中先探测本机 NestJS 服务（源码见 [`server/`](server/README.md)），
+探到就用本地，探不到就连远端测试服 `http://110.40.226.136:8081/api`：
 
+- 本机：`http://localhost:8080/api`（iOS 模拟器与 `adb reverse` 都走这条）
 - Android 模拟器：`http://10.0.2.2:8080/api`
-- iOS 模拟器 / 其他本地目标：`http://localhost:8080/api`
+
+探测是 `GET /api/health`，单次 800ms 超时；`10.0.2.2` 在真机上不存在、连过去是
+静默丢包，所以本地没起服务时会多花约 0.8 秒再回落到远端。
 
 首次运行服务：
 
@@ -249,9 +253,9 @@ flutter run -d <设备ID> \
 「使用我的位置」，要么传 `WEATHER_LOCATION`，或在 `server/.env` 中设置 `WEATHER_DEFAULT_LOCATION`。
 
 Android 发布工作流按分支注入 `APP_RELEASE_CHANNEL`，App 自动选择 Beta 或正式天气服务。
-本地 debug 仍默认连接本机服务。需要临时切换其他服务时，可用
-`--dart-define=WEATHER_API_BASE_URL=https://api.example.com/api` 覆盖分支默认值；
-不要把和风天气密钥写进 App。
+本地 debug 先探本机、探不到就连测试服。需要临时切换其他服务时，可用
+`--dart-define=WEATHER_API_BASE_URL=https://api.example.com/api` 覆盖分支默认值——显式配置
+会跳过本地探测，直接用它；不要把和风天气密钥写进 App。
 
 ### 构建
 

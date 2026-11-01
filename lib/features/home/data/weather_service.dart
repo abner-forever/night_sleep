@@ -18,11 +18,7 @@ final weatherHttpClientProvider = Provider<http.Client>((ref) {
 });
 
 final weatherProvider = FutureProvider<WeatherSnapshot?>((ref) async {
-  final baseUrl = AppConfig.weatherApiBaseUrl;
-  if (baseUrl.isEmpty) return null;
-
-  final timer = Timer(const Duration(minutes: 30), ref.invalidateSelf);
-  ref.onDispose(timer.cancel);
+  final client = ref.watch(weatherHttpClientProvider);
 
   final location = await _resolveLocationQuery(ref);
 
@@ -31,15 +27,28 @@ final weatherProvider = FutureProvider<WeatherSnapshot?>((ref) async {
   // 是典型），用户会把那个错误城市当成真的。宁可让卡片走「使用我的位置」，
   // 也不显示一个可能错到隔壁市的天气。桌面端没有定位能力，IP 兜底是唯一
   // 来源，保持不变。
+  //
+  // 这一跳排在解析基址**之前**：既然注定不请求，就不该先花时间探本机服务。
   if (location == null && _deviceCanLocate) {
     ref.read(eventLogProvider).track('weather_location_required');
     throw const WeatherLocationRequired();
   }
 
+  final baseUrl = await resolveWeatherApiBaseUrl(
+    configuredUrl: AppConfig.configuredWeatherApiBaseUrl,
+    releaseChannel: AppConfig.releaseChannel,
+    debug: kDebugMode,
+    probe: (candidate) => _isLocalServerUp(client, candidate),
+  );
+  if (baseUrl.isEmpty) return null;
+
+  final timer = Timer(const Duration(minutes: 30), ref.invalidateSelf);
+  ref.onDispose(timer.cancel);
+
   try {
     return await WeatherService(
       baseUrl: baseUrl,
-      client: ref.watch(weatherHttpClientProvider),
+      client: client,
       location: location ?? '',
     ).fetchCurrent();
   } on Object catch (error) {
@@ -51,6 +60,51 @@ final weatherProvider = FutureProvider<WeatherSnapshot?>((ref) async {
     rethrow;
   }
 });
+
+/// 这次请求要连的基址。
+///
+/// 优先级：**编译期显式配置 > debug 下探测到的本地服务 > 远端**。远端在 debug
+/// 恒为测试服（[AppConfig.betaWeatherApiBaseUrl]），发布构建按分支取。
+///
+/// 探测只在 debug 发生：发布包不该去连本机，也连不上——release 的网络安全配置
+/// 只放行了服务器 IP，本机那几个明文地址在 release 里是被拒的。
+Future<String> resolveWeatherApiBaseUrl({
+  required String configuredUrl,
+  required String releaseChannel,
+  required bool debug,
+  required Future<bool> Function(String baseUrl) probe,
+}) async {
+  final configured = configuredUrl.trim();
+  if (configured.isNotEmpty) return configured;
+  if (!debug) return AppConfig.releaseWeatherApiBaseUrlFor(releaseChannel);
+
+  for (final candidate in AppConfig.debugLocalWeatherApiBaseUrls) {
+    if (await probe(candidate)) return candidate;
+  }
+  return AppConfig.betaWeatherApiBaseUrl;
+}
+
+/// 本地 NestJS 服务是否在跑：`GET {base}/health` 回 200 就算在。
+///
+/// 超时必须短。回环上有服务时几毫秒就答应、没有时是**立刻拒绝**，800ms 只是给
+/// `adb reverse` 留余量；而 `10.0.2.2` 在真机上根本不存在，连过去是**静默丢包**
+/// 而不是拒绝连接，没有这个超时会把开屏一直拖到请求本身超时。
+Future<bool> _isLocalServerUp(http.Client client, String baseUrl) async {
+  try {
+    final response = await client
+        .get(_endpointOf(baseUrl, 'health'))
+        .timeout(const Duration(milliseconds: 800));
+    return response.statusCode == 200;
+  } on Object {
+    return false;
+  }
+}
+
+/// 拼接口地址：`{base}/{path}`，base 末尾带不带 `/` 都行。
+Uri _endpointOf(String baseUrl, String path) {
+  final normalizedBase = baseUrl.endsWith('/') ? baseUrl : '$baseUrl/';
+  return Uri.parse(normalizedBase).resolve(path);
+}
 
 /// 移动端有真定位能力（Android / iOS），桌面端没有。
 bool get _deviceCanLocate {
@@ -122,8 +176,7 @@ class WeatherService {
   static const _timeout = Duration(seconds: 6);
 
   Future<WeatherSnapshot> fetchCurrent() async {
-    final normalizedBase = baseUrl.endsWith('/') ? baseUrl : '$baseUrl/';
-    final endpoint = Uri.parse(normalizedBase).resolve('weather');
+    final endpoint = _endpointOf(baseUrl, 'weather');
     final uri = location.trim().isEmpty
         ? endpoint
         : endpoint.replace(queryParameters: {'location': location.trim()});

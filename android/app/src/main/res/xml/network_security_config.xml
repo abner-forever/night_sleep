@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 明文 HTTP 只对这一个临时地址放行。
+
+     过渡态：域名 foreverheart.top 解析就绪前，天气接口直连腾讯云服务器的 IP
+     （`AppConfig.betaWeatherApiBaseUrl` / `productionWeatherApiBaseUrl`）。
+     targetSdk ≥ 28 默认**禁止**明文 HTTP，所以没有这个文件时
+     **只有 release 包会失败**（SocketException / CleartextNotPermitted），
+     debug 因为 src/debug 下的同名覆盖文件放行本机地址而完全看不出来。
+
+     域名上线后连带删除：这个文件、清单里的 android:networkSecurityConfig 引用、
+     src/debug/res/xml 的同名覆盖文件，以及 Info.plist 里那条 IP 例外。 -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">110.40.226.136</domain>
+    </domain-config>
+</network-security-config>

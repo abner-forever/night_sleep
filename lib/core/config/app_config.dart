@@ -23,49 +23,49 @@ abstract final class AppConfig {
   /// `source` value marking bundled sample rows.
   static const String demoSource = 'demo';
 
-  /// Beta 测试分支使用的 Cloudflare Worker Preview。
-  static const String betaWeatherApiBaseUrl =
-      'https://beta-night-sleep.abner-foreverheart.workers.dev/api';
-
-  /// 正式分支使用的 Cloudflare Worker Production。
-  static const String productionWeatherApiBaseUrl =
-      'https://night-sleep.abner-foreverheart.workers.dev/api';
-
-  /// 天气接口基址。
+  /// 编译期显式指定的接口基址（`--dart-define=WEATHER_API_BASE_URL=...`）。
   ///
-  /// 发布构建由工作流传入分支名，自动选择 Beta Preview 或 Production Worker。
-  /// debug 默认连接本机 NestJS 服务；Android 模拟器使用宿主机的 10.0.2.2。
-  static String get weatherApiBaseUrl {
-    const configured = String.fromEnvironment(
-      'WEATHER_API_BASE_URL',
-      defaultValue: '',
-    );
-    const releaseChannel = String.fromEnvironment(
-      'APP_RELEASE_CHANNEL',
-      defaultValue: '',
-    );
-    return resolveWeatherApiBaseUrl(
-      configuredUrl: configured,
-      releaseChannel: releaseChannel,
-      debug: kDebugMode,
-      platform: defaultTargetPlatform,
-    );
-  }
+  /// 非空时**优先于一切**——既不探测本地服务，也不看发布分支。
+  static const String configuredWeatherApiBaseUrl = String.fromEnvironment(
+    'WEATHER_API_BASE_URL',
+    defaultValue: '',
+  );
 
-  static String resolveWeatherApiBaseUrl({
-    required String configuredUrl,
-    required String releaseChannel,
-    required bool debug,
-    required TargetPlatform platform,
-  }) {
-    final configured = configuredUrl.trim();
-    if (configured.isNotEmpty) return configured;
-    if (debug) {
-      return platform == TargetPlatform.android
-          ? 'http://10.0.2.2:8080/api'
-          : 'http://localhost:8080/api';
-    }
-    return switch (releaseChannel.trim()) {
+  /// 发布分支名，由 Android 工作流注入（`beta` / `main`）。
+  static const String releaseChannel = String.fromEnvironment(
+    'APP_RELEASE_CHANNEL',
+    defaultValue: '',
+  );
+
+  /// Beta 测试分支的天气接口基址：腾讯云服务器的测试服（PM2 `night-sleep-beta`）。
+  ///
+  /// 过渡态——域名 `foreverheart.top` 解析就绪前先直连 IP。改成 HTTPS 域名后，
+  /// 记得把 Android 的 `res/xml/network_security_config.xml` 与
+  /// `ios/Runner/Info.plist` 里为明文 HTTP 开的例外一并删掉。
+  static const String betaWeatherApiBaseUrl = 'http://110.40.226.136:8081/api';
+
+  /// 正式分支的天气接口基址：同一台服务器的正式服（PM2 `night-sleep-prod`）。
+  ///
+  /// 域名上线后改成 `https://foreverheart.top/api`。
+  static const String productionWeatherApiBaseUrl =
+      'http://110.40.226.136:8080/api';
+
+  /// debug 构建下本地开发服务的候选地址，按顺序探测。
+  ///
+  /// `localhost` 覆盖 iOS 模拟器与 `adb reverse tcp:8080 tcp:8080`；
+  /// `10.0.2.2` 是 Android 模拟器映射宿主机的专用地址——**真机上它不存在**，
+  /// 连过去是静默丢包，所以探测必须带短超时（见 `weather_service.dart`）。
+  static const List<String> debugLocalWeatherApiBaseUrls = [
+    'http://localhost:8080/api',
+    'http://10.0.2.2:8080/api',
+  ];
+
+  /// 发布构建按分支取的接口基址；未知分支返回空串，此时不请求天气。
+  ///
+  /// debug 构建不走这里——本地服务起没起要看运行时探测，
+  /// 见 `weather_service.dart` 的 `resolveWeatherApiBaseUrl`。
+  static String releaseWeatherApiBaseUrlFor(String channel) {
+    return switch (channel.trim()) {
       'beta' => betaWeatherApiBaseUrl,
       'main' => productionWeatherApiBaseUrl,
       _ => '',

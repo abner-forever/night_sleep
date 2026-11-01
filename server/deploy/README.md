@@ -215,9 +215,10 @@ App 的 `WEATHER_API_BASE_URL` **包含 `/api` 前缀**：
 - 正式：`https://xxx.com/api`
 - 测试：`https://beta.xxx.com/api`
 
-当前 `.github/workflows/android.yml` 两个分支共用仓库变量 `WEATHER_API_BASE_URL`，
-所以 beta 包默认也会连正式服。要让 beta 包连测试服，需要把该工作流里的变量改成按分支取值
-（例如用两个 Environment 变量），这不在本次服务端部署范围内，需要时再改。
+当前 `.github/workflows/android.yml` 两个分支共用仓库变量 `WEATHER_API_BASE_URL`，它覆盖
+分支默认值。**留空**时 App 按分支取 `lib/core/config/app_config.dart` 里的基址——目前是服务器
+IP（测试 8081 / 正式 8080），所以 beta 包连的是测试服；**填了就两个分支都连填的那个地址**。
+域名上线后把这两条常量换成 `https://` 地址即可。
 
 ## 四、手动操作（在服务器上）
 

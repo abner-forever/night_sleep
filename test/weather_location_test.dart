@@ -170,7 +170,11 @@ void main() {
     final requests = <Uri>[];
     final container = _container(
       location: location,
-      onRequest: requests.add,
+      // 只记天气请求：debug 下 provider 会先探 `/api/health` 决定连本地还是
+      // 远端，那条探测不是本用例的断言对象。
+      onRequest: (url) {
+        if (url.path.endsWith('/weather')) requests.add(url);
+      },
     );
     addTearDown(container.dispose);
 
