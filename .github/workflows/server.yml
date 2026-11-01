@@ -1,0 +1,140 @@
+name: 服务端 · PM2 部署
+
+# beta 分支部署测试服（server-beta），main 分支部署正式服（server-prod）。
+# 服务器信息与私钥按 Environment 分开配置，同一套工作流可对应一台或两台服务器。
+on:
+  push:
+    branches: [beta, main]
+    paths:
+      - 'server/**'
+      - '.github/workflows/server.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 部署目标
+        required: true
+        type: choice
+        options: [beta, prod]
+        default: beta
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      target: ${{ steps.resolve.outputs.target }}
+      environment: ${{ steps.resolve.outputs.environment }}
+      default_path: ${{ steps.resolve.outputs.default_path }}
+      default_port: ${{ steps.resolve.outputs.default_port }}
+    steps:
+      - name: 解析部署目标
+        id: resolve
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_ENV: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            target="$INPUT_ENV"
+          else
+            case "$REF_NAME" in
+              beta) target=beta ;;
+              main) target=prod ;;
+              *) echo "分支 $REF_NAME 不参与部署" >&2; exit 1 ;;
+            esac
+          fi
+          case "$target" in
+            beta) default_port=8081 ;;
+            prod) default_port=8080 ;;
+            *) echo "未知部署目标：$target" >&2; exit 1 ;;
+          esac
+          echo "target=$target" >> "$GITHUB_OUTPUT"
+          echo "environment=server-$target" >> "$GITHUB_OUTPUT"
+          echo "default_path=/www/server/night-sleep/$target" >> "$GITHUB_OUTPUT"
+          echo "default_port=$default_port" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: ${{ needs.prepare.outputs.environment }}
+    concurrency:
+      group: server-deploy-${{ needs.prepare.outputs.target }}
+      cancel-in-progress: false
+    env:
+      TARGET: ${{ needs.prepare.outputs.target }}
+      SERVER_HOST: ${{ vars.SERVER_HOST }}
+      SERVER_USER: ${{ vars.SERVER_USER }}
+      SERVER_PORT: ${{ vars.SERVER_PORT || '22' }}
+      # 不配置时使用默认值：/www/server/night-sleep/<beta|prod>、8081/8080。
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH || needs.prepare.outputs.default_path }}
+      APP_PORT: ${{ vars.APP_PORT || needs.prepare.outputs.default_port }}
+      NPM_REGISTRY: ${{ vars.NPM_REGISTRY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: 安装依赖并校验
+        working-directory: server
+        run: |
+          npm ci --no-audit --no-fund
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: 检查部署配置
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in SERVER_HOST SERVER_USER; do
+            if [ -z "${!name}" ]; then
+              echo "缺少环境变量 $name，请在 Environment「${{ needs.prepare.outputs.environment }}」中配置。" >&2
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: 配置 SSH
+        env:
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SERVER_SSH_KEY" ]; then
+            echo "缺少 Secret SERVER_SSH_KEY（服务器私钥）。" >&2
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SERVER_SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -p "$SERVER_PORT" -H "$SERVER_HOST" >> ~/.ssh/known_hosts
+
+      - name: 备份上一版本并上传构建产物
+        shell: bash
+        run: |
+          set -euo pipefail
+          SSH_OPTS=(-p "$SERVER_PORT" -i ~/.ssh/id_deploy -o IdentitiesOnly=yes)
+          ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" \
+            "mkdir -p '$DEPLOY_PATH' && cd '$DEPLOY_PATH' && if [ -d dist ]; then rm -rf dist.prev && mv dist dist.prev; fi"
+          rsync -az \
+            -e "ssh -p $SERVER_PORT -i ~/.ssh/id_deploy -o IdentitiesOnly=yes" \
+            dist package.json package-lock.json ecosystem.config.cjs .env.example deploy/remote-deploy.sh deploy/rollback.sh \
+            "$SERVER_USER@$SERVER_HOST:$DEPLOY_PATH/"
+
+      - name: 远端安装、重启并健康检查
+        env:
+          APP_ENV: ${{ needs.prepare.outputs.target }}
+        run: |
+          set -euo pipefail
+          ssh -p "$SERVER_PORT" -i ~/.ssh/id_deploy -o IdentitiesOnly=yes \
+            "$SERVER_USER@$SERVER_HOST" \
+            "cd '$DEPLOY_PATH' && chmod +x deploy/remote-deploy.sh deploy/rollback.sh && APP_ENV='$APP_ENV' PORT='$APP_PORT' NPM_REGISTRY='$NPM_REGISTRY' bash deploy/remote-deploy.sh"
