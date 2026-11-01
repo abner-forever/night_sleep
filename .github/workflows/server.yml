@@ -163,7 +163,9 @@ jobs:
           SSH_OPTS=(-p "$SERVER_PORT" -i ~/.ssh/id_deploy -o IdentitiesOnly=yes)
           ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" \
             "mkdir -p '$DEPLOY_PATH' && cd '$DEPLOY_PATH' && if [ -d dist ]; then rm -rf dist.prev && mv dist dist.prev; fi"
-          rsync -az \
+          # -R（--relative）：不带它 rsync 只取每个源文件的 basename，
+          # deploy/remote-deploy.sh 会变成部署目录下的 remote-deploy.sh。
+          rsync -azR \
             -e "ssh -p $SERVER_PORT -i ~/.ssh/id_deploy -o IdentitiesOnly=yes" \
             dist package.json package-lock.json ecosystem.config.cjs .env.example deploy/remote-deploy.sh deploy/rollback.sh \
             "$SERVER_USER@$SERVER_HOST:$DEPLOY_PATH/"
