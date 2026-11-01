@@ -157,6 +157,7 @@ jobs:
 
       - name: 备份上一版本并上传构建产物
         shell: bash
+        working-directory: server
         run: |
           set -euo pipefail
           SSH_OPTS=(-p "$SERVER_PORT" -i ~/.ssh/id_deploy -o IdentitiesOnly=yes)
