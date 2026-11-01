@@ -115,9 +115,10 @@ jobs:
           fi
           mkdir -p ~/.ssh
 
-          # 归一化 Secret 里几种常见的粘贴事故，它们都会让 OpenSSH 报
-          # “Load key ...: error in libcrypto”：
-          #   1) 换行被存成字面量 \n / \r；2) CRLF 行尾；3) 整体被 base64 包了一层。
+          # Secret 里常见的粘贴事故，都会让 OpenSSH 报 “Load key ...: error in libcrypto”：
+          #   1) 换行被存成字面量 \n / \r；2) CRLF 行尾；3) 整段被 base64 包了一层；
+          #   4) BEGIN 行和 base64 正文粘在一起（少了一个换行，PEM 解析器只认独占一行的头）。
+          # 前三种先归一化；最后一种直接按“取正文 → 去空白 → 重新折行”重建，与原始格式无关。
           key=${SERVER_SSH_KEY//\\r/}
           key=${key//\\n/$'\n'}
           key=${key//$'\r'/}
@@ -128,26 +129,28 @@ jobs:
               echo "Secret 是 base64 包装的，已自动解码。"
             fi
           fi
-          # 只保留 BEGIN…END 之间，丢掉前后可能粘上的杂字符。
-          key=$(printf '%s\n' "$key" \
-            | sed -n '/-----BEGIN .*PRIVATE KEY-----/,/-----END .*PRIVATE KEY-----/p')
-          printf '%s\n' "$key" > ~/.ssh/id_deploy
+          if [[ "$key" =~ -----BEGIN[[:space:]]([[:alpha:][:digit:] ]+)-----(.*)-----END[[:space:]]([[:alpha:][:digit:] ]+)----- ]]; then
+            kind=${BASH_REMATCH[1]}
+            # base64 正文里不会有空白，整体去掉后按 64 列重新折行即可。
+            body=${BASH_REMATCH[2]//[[:space:]]/}
+            body=$(printf '%s' "$body" | fold -w 64)
+            printf '%s\n' "-----BEGIN $kind-----" "$body" "-----END $kind-----" \
+              > ~/.ssh/id_deploy
+          else
+            echo "Secret 里找不到完整的「-----BEGIN …-----」到「-----END …-----」。" >&2
+            echo "看起来贴成了公钥、只贴了一行，或内容被截断。" >&2
+            exit 1
+          fi
           chmod 600 ~/.ssh/id_deploy
 
           # 诊断：只打印结构，不打印密钥正文（GitHub 也会把 Secret 值打码）。
-          echo "整理后：$(wc -c < ~/.ssh/id_deploy) 字节，$(wc -l < ~/.ssh/id_deploy) 行"
+          echo "整理后：$(wc -c < ~/.ssh/id_deploy) 字节，$(wc -l < ~/.ssh/id_deploy) 行，类型 $kind"
           echo "首行：$(head -n 1 ~/.ssh/id_deploy | cut -c1-64)"
           echo "末行：$(tail -n 1 ~/.ssh/id_deploy | cut -c1-64)"
-          echo "正文最长行：$(sed -n '2,$p' ~/.ssh/id_deploy | awk '{ if (length > m) m = length } END { print m + 0 }') 字符"
 
-          if [ "$(wc -l < ~/.ssh/id_deploy)" -lt 2 ]; then
-            echo "私钥不完整：Secret 里找不到「-----BEGIN … PRIVATE KEY-----」到「-----END …-----」。" >&2
-            echo "看起来粘贴成了公钥、只贴了一行，或内容被截断。" >&2
-            exit 1
-          fi
           if ! ssh-keygen -y -P '' -f ~/.ssh/id_deploy > /dev/null; then
             echo "私钥无法解析：内容被截断、格式不对，或是带口令的加密私钥（CI 里没法输入口令）。" >&2
-            echo "请在服务器上重新生成 ed25519 密钥（不要加口令），把私钥完整内容贴进 Secret。" >&2
+            echo "请在服务器上重新生成密钥（不要加口令），把私钥完整内容贴进 Secret。" >&2
             exit 1
           fi
           ssh-keyscan -p "$SERVER_PORT" -H "$SERVER_HOST" >> ~/.ssh/known_hosts
