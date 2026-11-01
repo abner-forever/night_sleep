@@ -167,6 +167,9 @@ jobs:
             -e "ssh -p $SERVER_PORT -i ~/.ssh/id_deploy -o IdentitiesOnly=yes" \
             dist package.json package-lock.json ecosystem.config.cjs .env.example deploy/remote-deploy.sh deploy/rollback.sh \
             "$SERVER_USER@$SERVER_HOST:$DEPLOY_PATH/"
+          # 印一份远端目录内容，上传漏了哪一项一眼就能看出来。
+          ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" \
+            "cd '$DEPLOY_PATH' && ls -la && echo '--- deploy/ ---' && ls -la deploy"
 
       - name: 远端安装、重启并健康检查
         env:
@@ -174,5 +177,13 @@ jobs:
         run: |
           set -euo pipefail
           ssh -p "$SERVER_PORT" -i ~/.ssh/id_deploy -o IdentitiesOnly=yes \
-            "$SERVER_USER@$SERVER_HOST" \
-            "cd '$DEPLOY_PATH' && chmod +x deploy/remote-deploy.sh deploy/rollback.sh && APP_ENV='$APP_ENV' PORT='$APP_PORT' NPM_REGISTRY='$NPM_REGISTRY' bash deploy/remote-deploy.sh"
+            "$SERVER_USER@$SERVER_HOST" "
+              cd '$DEPLOY_PATH' || exit 1
+              if [ ! -f deploy/remote-deploy.sh ]; then
+                echo '远端 $DEPLOY_PATH 里没有 deploy/remote-deploy.sh，上一步 rsync 没传到位。' >&2
+                ls -la >&2
+                exit 1
+              fi
+              chmod +x deploy/remote-deploy.sh deploy/rollback.sh
+              APP_ENV='$APP_ENV' PORT='$APP_PORT' NPM_REGISTRY='$NPM_REGISTRY' bash deploy/remote-deploy.sh
+            "
