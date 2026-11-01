@@ -114,8 +114,18 @@ jobs:
             exit 1
           fi
           mkdir -p ~/.ssh
-          printf '%s\n' "$SERVER_SSH_KEY" > ~/.ssh/id_deploy
+          # Secret 里的换行常被粘贴成字面量 \n 或带上 CRLF 行尾，两种都会让 OpenSSH
+          # 在解析私钥时报 “Load key ...: error in libcrypto”。这里统一归一化。
+          # 命令替换会吃掉结尾换行，再 printf 补回恰好一个——OpenSSH 缺了结尾换行会报
+          # “invalid format”，多出空行也无益处。
+          key=$(printf '%s' "$SERVER_SSH_KEY" | sed -e 's/\\n/\n/g' -e 's/\r$//')
+          printf '%s\n' "$key" > ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy
+          if ! ssh-keygen -y -P '' -f ~/.ssh/id_deploy > /dev/null; then
+            echo "私钥无法解析：SERVER_SSH_KEY 可能被截断、格式不对，或是带口令的加密私钥。" >&2
+            echo "请在服务器上重新生成一对密钥，并把私钥完整内容（含首尾 BEGIN/END 行）粘贴进 Secret。" >&2
+            exit 1
+          fi
           ssh-keyscan -p "$SERVER_PORT" -H "$SERVER_HOST" >> ~/.ssh/known_hosts
 
       - name: 备份上一版本并上传构建产物
