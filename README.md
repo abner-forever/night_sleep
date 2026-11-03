@@ -161,13 +161,24 @@ flutter build apk --dart-define=DEMO_DATA=false    # 发布构建强制关闭
 ```
 
 **天气服务**在 debug 中先探测本机 NestJS 服务（源码见 [`server/`](server/README.md)），
-探到就用本地，探不到就连远端测试服 `http://110.40.226.136:8081/api`：
+探到就用本地；没探到、也没配接口地址时就不请求天气：
 
 - 本机：`http://localhost:8080/api`（iOS 模拟器与 `adb reverse` 都走这条）
 - Android 模拟器：`http://10.0.2.2:8080/api`
 
+**仓库里没有线上接口地址**——公开仓库没必要把自家域名写进源码，地址只在构建时注入：
+
+- 发布包：Android 工作流按分支挂到对应的 GitHub Environment（`beta` → `server-beta`，
+  `main` → `server-prod`，与 `server.yml` 同一套），从里面的 `WEATHER_API_BASE_URL`
+  变量取地址写进 `--dart-define`。没配也能出包，只是首页不显示天气卡。
+- 本地：`cp .env.local.example .env.local` 填好地址，再 `tool/run_local.sh`
+  （等价于 `flutter run --dart-define-from-file=.env.local`）。`.env.local` 不入库。
+
+地址必须带 `/api` 前缀，且是 `https://`——release 构建不允许明文 HTTP
+（Android `network_security_config.xml` 与 iOS `Info.plist` 只为本机调试留了例外）。
+
 探测是 `GET /api/health`，单次 800ms 超时；`10.0.2.2` 在真机上不存在、连过去是
-静默丢包，所以本地没起服务时会多花约 0.8 秒再回落到远端。
+静默丢包，所以本地没起服务时每次启动会多花约 0.8 秒才决定「没有天气」。
 
 首次运行服务：
 
@@ -232,7 +243,7 @@ network，而「可用」不代表「有信号」——室内它一个 fix 都�
 `lib/features/home/presentation/widgets/tonight_comfort.dart`。天气拿不到时整张卡不出现，不画占位。
 建议按城市级预报推算，不是卧室实测；它不预测睡眠质量，也不改任何睡眠记录。
 
-真机或独立服务可覆盖接口基址：
+真机或独立服务可覆盖接口基址（改 `.env.local` 里那一行），也可以直接在命令行给：
 
 ```bash
 flutter run -d <设备ID> \
@@ -252,10 +263,8 @@ flutter run -d <设备ID> \
 本地请求的 IP 是私有地址，服务端无法据此定位城市，所以真机本地调试要么在卡片上点一次
 「使用我的位置」，要么传 `WEATHER_LOCATION`，或在 `server/.env` 中设置 `WEATHER_DEFAULT_LOCATION`。
 
-Android 发布工作流按分支注入 `APP_RELEASE_CHANNEL`，App 自动选择 Beta 或正式天气服务。
-本地 debug 先探本机、探不到就连测试服。需要临时切换其他服务时，可用
-`--dart-define=WEATHER_API_BASE_URL=https://api.example.com/api` 覆盖分支默认值——显式配置
-会跳过本地探测，直接用它；不要把和风天气密钥写进 App。
+给了地址就跳过本地探测、直接用它；不发地址就依次探本机两个候选，都没有就不请求——**不存在
+「默认连线上」的兜底**，这是为了让公开仓库里不出现服务地址。不要把和风天气密钥写进 App。
 
 ### 构建
 

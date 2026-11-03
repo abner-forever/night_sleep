@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:night_sleep/core/config/app_config.dart';
 import 'package:night_sleep/core/telemetry/event_log.dart';
 import 'package:night_sleep/features/home/data/device_location.dart';
 import 'package:night_sleep/features/home/data/weather_service.dart';
@@ -152,6 +151,8 @@ void main() {
       overrides: [
         eventLogProvider.overrideWithValue(log),
         weatherHttpClientProvider.overrideWithValue(client),
+        // 接口地址现在是构建时注入的，测试里必须显式给一个，否则不会发请求。
+        weatherBaseUrlProvider.overrideWithValue('http://localhost:8080/api'),
         deviceLocationProvider.overrideWithValue(const _StaticLocation()),
       ],
     );
@@ -193,6 +194,7 @@ void main() {
       overrides: [
         eventLogProvider.overrideWithValue(log),
         weatherHttpClientProvider.overrideWithValue(client),
+        weatherBaseUrlProvider.overrideWithValue('http://localhost:8080/api'),
         deviceLocationProvider.overrideWithValue(const _StaticLocation()),
       ],
     );
@@ -208,7 +210,6 @@ void main() {
       var probed = false;
       final url = await resolveWeatherApiBaseUrl(
         configuredUrl: ' https://api.example.com/api ',
-        releaseChannel: 'beta',
         debug: true,
         probe: (_) async {
           probed = true;
@@ -222,36 +223,71 @@ void main() {
     test('debug 下本地服务在跑就用本地', () async {
       final url = await resolveWeatherApiBaseUrl(
         configuredUrl: '',
-        releaseChannel: 'beta',
         debug: true,
         probe: (baseUrl) async => baseUrl == 'http://10.0.2.2:8080/api',
       );
       expect(url, 'http://10.0.2.2:8080/api');
     });
 
-    test('debug 下本地没起服务就回落远端测试服', () async {
+    test('debug 下本地没起服务、也没注入地址，就不发请求', () async {
+      // 仓库里没有兜底的线上地址，开源检出直接 `flutter run` 就是这个状态：
+      // 空串即「这次不请求」，不是失败。
       final url = await resolveWeatherApiBaseUrl(
         configuredUrl: '',
-        releaseChannel: 'main',
         debug: true,
         probe: (_) async => false,
       );
-      expect(url, AppConfig.betaWeatherApiBaseUrl);
+      expect(url, '');
     });
 
-    test('发布构建不探测本机，按分支取远端', () async {
+    test('发布构建只认注入地址，不探测本机', () async {
       var probed = false;
       final url = await resolveWeatherApiBaseUrl(
-        configuredUrl: '',
-        releaseChannel: 'main',
+        configuredUrl: 'https://api.example.com/api',
         debug: false,
         probe: (_) async {
           probed = true;
           return true;
         },
       );
-      expect(url, AppConfig.productionWeatherApiBaseUrl);
+      expect(url, 'https://api.example.com/api');
       expect(probed, isFalse);
     });
+
+    test('发布构建没注入地址时返回空串', () async {
+      final url = await resolveWeatherApiBaseUrl(
+        configuredUrl: '   ',
+        debug: false,
+        probe: (_) async => true,
+      );
+      expect(url, '');
+    });
+  });
+
+  test('没有注入接口地址、本机也没服务时不发请求', () async {
+    final log = _RecordingLog();
+    var requested = false;
+    // 本机探测要失败（404），否则 debug 下会「探到本地服务」而照常请求。
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/health')) return http.Response('', 404);
+      requested = true;
+      return http.Response('{}', 200);
+    });
+    final container = ProviderContainer(
+      overrides: [
+        eventLogProvider.overrideWithValue(log),
+        weatherHttpClientProvider.overrideWithValue(client),
+        weatherBaseUrlProvider.overrideWithValue(''),
+        deviceLocationProvider.overrideWithValue(const _StaticLocation()),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await expectLater(
+      container.read(weatherProvider.future),
+      completion(isNull),
+    );
+    expect(requested, isFalse);
+    expect(log.events, isEmpty);
   });
 }

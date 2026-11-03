@@ -17,6 +17,8 @@
 
 ## 未发布（2026-10-25）
 
+天气接口不再把线上地址写进仓库：基址改为构建时注入，Android 发布按分支挂到对应 Environment（`beta` → `server-beta`，`main` → `server-prod`），从那里的 `WEATHER_API_BASE_URL` 变量取值；本地调试写在未入库的 `.env.local`（`tool/run_local.sh` 读取）。两处都没配时不发任何天气请求、首页不显示天气卡，而不是报错。接口同时从服务器 IP 的明文 HTTP 换成 HTTPS 域名，Android `network_security_config.xml` 与 iOS `Info.plist` 里的明文例外只保留本机调试地址，`APP_RELEASE_CHANNEL` 随之取消。域名连通已实测，Environment 注入、release 构建与真机安装未验证。
+
 本地 `npm run start` 不再因为没设 `NODE_ENV` 就跳过 `.env`：是否读环境文件改按「是否跑在 Cloudflare Worker」判断，`server/.env` 里填好的天气配置不会再被判为空；缺配置的报错只列出缺哪个变量，不再把私钥等值回显到响应体与日志。
 
 服务端按请求 IP 定位天气改为优先用 Cloudflare 边缘给的坐标，不再依赖第三方 IP 库；IP 库失败时把原因（限流 / 无城市 / 请求异常）写进日志，不再只剩一句「无法定位城市」。线上是否已恢复未验证。
@@ -67,7 +69,7 @@ server 显式依赖 webpack 5.112.2。
 
 天气城市名默认中文：城市查询带 lang=zh，ipwho.is 定位带 lang=zh-CN（仅对它追加）。
 
-天气接口从 Cloudflare Worker 切到腾讯云服务器 IP（beta 8081 / 正式 8080），域名 foreverheart.top 就绪后再换 HTTPS；Android 与 iOS 只为这个 IP 单点放行明文 HTTP。release 包外网连通未验证。
+天气接口从 Cloudflare Worker 切到腾讯云服务器 IP（beta 8081 / 正式 8080），域名就绪后再换 HTTPS；Android 与 iOS 只为这个 IP 单点放行明文 HTTP。release 包外网连通未验证。
 
 debug 构建的天气接口改为运行时探测：本机 `localhost:8080` 或模拟器 `10.0.2.2:8080` 有服务就连本地，没有就连远端测试服；`--dart-define=WEATHER_API_BASE_URL` 仍可跳过探测直接指定。真机实测（小米 9，本地未起服务）已落到测试服。
 

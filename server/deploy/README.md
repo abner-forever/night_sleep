@@ -137,19 +137,25 @@ ssh -i night-sleep-ci ubuntu@<服务器IP> "echo connected"
 
 | 类型 | 名称 | `server-beta` | `server-prod` |
 | --- | --- | --- | --- |
-| Variable | `SERVER_HOST` | `1.2.3.4` | `1.2.3.4` |
+| Variable | `SERVER_HOST` | `1.2.3.4`（也可填域名） | `1.2.3.4`（也可填域名） |
 | Variable | `SERVER_USER` | `ubuntu` | `ubuntu` |
 | Variable | `SERVER_PORT` | `22`（可留空） | `22`（可留空） |
 | Variable | `DEPLOY_PATH` | `/var/www/night-sleep/beta` | `/var/www/night-sleep/prod` |
 | Variable | `APP_PORT` | `8081` | `8080` |
 | Variable | `NPM_REGISTRY` | `https://registry.npmmirror.com`（可选） | 同左 |
+| Variable | `WEATHER_API_BASE_URL` | `https://beta.<域名>/api`（可选） | `https://<域名>/api`（可选） |
 | Secret | `SERVER_SSH_KEY` | 私钥 `night-sleep-ci` 全文 | 私钥 `night-sleep-ci` 全文 |
 
-两点说明：
+三点说明：
 
 - `DEPLOY_PATH`、`APP_PORT` 不填也能用，工作流默认取 `/var/www/night-sleep/<环境>`
   和 `8081`/`8080`；填了以你填的为准。
 - 两台服务器分别部署时，只需要把两个环境的 `SERVER_HOST` 改成各自的 IP。
+- `SERVER_HOST` **只填主机名或 IP**，不带 `https://`、不带端口、不带路径和结尾斜杠——
+  它直接交给 `ssh` / `rsync` / `ssh-keyscan`，端口单独走 `SERVER_PORT`（填错时工作流会
+  在「检查部署配置」里直接报出来）。填域名完全可以，而且 IP 换了不用改配置；但该域名必须
+  **直接指向服务器**：挂在 Cloudflare 这类代理后面（橙云）SSH 连不上，要用 DNS only（灰云），
+  或者专门开一个只做 SSH 的子域名。域名解析临时异常会让部署失败，这点比 IP 脆。
 
 `SERVER_SSH_KEY` 填**私钥全文**，包含 `-----BEGIN OPENSSH PRIVATE KEY-----` 与结尾行。
 Secret 按环境隔离，所以两个环境都要各填一次。
@@ -210,15 +216,27 @@ sudo certbot --nginx -d xxx.com -d www.xxx.com -d beta.xxx.com
 
 ### 3.4 客户端要填的地址
 
-App 的 `WEATHER_API_BASE_URL` **包含 `/api` 前缀**：
+App 的 `WEATHER_API_BASE_URL` **包含 `/api` 前缀**，且必须是 `https://`：
 
-- 正式：`https://xxx.com/api`
-- 测试：`https://beta.xxx.com/api`
+- 正式：`https://<正式域名>/api`
+- 测试：`https://beta.<域名>/api`
 
-当前 `.github/workflows/android.yml` 两个分支共用仓库变量 `WEATHER_API_BASE_URL`，它覆盖
-分支默认值。**留空**时 App 按分支取 `lib/core/config/app_config.dart` 里的基址——目前是服务器
-IP（测试 8081 / 正式 8080），所以 beta 包连的是测试服；**填了就两个分支都连填的那个地址**。
-域名上线后把这两条常量换成 `https://` 地址即可。
+这两个地址**不在仓库里**（公开仓库不保存线上接口地址）。Android 构建时按分支挂到对应的
+GitHub Environment，从该 Environment 的变量里取值写进 `--dart-define=WEATHER_API_BASE_URL`：
+
+| 分支 | Environment | 变量 |
+| --- | --- | --- |
+| `main` | `server-prod` | `WEATHER_API_BASE_URL` = `https://<正式域名>/api` |
+| 其他（含 `beta`） | `server-beta` | `WEATHER_API_BASE_URL` = `https://beta.<域名>/api` |
+
+在 Settings → Environments → 选中环境 → Environment variables 里添加（存成 Environment
+secret 也能读到，工作流优先读变量）。**没配也能出包**，只是那批包不请求天气（构建日志里
+有一条 `::warning::`），fork 与 PR 因此不会被卡住。本地开发同理，用未入库的 `.env.local`
+（模板 `.env.local.example`，`tool/run_local.sh` 会读它）。
+
+⚠️ 客户端已删除明文 HTTP 例外（Android `network_security_config.xml`、iOS `Info.plist`
+只剩本机调试地址），所以这个值必须以 `https://` 开头，且带 `/api` 前缀；配错时工作流会直接
+失败（`https://` 开头但缺 `/api` 只告警）。
 
 ## 四、手动操作（在服务器上）
 

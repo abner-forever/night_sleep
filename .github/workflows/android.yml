@@ -62,8 +62,14 @@ jobs:
     if: needs.prepare.outputs.skip != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # 按分支挂到对应的 Environment（与 server.yml 同一套）：beta → server-beta，
+    # main → server-prod。线上接口地址配在 Environment 变量里，仓库代码与仓库级
+    # 变量都不出现它；Android 签名等仓库级 Secret 照旧可用。
+    environment: ${{ needs.prepare.outputs.channel == 'beta' && 'server-beta' || 'server-prod' }}
     env:
       GRADLE_OPTS: '-Dorg.gradle.jvmargs="-Xmx4G -XX:MaxMetaspaceSize=1G -XX:ReservedCodeCacheSize=256m" -Dorg.gradle.workers.max=2'
+      # 优先读 Environment 变量，兼容把它存成 Secret 的配法；都没有就是空串。
+      WEATHER_API_BASE_URL: ${{ vars.WEATHER_API_BASE_URL || secrets.WEATHER_API_BASE_URL }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -103,14 +109,34 @@ jobs:
         run: |
           flutter analyze
           flutter test
+      - name: 检查天气接口基址
+        # 地址只存在 Environment（server-beta / server-prod）的变量里，代码里没有。
+        # 没配也不失败：fork 和 PR 拿不到 Environment 变量，照样要能出包，
+        # 那种包只是首页没有天气卡。**不要打印地址本身**——公开仓库的构建日志也公开。
+        run: |
+          set -euo pipefail
+          case "$WEATHER_API_BASE_URL" in
+            '')
+              echo "::warning::当前 Environment 没配 WEATHER_API_BASE_URL，本次构建的包不请求天气"
+              ;;
+            https://*/api)
+              echo "天气接口基址已注入：${#WEATHER_API_BASE_URL} 字符"
+              ;;
+            https://*)
+              echo "::warning::WEATHER_API_BASE_URL 缺少 /api 前缀，请求会 404"
+              ;;
+            *)
+              echo "::error::WEATHER_API_BASE_URL 必须是 https:// 地址（release 不放行明文 HTTP）"
+              exit 1
+              ;;
+          esac
       - name: 构建 Android release APK（项目长期签名，关闭演示数据）
         # 测试会生成包含 integration_test 的插件注册；release 构建需重新生成，
         # 不能使用 --no-pub，否则会保留测试注册而缺少对应的 release 插件。
         run: >-
           flutter build apk --release
           --dart-define=DEMO_DATA=false
-          --dart-define=APP_RELEASE_CHANNEL=${{ github.ref_name }}
-          --dart-define=WEATHER_API_BASE_URL=${{ vars.WEATHER_API_BASE_URL }}
+          --dart-define=WEATHER_API_BASE_URL=$WEATHER_API_BASE_URL
       - name: 检查安装包与签名并生成校验文件
         shell: bash
         run: |

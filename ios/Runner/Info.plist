@@ -38,14 +38,9 @@
 		<true/>
 		<key>NSExceptionDomains</key>
 		<dict>
+			<!-- 仅本机调试例外：远端天气接口已是 HTTPS 域名
+			     （见 lib/core/config/app_config.dart），原先为服务器 IP 开的那条已删。 -->
 			<key>localhost</key>
-			<dict>
-				<key>NSExceptionAllowsInsecureHTTPLoads</key>
-				<true/>
-			</dict>
-			<!-- 过渡态：域名 foreverheart.top 解析就绪前，天气接口直连腾讯云服务器 IP
-			     （见 lib/core/config/app_config.dart）。域名上线后删掉这一条。 -->
-			<key>110.40.226.136</key>
 			<dict>
 				<key>NSExceptionAllowsInsecureHTTPLoads</key>
 				<true/>

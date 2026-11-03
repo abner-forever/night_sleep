@@ -17,8 +17,20 @@ final weatherHttpClientProvider = Provider<http.Client>((ref) {
   return client;
 });
 
+/// 编译期注入的接口基址（见 `AppConfig.weatherApiBaseUrl`）。
+///
+/// 抽成 provider 只为一件事：常量在测试进程里永远是空串，替换不了就一条请求都发不出去。
+final weatherBaseUrlProvider = Provider<String>(
+  (ref) => AppConfig.weatherApiBaseUrl,
+);
+
 final weatherProvider = FutureProvider<WeatherSnapshot?>((ref) async {
   final client = ref.watch(weatherHttpClientProvider);
+  final configuredUrl = ref.watch(weatherBaseUrlProvider);
+
+  // 发布包里没有注入接口地址（自己构建的包、或仓库 Secret 没配）：直接当作「没有
+  // 天气能力」，连定位都不问。反问用户去开定位、再显示一片空白，比不显示更糟。
+  if (!kDebugMode && configuredUrl.trim().isEmpty) return null;
 
   final location = await _resolveLocationQuery(ref);
 
@@ -35,8 +47,7 @@ final weatherProvider = FutureProvider<WeatherSnapshot?>((ref) async {
   }
 
   final baseUrl = await resolveWeatherApiBaseUrl(
-    configuredUrl: AppConfig.configuredWeatherApiBaseUrl,
-    releaseChannel: AppConfig.releaseChannel,
+    configuredUrl: configuredUrl,
     debug: kDebugMode,
     probe: (candidate) => _isLocalServerUp(client, candidate),
   );
@@ -61,27 +72,28 @@ final weatherProvider = FutureProvider<WeatherSnapshot?>((ref) async {
   }
 });
 
-/// 这次请求要连的基址。
+/// 这次请求要连的基址；返回空串表示**这次不发请求**。
 ///
-/// 优先级：**编译期显式配置 > debug 下探测到的本地服务 > 远端**。远端在 debug
-/// 恒为测试服（[AppConfig.betaWeatherApiBaseUrl]），发布构建按分支取。
+/// 优先级：**构建时注入的地址 > debug 下探测到的本地服务 > 空**。
+///
+/// 仓库里没有兜底的线上地址（见 `AppConfig.weatherApiBaseUrl`），所以「什么都没配」
+/// 是一个正常结果：release 直接用注入值，debug 先探本机、探不到就不请求。
 ///
 /// 探测只在 debug 发生：发布包不该去连本机，也连不上——release 的网络安全配置
-/// 只放行了服务器 IP，本机那几个明文地址在 release 里是被拒的。
+/// 不放行任何明文地址。
 Future<String> resolveWeatherApiBaseUrl({
   required String configuredUrl,
-  required String releaseChannel,
   required bool debug,
   required Future<bool> Function(String baseUrl) probe,
 }) async {
   final configured = configuredUrl.trim();
   if (configured.isNotEmpty) return configured;
-  if (!debug) return AppConfig.releaseWeatherApiBaseUrlFor(releaseChannel);
+  if (!debug) return '';
 
   for (final candidate in AppConfig.debugLocalWeatherApiBaseUrls) {
     if (await probe(candidate)) return candidate;
   }
-  return AppConfig.betaWeatherApiBaseUrl;
+  return '';
 }
 
 /// 本地 NestJS 服务是否在跑：`GET {base}/health` 回 200 就算在。

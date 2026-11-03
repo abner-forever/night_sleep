@@ -23,32 +23,25 @@ abstract final class AppConfig {
   /// `source` value marking bundled sample rows.
   static const String demoSource = 'demo';
 
-  /// 编译期显式指定的接口基址（`--dart-define=WEATHER_API_BASE_URL=...`）。
+  /// 天气接口基址，**只从构建时注入**（`--dart-define=WEATHER_API_BASE_URL=...`）。
   ///
-  /// 非空时**优先于一切**——既不探测本地服务，也不看发布分支。
-  static const String configuredWeatherApiBaseUrl = String.fromEnvironment(
+  /// 仓库里不保存线上地址：这是公开仓库，接口域名没必要写进源码。注入有两条路：
+  ///
+  /// - 发布包：GitHub Actions 按分支挂到对应的 Environment（`server-beta` /
+  ///   `server-prod`），从里面的 `WEATHER_API_BASE_URL` 变量取值后写进这个变量
+  ///   （见 `android.yml`）；
+  /// - 本地调试：未入库的 `.env.local`，
+  ///   `flutter run --dart-define-from-file=.env.local`（`tool/run_local.sh` 的用法）。
+  ///
+  /// 两条路都没提供时是空串，此时**不发任何天气请求**——首页那张卡不出现。
+  /// 这是「没有的能力就显示为没有」，不是错误状态。
+  ///
+  /// 值必须带 `/api` 前缀，且是 `https://`：release 构建不允许明文 HTTP
+  /// （Android `network_security_config.xml` 与 iOS `Info.plist` 都没开对线上的例外）。
+  static const String weatherApiBaseUrl = String.fromEnvironment(
     'WEATHER_API_BASE_URL',
     defaultValue: '',
   );
-
-  /// 发布分支名，由 Android 工作流注入（`beta` / `main`）。
-  static const String releaseChannel = String.fromEnvironment(
-    'APP_RELEASE_CHANNEL',
-    defaultValue: '',
-  );
-
-  /// Beta 测试分支的天气接口基址：腾讯云服务器的测试服（PM2 `night-sleep-beta`）。
-  ///
-  /// 过渡态——域名 `foreverheart.top` 解析就绪前先直连 IP。改成 HTTPS 域名后，
-  /// 记得把 Android 的 `res/xml/network_security_config.xml` 与
-  /// `ios/Runner/Info.plist` 里为明文 HTTP 开的例外一并删掉。
-  static const String betaWeatherApiBaseUrl = 'http://110.40.226.136:8081/api';
-
-  /// 正式分支的天气接口基址：同一台服务器的正式服（PM2 `night-sleep-prod`）。
-  ///
-  /// 域名上线后改成 `https://foreverheart.top/api`。
-  static const String productionWeatherApiBaseUrl =
-      'http://110.40.226.136:8080/api';
 
   /// debug 构建下本地开发服务的候选地址，按顺序探测。
   ///
@@ -59,18 +52,6 @@ abstract final class AppConfig {
     'http://localhost:8080/api',
     'http://10.0.2.2:8080/api',
   ];
-
-  /// 发布构建按分支取的接口基址；未知分支返回空串，此时不请求天气。
-  ///
-  /// debug 构建不走这里——本地服务起没起要看运行时探测，
-  /// 见 `weather_service.dart` 的 `resolveWeatherApiBaseUrl`。
-  static String releaseWeatherApiBaseUrlFor(String channel) {
-    return switch (channel.trim()) {
-      'beta' => betaWeatherApiBaseUrl,
-      'main' => productionWeatherApiBaseUrl,
-      _ => '',
-    };
-  }
 
   /// 可选城市名。为空时服务端根据请求 IP 解析城市级大致位置。
   static const String weatherLocation = String.fromEnvironment(

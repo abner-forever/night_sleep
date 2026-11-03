@@ -102,6 +102,17 @@ jobs:
               missing=1
             fi
           done
+          # SERVER_HOST 会直接喂给 ssh / rsync / ssh-keyscan，只能是主机名或 IP。
+          # 带上协议或路径时它们报的是「Could not resolve hostname」，看不出是这里填错。
+          case "$SERVER_HOST" in
+            *://*|*/*)
+              echo "SERVER_HOST 只填主机名或 IP，不要带协议、路径或结尾斜杠（端口用 SERVER_PORT）。" >&2
+              missing=1
+              ;;
+            *:*)
+              echo "提示：SERVER_HOST 里有冒号，确认不是把端口写进来了（端口用 SERVER_PORT）；IPv6 地址可忽略这条。" >&2
+              ;;
+          esac
           exit "$missing"
 
       - name: 配置 SSH
